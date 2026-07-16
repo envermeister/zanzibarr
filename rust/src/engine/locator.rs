@@ -140,6 +140,15 @@ impl SegmentLocator {
             .is_some_and(|s| s.decoded.is_some())
     }
 
+    /// Segmentin çözülmüş dosya içindeki aralığı (0 tabanlı, yarı açık);
+    /// konumu henüz öğrenilmemişse `None`.
+    pub fn decoded_span(&self, index: usize) -> Option<Range<u64>> {
+        self.segments
+            .get(index)
+            .and_then(|s| s.decoded)
+            .map(|span| span.start..span.end())
+    }
+
     /// Çözülmüş bir article'ın konumunu kaydeder.
     ///
     /// `begin/end` yoksa (nadir, tek parçalı yEnc) parça tüm dosyayı kapsar

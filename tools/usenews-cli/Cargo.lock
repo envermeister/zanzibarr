@@ -684,6 +684,7 @@ version = "0.1.0"
 dependencies = [
  "crc32fast",
  "flutter_rust_bridge",
+ "once_cell",
  "quick-xml",
  "thiserror",
  "tokio",

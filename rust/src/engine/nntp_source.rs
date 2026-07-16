@@ -174,19 +174,27 @@ impl NntpByteSource {
         self.fetch_segment(index).await
     }
 
-    /// `range`'i kapsayan segment dilimlerini, gerektikçe segment çekerek
-    /// belirler.
-    async fn resolve_slices(
-        &self,
-        range: Range<u64>,
-    ) -> io::Result<Vec<super::locator::SegmentSlice>> {
+    /// `offset`'i içeren segmentin indeksini ve çözülmüş dosya aralığını,
+    /// gerekiyorsa o segmenti çekerek bulur. Yalnızca bu tek segment için
+    /// veri getirir — böylece açık uçlu (`bytes=0-`) isteklerde tüm dosya
+    /// önden çekilmez; player okudukça segment segment ilerlenir.
+    async fn locate(&self, offset: u64) -> io::Result<(usize, Range<u64>)> {
         loop {
             let outcome = {
                 let loc = self.locator.lock().expect("kilit");
-                loc.resolve(range.clone())
+                loc.resolve(offset..offset + 1)
             };
             match outcome {
-                Ok(slices) => return Ok(slices),
+                Ok(slices) => {
+                    let index = slices[0].index;
+                    let span = self
+                        .locator
+                        .lock()
+                        .expect("kilit")
+                        .decoded_span(index)
+                        .expect("çözülen segmentin span'i olur");
+                    return Ok((index, span));
+                }
                 Err(LocatorError::NeedSegments(indices)) => {
                     for index in indices {
                         self.ensure_located(index).await?;
@@ -211,12 +219,18 @@ impl RangeSource for NntpByteSource {
     where
         W: AsyncWrite + Unpin + Send,
     {
-        let slices = self.resolve_slices(range).await?;
-        for slice in slices {
-            let data = self.segment_data(slice.index).await?;
-            let from = slice.within_segment.start as usize;
-            let to = slice.within_segment.end as usize;
+        // Segment segment, tembel akış: her adımda cursor'ı içeren segmenti
+        // bulup yazarız. Player (mpv/media_kit) yeterince okuyup bağlantıyı
+        // kapatınca ilk `write_all` `BrokenPipe` döner ve gereksiz çekme durur.
+        let mut cursor = range.start;
+        while cursor < range.end {
+            let (index, span) = self.locate(cursor).await?;
+            let seg_end = span.end.min(range.end);
+            let data = self.segment_data(index).await?;
+            let from = (cursor - span.start) as usize;
+            let to = (seg_end - span.start) as usize;
             out.write_all(&data[from..to]).await?;
+            cursor = seg_end;
         }
         Ok(())
     }
