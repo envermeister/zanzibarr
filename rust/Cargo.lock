@@ -505,9 +505,9 @@ dependencies = [
 
 [[package]]
 name = "once_cell"
-version = "1.18.0"
+version = "1.21.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd8b5dd2ae5ed71462c540258bedcb51965123ad7e7ccf4b9a8cafaa4a63576d"
+checksum = "9f7c3e4beb33f85d45ae3e3a1792185706c8e16d043238c593331cc7cd313b50"
 
 [[package]]
 name = "oslog"
@@ -636,6 +636,7 @@ version = "0.1.0"
 dependencies = [
  "crc32fast",
  "flutter_rust_bridge",
+ "once_cell",
  "quick-xml",
  "thiserror",
  "tokio",

@@ -30,12 +30,10 @@ void main() {
     expect(engineInfo(), startsWith('rust_lib_usenews v'));
   });
 
-  testWidgets('Rust sonucu ekranda görünüyor', (tester) async {
+  testWidgets('Rust motor bilgisi ana ekranda görünüyor', (tester) async {
     await tester.pumpWidget(const UseNewsApp());
-    expect(
-      find.textContaining('Rust çekirdeği ayakta'),
-      findsOneWidget,
-    );
+    // Ana ekrandaki "Motor: ..." satırı engine_info() ile Rust'tan gelir.
     expect(find.textContaining('Motor: rust_lib_usenews'), findsOneWidget);
+    expect(find.text('NZB seç ve oynat'), findsOneWidget);
   });
 }
