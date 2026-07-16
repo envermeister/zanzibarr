@@ -46,6 +46,7 @@ cargo run -q -- setup   # kimlik bilgilerini sorar (parola echo'suz), Keychain'e
 cargo run -q -- show    # kayıtları gösterir; parolayı asla yazmaz
 cargo run -q -- check   # TLS + AUTHINFO + DATE ile bağlantı sınaması
 cargo run -q -- fetch '<message-id>'  # tek article çek + yEnc çöz
+cargo run -q -- probe <nzb> [offset]  # eşleyiciyle seek kanıtı (gerçek veri)
 cargo run -q -- clear   # kayıtları siler
 ```
 
@@ -69,7 +70,9 @@ dışlar.
   - [x] NNTP altyapısı (`rust/src/engine/nntp/`) — TLS :563, komut/yanıt,
         AUTHINFO, havuz; sahte sunucuyla test edildi (gerçek sunucu doğrulaması
         kullanıcı kimliğiyle yapılacak)
-  - [ ] Segment ↔ byte-range eşleyici
+  - [x] Segment ↔ byte-range eşleyici (`rust/src/engine/locator.rs`) —
+        çözülmüş ofsetler yalnız yEnc begin/end'ten; gerçek Easynews
+        verisiyle seek kanıtlandı (`usenews-cli probe`)
   - [ ] Localhost HTTP server (range) + media_kit oynatma + seek
 - [ ] **Faz 2+** — Newznab/Easynews arama; RAR/7z/AES stream; PAR2
       healthcheck+repair (NZBDav MIT kaynağı algoritma referansı, kod
