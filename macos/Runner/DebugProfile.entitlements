@@ -2,15 +2,15 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- Debug/yerel geliştirme: sandbox kapalı. Sandbox açıkken Keychain
+	     (flutter_secure_storage) erişimi keychain-access-groups + gerçek
+	     development certificate ister; ad-hoc yerel imzayla bu -34018
+	     (errSecMissingEntitlement) verir. Yerel geliştirmede sandbox'ı
+	     kapatmak Keychain'i ve ağ erişimini serbestleştirir. Release
+	     entitlements'ında sandbox açık kalır. -->
 	<key>com.apple.security.app-sandbox</key>
-	<true/>
+	<false/>
 	<key>com.apple.security.cs.allow-jit</key>
-	<true/>
-	<key>com.apple.security.network.server</key>
-	<true/>
-	<key>com.apple.security.network.client</key>
-	<true/>
-	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
 </dict>
 </plist>

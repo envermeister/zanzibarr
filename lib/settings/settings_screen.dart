@@ -50,15 +50,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
-    await _store.save(
-      ProviderSettings(
-        host: _hostController.text.trim(),
-        port: int.parse(_portController.text.trim()),
-        username: _usernameController.text.trim(),
-        password: _passwordController.text,
-        maxConnections: int.parse(_maxConnectionsController.text.trim()),
-      ),
-    );
+    try {
+      await _store.save(
+        ProviderSettings(
+          host: _hostController.text.trim(),
+          port: int.parse(_portController.text.trim()),
+          username: _usernameController.text.trim(),
+          password: _passwordController.text,
+          maxConnections: int.parse(_maxConnectionsController.text.trim()),
+        ),
+      );
+    } catch (e) {
+      // Keychain yazımı başarısızsa (ör. entitlement eksik) uygulamayı
+      // düşürmeden kullanıcıya bildir.
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Kaydedilemedi: $e')),
+      );
+      return;
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('Ayarlar güvenli depoya kaydedildi.')),

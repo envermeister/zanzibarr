@@ -10,5 +10,12 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
+	<!-- Keychain erişimi (flutter_secure_storage). Sandbox'lı Release
+	     dağıtımı gerçek development/distribution certificate ile
+	     imzalandığında çalışır. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.usenews.usenews</string>
+	</array>
 </dict>
 </plist>
