@@ -50,13 +50,54 @@ pub struct NzbFile {
 }
 
 impl NzbFile {
-    /// Subject içindeki ilk çift tırnaklı blok; Usenet'te dosya adı
-    /// geleneksel olarak `"ad.uzanti"` biçiminde taşınır.
+    /// Subject'ten dosya adını çıkarır. İki yaygın biçimi de destekler:
+    /// - Tırnaklı: `[1/2] - "ad.mkv" yEnc (1/3)` → tırnak içi alınır.
+    /// - Tırnaksız: `ad.mkv (1/0)` → parça soneki temizlenip kalan alınır.
+    ///
+    /// Döndürülen dilim `subject`'e ödünç bağlıdır; bu yüzden `String` değil
+    /// `&str`'tir (kopyasız).
     pub fn filename(&self) -> Option<&str> {
-        let start = self.subject.find('"')? + 1;
-        let end = self.subject[start..].find('"')? + start;
-        let name = self.subject[start..end].trim();
-        (!name.is_empty()).then_some(name)
+        // 1) Çift tırnaklı blok.
+        if let Some(start) = self.subject.find('"') {
+            let start = start + 1;
+            if let Some(rel_end) = self.subject[start..].find('"') {
+                let name = self.subject[start..start + rel_end].trim();
+                if !name.is_empty() {
+                    return Some(name);
+                }
+            }
+        }
+
+        // 2) Tırnaksız: sondaki " yEnc"/" (n/m)" gibi ekleri kırp.
+        let mut name = self.subject.trim();
+        // Baştaki "[n/m] - " toplu-gönderi öneki.
+        if let Some(pos) = name.find("] - ") {
+            if name.starts_with('[') {
+                name = name[pos + 4..].trim_start();
+            }
+        }
+        // " yEnc" ve sonrasını at.
+        if let Some(pos) = name.find(" yEnc") {
+            name = name[..pos].trim_end();
+        }
+        // Sondaki " (n/m)" parça göstergesini at.
+        if name.ends_with(')') {
+            if let Some(pos) = name.rfind(" (") {
+                if name[pos + 2..name.len() - 1]
+                    .split_once('/')
+                    .is_some_and(|(a, b)| {
+                        !a.is_empty()
+                            && a.bytes().all(|c| c.is_ascii_digit())
+                            && b.bytes().all(|c| c.is_ascii_digit())
+                    })
+                {
+                    name = name[..pos].trim_end();
+                }
+            }
+        }
+        // Anlamlı bir dosya adı ancak bir uzantı içerirse kabul edilir;
+        // aksi halde subject serbest metindir.
+        (!name.is_empty() && name.contains('.')).then_some(name)
     }
 
     pub fn encoded_bytes(&self) -> u64 {
@@ -331,11 +372,30 @@ mod tests {
     }
 
     #[test]
-    fn tirnaksiz_subject_dosya_adi_vermez() {
+    fn tirnaksiz_uzantisiz_subject_dosya_adi_vermez() {
         let xml = r#"<nzb><file subject="tirnak yok"><segments>
             <segment bytes="1" number="1">a@x</segment>
             </segments></file></nzb>"#;
         let nzb = parse_nzb(xml).unwrap();
         assert_eq!(nzb.files[0].filename(), None);
+    }
+
+    #[test]
+    fn tirnaksiz_parca_sonekli_subject_cozulur() {
+        // Kullanıcının gerçek NZB'sindeki biçim.
+        let xml = r#"<nzb><file subject="A.Very.Harold.mkv (1/0)"><segments>
+            <segment bytes="1" number="1">a@x</segment>
+            </segments></file></nzb>"#;
+        let nzb = parse_nzb(xml).unwrap();
+        assert_eq!(nzb.files[0].filename(), Some("A.Very.Harold.mkv"));
+    }
+
+    #[test]
+    fn tirnaksiz_yenc_onekli_subject_cozulur() {
+        let xml = r#"<nzb><file subject="[1/2] - film.part01.rar yEnc (1/50)"><segments>
+            <segment bytes="1" number="1">a@x</segment>
+            </segments></file></nzb>"#;
+        let nzb = parse_nzb(xml).unwrap();
+        assert_eq!(nzb.files[0].filename(), Some("film.part01.rar"));
     }
 }

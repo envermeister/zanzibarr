@@ -14,7 +14,12 @@ use std::io::{self, Write};
 use std::process::ExitCode;
 use std::time::Duration;
 
+use std::collections::HashMap;
+use std::ops::Range;
+
+use rust_lib_usenews::engine::locator::{LocatorError, SegmentLocator};
 use rust_lib_usenews::engine::nntp::{self, ProviderConfig};
+use rust_lib_usenews::engine::nzb::{self, NzbFile};
 use rust_lib_usenews::engine::yenc;
 
 /// Keychain servis adı; anahtarlar uygulamadakiyle aynı adları izler.
@@ -38,6 +43,23 @@ fn main() -> ExitCode {
             Some(message_id) => run_async(fetch(message_id.clone())),
             None => {
                 eprintln!("kullanım: usenews-cli fetch <message-id>");
+                return ExitCode::FAILURE;
+            }
+        },
+        Some("probe") => match args.get(1) {
+            Some(nzb_path) => {
+                let offset = args.get(2).map(|s| s.parse::<u64>());
+                match offset {
+                    Some(Err(_)) => {
+                        eprintln!("offset bir sayı olmalı");
+                        return ExitCode::FAILURE;
+                    }
+                    Some(Ok(o)) => run_async(probe(nzb_path.clone(), Some(o))),
+                    None => run_async(probe(nzb_path.clone(), None)),
+                }
+            }
+            None => {
+                eprintln!("kullanım: usenews-cli probe <nzb-dosyası> [çözülmüş-offset]");
                 return ExitCode::FAILURE;
             }
         },
@@ -66,7 +88,9 @@ fn print_help() {
          show    Kayıtlı ayarları gösterir (parolayı asla yazmaz)\n\
          clear   Keychain'deki UseNews kayıtlarını siler\n\
          check   TLS + AUTHINFO + DATE ile bağlantıyı sınar\n\
-         fetch <message-id>  Tek article çeker, yEnc olarak çözmeyi dener"
+         fetch <message-id>  Tek article çeker, yEnc olarak çözmeyi dener\n\
+         probe <nzb> [offset]  NZB'nin en büyük dosyasında verilen çözülmüş\n\
+         byte offsetini eşleyiciyle çözer (seek kanıtı)"
     );
 }
 
@@ -287,5 +311,122 @@ async fn fetch(message_id: String) -> Result<(), String> {
     }
 
     let _ = conn.quit().await;
+    Ok(())
+}
+
+/// NZB'nin en büyük dosyası (en çok segmentli) — genelde video.
+fn largest_file(nzb: &nzb::Nzb) -> Option<&NzbFile> {
+    nzb.files.iter().max_by_key(|f| f.segments.len())
+}
+
+/// Bir çözülmüş byte aralığını, gereken segmentleri çekip çözerek karşılar;
+/// birleştirilmiş baytları döndürür. Seek yolunun kendisi.
+async fn read_range(
+    conn: &mut nntp::TlsNntpConnection,
+    locator: &mut SegmentLocator,
+    cache: &mut HashMap<usize, Vec<u8>>,
+    range: Range<u64>,
+) -> Result<Vec<u8>, String> {
+    // resolve → NeedSegments → çek/çöz/kaydet → resolve; sonlu döngü.
+    let slices = loop {
+        match locator.resolve(range.clone()) {
+            Ok(slices) => break slices,
+            Err(LocatorError::NeedSegments(indices)) => {
+                for index in indices {
+                    let mid = locator
+                        .message_id(index)
+                        .ok_or_else(|| format!("segment {index} yok"))?
+                        .to_string();
+                    println!("  · segment #{} çekiliyor <{}>…", index + 1, mid);
+                    let body = tokio::time::timeout(
+                        NETWORK_TIMEOUT,
+                        conn.body_by_message_id(&mid),
+                    )
+                    .await
+                    .map_err(|_| "BODY zaman aşımı".to_string())?
+                    .map_err(|e| e.to_string())?;
+                    let part = yenc::decode(&body).map_err(|e| e.to_string())?;
+                    println!(
+                        "    çözüldü: {} bayt, aralık {}-{}, pcrc32 {}",
+                        part.data.len(),
+                        part.begin.map_or(0, |b| b),
+                        part.end.map_or(0, |e| e),
+                        if part.part_crc32.is_some() { "✔" } else { "yok" },
+                    );
+                    locator.record_part(index, &part).map_err(|e| e.to_string())?;
+                    cache.insert(index, part.data);
+                }
+            }
+            Err(other) => return Err(other.to_string()),
+        }
+    };
+
+    let mut out = Vec::with_capacity((range.end - range.start) as usize);
+    for slice in slices {
+        let data = cache
+            .get(&slice.index)
+            .ok_or_else(|| format!("segment {} verisi cache'te yok", slice.index))?;
+        let from = slice.within_segment.start as usize;
+        let to = slice.within_segment.end as usize;
+        out.extend_from_slice(&data[from..to]);
+    }
+    Ok(out)
+}
+
+async fn probe(nzb_path: String, offset: Option<u64>) -> Result<(), String> {
+    let xml = std::fs::read_to_string(&nzb_path)
+        .map_err(|e| format!("NZB okunamadı: {e}"))?;
+    let parsed = nzb::parse_nzb(&xml).map_err(|e| e.to_string())?;
+    let file = largest_file(&parsed)
+        .ok_or_else(|| "NZB'de dosya yok".to_string())?
+        .clone();
+    println!(
+        "Hedef dosya: {} ({} segment, ~{:.2} GB kodlu)",
+        file.filename().unwrap_or("(adsız)"),
+        file.segments.len(),
+        file.encoded_bytes() as f64 / 1e9,
+    );
+
+    let mut locator = SegmentLocator::from_nzb_file(&file);
+    let mut cache: HashMap<usize, Vec<u8>> = HashMap::new();
+    let mut conn = connect_and_auth().await?;
+
+    // Dosya boyutunu öğrenmek için ilk segmenti çek (bootstrap).
+    println!("\n[1] Bootstrap: ilk segment çekilip yerleşim öğreniliyor…");
+    read_range(&mut conn, &mut locator, &mut cache, 0..1).await?;
+    let file_size = locator
+        .file_size()
+        .ok_or_else(|| "dosya boyutu öğrenilemedi".to_string())?;
+    println!("    Çözülmüş dosya boyutu (yEnc size): {file_size} bayt");
+
+    // Seek hedefi: verilmezse dosyanın ortası.
+    let target = offset.unwrap_or(file_size / 2).min(file_size.saturating_sub(1));
+    let want = 64u64.min(file_size - target);
+    let range = target..target + want;
+    println!(
+        "\n[2] Seek: çözülmüş ofset {target} isteniyor ({want} bayt) — \
+         eşleyici gereken segmenti bulup çekecek…"
+    );
+    let data = read_range(&mut conn, &mut locator, &mut cache, range.clone()).await?;
+
+    println!("\n[3] Sonuç: {} bayt döndü.", data.len());
+    let preview: String = data
+        .iter()
+        .take(32)
+        .map(|b| format!("{b:02x}"))
+        .collect::<Vec<_>>()
+        .join(" ");
+    println!("    İlk {} bayt (hex): {preview}", data.len().min(32));
+    let est = locator
+        .estimate_index(target)
+        .map(|i| (i + 1).to_string())
+        .unwrap_or_else(|| "?".into());
+    println!(
+        "    Bu ofset segment #{est}'e düştü; ofsetler yEnc begin/end'ten \
+         (NZB bytes'tan DEĞİL) hesaplandı."
+    );
+
+    let _ = conn.quit().await;
+    println!("\nSeek doğrulaması BAŞARILI.");
     Ok(())
 }
