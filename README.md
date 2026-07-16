@@ -48,9 +48,12 @@ dışlar.
 
 - [x] **Faz 0** — İskelet ve köprü kanıtı: FRB kurulu, Dart→Rust çağrısı test
       edilmiş, secure storage'lı sağlayıcı ayar ekranı hazır.
-- [ ] **Faz 1** — Motorun dikey dilimi (yalnız STORE içerik): NNTP istemcisi,
-      NZB parser, yEnc decoder, segment↔byte-range eşleyici, localhost HTTP
-      server, uçtan uca oynatma + seek.
+- [ ] **Faz 1** — Motorun dikey dilimi (yalnız STORE içerik):
+  - [x] NZB parser (`rust/src/engine/nzb.rs`) — XML → dosyalar → segmentler
+  - [x] yEnc decoder (`rust/src/engine/yenc.rs`) — tek parça + multipart + CRC32
+  - [ ] NNTP istemcisi (TLS :563, AUTHINFO, bağlantı havuzu)
+  - [ ] Segment ↔ byte-range eşleyici
+  - [ ] Localhost HTTP server (range) + media_kit oynatma + seek
 - [ ] **Faz 2+** — Newznab/Easynews arama; RAR/7z/AES stream; PAR2
       healthcheck+repair (NZBDav MIT kaynağı algoritma referansı, kod
       kopyalanmaz).
