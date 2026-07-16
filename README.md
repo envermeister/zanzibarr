@@ -19,8 +19,9 @@ uygulama. UI Flutter, ağır motor Rust; ikisi
 ## Dizin yapısı
 
 - `lib/` — Flutter UI (`lib/src/rust/` FRB tarafından üretilir, elle düzenlenmez)
-- `rust/` — Rust çekirdek crate'i (`rust_lib_usenews`)
+- `rust/` — Rust çekirdek crate'i (`rust_lib_usenews`); motor `rust/src/engine/`
 - `rust_builder/` — cargokit build köprüsü (FRB tarafından üretildi)
+- `tools/usenews-cli/` — geçici geliştirme aracı (kimlik → Keychain, bağlantı sınama)
 - `flutter_rust_bridge.yaml` — codegen yapılandırması
 
 ## Geliştirme
@@ -37,6 +38,20 @@ flutter test
 flutter run -d macos
 ```
 
+## Geçici CLI (uygulama çalışana dek)
+
+```sh
+cd tools/usenews-cli
+cargo run -q -- setup   # kimlik bilgilerini sorar (parola echo'suz), Keychain'e yazar
+cargo run -q -- show    # kayıtları gösterir; parolayı asla yazmaz
+cargo run -q -- check   # TLS + AUTHINFO + DATE ile bağlantı sınaması
+cargo run -q -- fetch '<message-id>'  # tek article çek + yEnc çöz
+cargo run -q -- clear   # kayıtları siler
+```
+
+Parola hiçbir zaman komut satırı argümanı, dosya veya test içeriği olmaz;
+gizli prompt'tan doğrudan Keychain'e gider.
+
 ## Sır yönetimi
 
 Sağlayıcı kimlik bilgileri yalnızca OS secure storage'da tutulur
@@ -51,7 +66,9 @@ dışlar.
 - [ ] **Faz 1** — Motorun dikey dilimi (yalnız STORE içerik):
   - [x] NZB parser (`rust/src/engine/nzb.rs`) — XML → dosyalar → segmentler
   - [x] yEnc decoder (`rust/src/engine/yenc.rs`) — tek parça + multipart + CRC32
-  - [ ] NNTP istemcisi (TLS :563, AUTHINFO, bağlantı havuzu)
+  - [x] NNTP altyapısı (`rust/src/engine/nntp/`) — TLS :563, komut/yanıt,
+        AUTHINFO, havuz; sahte sunucuyla test edildi (gerçek sunucu doğrulaması
+        kullanıcı kimliğiyle yapılacak)
   - [ ] Segment ↔ byte-range eşleyici
   - [ ] Localhost HTTP server (range) + media_kit oynatma + seek
 - [ ] **Faz 2+** — Newznab/Easynews arama; RAR/7z/AES stream; PAR2

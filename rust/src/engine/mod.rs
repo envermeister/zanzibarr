@@ -3,5 +3,6 @@
 //! Modüller `cargo test` ile ağsız test edilir; Dart'a açılacak yüzey
 //! ayrıca `crate::api` altında tanımlanır.
 
+pub mod nntp;
 pub mod nzb;
 pub mod yenc;

@@ -50,6 +50,7 @@ app.*.map.json
 # Rust
 /rust/target/
 /rust_builder/target/
+/tools/usenews-cli/target/
 
 # Sırlar: kimlik bilgileri OS secure storage'da tutulur; yine de
 # yanlışlıkla oluşabilecek yerel sır dosyaları asla commit edilmez.
