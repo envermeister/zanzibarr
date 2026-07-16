@@ -65,7 +65,7 @@ dışlar.
 
 - [x] **Faz 0** — İskelet ve köprü kanıtı: FRB kurulu, Dart→Rust çağrısı test
       edilmiş, secure storage'lı sağlayıcı ayar ekranı hazır.
-- [ ] **Faz 1** — Motorun dikey dilimi (yalnız STORE içerik):
+- [x] **Faz 1** — Motorun dikey dilimi (yalnız STORE içerik):
   - [x] NZB parser (`rust/src/engine/nzb.rs`) — XML → dosyalar → segmentler
   - [x] yEnc decoder (`rust/src/engine/yenc.rs`) — tek parça + multipart + CRC32
   - [x] NNTP altyapısı (`rust/src/engine/nntp/`) — TLS :563, komut/yanıt,
@@ -78,7 +78,12 @@ dışlar.
         `nntp_source.rs`) — 200/206/416, `bytes=a-b`/`a-`/`-suffix`, header
         gövdeden önce; gerçek Easynews mkv'siyle `curl --range` ile baştan,
         ortadan (759M), açık-uçlu, dosya-sonu ve segment-sınırı kanıtlandı
-  - [ ] media_kit ile gerçek pencerede oynatma + seek (Xcode lisansı sonrası)
+  - [x] media_kit entegrasyonu (`lib/player/player_screen.dart` +
+        `rust/src/api/streaming.rs`) — FRB `start_stream` server'ı başlatıp
+        localhost URL döner; libmpv (media_kit motoru) HTTP üzerinden 30.
+        dakikaya seek + HEVC decode kanıtlandı; uygulama gerçek pencerede
+        sağlıklı açılıyor. Uygulama içinde oynatma için kimlik ayar
+        ekranından bir kez girilir (flutter_secure_storage; CLI'den ayrı alan).
 - [ ] **Faz 2+** — Newznab/Easynews arama; RAR/7z/AES stream; PAR2
       healthcheck+repair (NZBDav MIT kaynağı algoritma referansı, kod
       kopyalanmaz).
