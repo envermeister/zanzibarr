@@ -17,9 +17,13 @@ use std::time::Duration;
 use std::collections::HashMap;
 use std::ops::Range;
 
+use std::sync::Arc;
+
 use rust_lib_usenews::engine::locator::{LocatorError, SegmentLocator};
-use rust_lib_usenews::engine::nntp::{self, ProviderConfig};
+use rust_lib_usenews::engine::nntp::{self, NntpPool, ProviderConfig, TlsNntpConnector};
+use rust_lib_usenews::engine::nntp_source::NntpByteSource;
 use rust_lib_usenews::engine::nzb::{self, NzbFile};
+use rust_lib_usenews::engine::server::{self, RangeSource};
 use rust_lib_usenews::engine::yenc;
 
 /// Keychain servis adı; anahtarlar uygulamadakiyle aynı adları izler.
@@ -63,6 +67,23 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         },
+        Some("serve") => match args.get(1) {
+            Some(nzb_path) => {
+                let port = args.get(2).map(|s| s.parse::<u16>());
+                match port {
+                    Some(Err(_)) => {
+                        eprintln!("port bir sayı olmalı");
+                        return ExitCode::FAILURE;
+                    }
+                    Some(Ok(p)) => run_async(serve(nzb_path.clone(), p)),
+                    None => run_async(serve(nzb_path.clone(), 0)),
+                }
+            }
+            None => {
+                eprintln!("kullanım: usenews-cli serve <nzb-dosyası> [port]");
+                return ExitCode::FAILURE;
+            }
+        },
         _ => {
             print_help();
             return ExitCode::SUCCESS;
@@ -90,7 +111,9 @@ fn print_help() {
          check   TLS + AUTHINFO + DATE ile bağlantıyı sınar\n\
          fetch <message-id>  Tek article çeker, yEnc olarak çözmeyi dener\n\
          probe <nzb> [offset]  NZB'nin en büyük dosyasında verilen çözülmüş\n\
-         byte offsetini eşleyiciyle çözer (seek kanıtı)"
+         byte offsetini eşleyiciyle çözer (seek kanıtı)\n\
+         serve <nzb> [port]  NZB'nin en büyük dosyasını localhost HTTP Range\n\
+         server olarak sunar (curl --range / media_kit için)"
     );
 }
 
@@ -239,6 +262,12 @@ fn load_config() -> Result<ProviderConfig, String> {
             .parse()
             .map_err(|_| "kayıtlı bağlantı limiti bozuk".to_string())?,
     })
+}
+
+/// Keychain'deki ayarlardan TLS+AUTHINFO'lu bağlantı havuzu kurar.
+fn build_pool() -> Result<Arc<NntpPool<TlsNntpConnector>>, String> {
+    let config = load_config()?;
+    Ok(TlsNntpConnector::new(config).into_pool())
 }
 
 async fn connect_and_auth() -> Result<nntp::TlsNntpConnection, String> {
@@ -429,4 +458,52 @@ async fn probe(nzb_path: String, offset: Option<u64>) -> Result<(), String> {
     let _ = conn.quit().await;
     println!("\nSeek doğrulaması BAŞARILI.");
     Ok(())
+}
+
+async fn serve(nzb_path: String, port: u16) -> Result<(), String> {
+    let xml = std::fs::read_to_string(&nzb_path)
+        .map_err(|e| format!("NZB okunamadı: {e}"))?;
+    let parsed = nzb::parse_nzb(&xml).map_err(|e| e.to_string())?;
+    let file = largest_file(&parsed)
+        .ok_or_else(|| "NZB'de dosya yok".to_string())?
+        .clone();
+
+    let pool = build_pool()?;
+    println!(
+        "Kaynak hazırlanıyor (bootstrap: ilk segment çekiliyor)…\n  dosya: {}",
+        file.filename().unwrap_or("(adsız)")
+    );
+    let source = NntpByteSource::new(pool, &file)
+        .await
+        .map_err(|e| e.to_string())?;
+    let total = source.total_len();
+    println!(
+        "  çözülmüş boyut: {total} bayt ({:.2} GB), {} segment",
+        total as f64 / 1e9,
+        source.segment_count()
+    );
+
+    let listener = server::bind_local(port)
+        .await
+        .map_err(|e| format!("port bağlanamadı: {e}"))?;
+    let bound = listener
+        .local_addr()
+        .map_err(|e| e.to_string())?
+        .port();
+
+    let name = source.filename().to_string();
+    println!(
+        "\nSunuluyor: http://127.0.0.1:{bound}/{name}\n\
+         Dene:\n  \
+         curl -s -D - -o /dev/null -r 0-1023        http://127.0.0.1:{bound}/{name}\n  \
+         curl -s -D - -o /dev/null -r {}-{}  http://127.0.0.1:{bound}/{name}\n  \
+         curl -s -D - -o /dev/null -r -65536        http://127.0.0.1:{bound}/{name}\n\
+         (Ctrl-C ile durdur)",
+        total / 2,
+        total / 2 + 63,
+    );
+
+    server::serve(listener, Arc::new(source))
+        .await
+        .map_err(|e| e.to_string())
 }

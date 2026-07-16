@@ -5,5 +5,7 @@
 
 pub mod locator;
 pub mod nntp;
+pub mod nntp_source;
 pub mod nzb;
+pub mod server;
 pub mod yenc;

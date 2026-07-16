@@ -47,6 +47,7 @@ cargo run -q -- show    # kayıtları gösterir; parolayı asla yazmaz
 cargo run -q -- check   # TLS + AUTHINFO + DATE ile bağlantı sınaması
 cargo run -q -- fetch '<message-id>'  # tek article çek + yEnc çöz
 cargo run -q -- probe <nzb> [offset]  # eşleyiciyle seek kanıtı (gerçek veri)
+cargo run -q -- serve <nzb> [port]    # localhost HTTP Range server (curl/media_kit)
 cargo run -q -- clear   # kayıtları siler
 ```
 
@@ -73,7 +74,11 @@ dışlar.
   - [x] Segment ↔ byte-range eşleyici (`rust/src/engine/locator.rs`) —
         çözülmüş ofsetler yalnız yEnc begin/end'ten; gerçek Easynews
         verisiyle seek kanıtlandı (`usenews-cli probe`)
-  - [ ] Localhost HTTP server (range) + media_kit oynatma + seek
+  - [x] Localhost HTTP Range server (`rust/src/engine/server.rs` +
+        `nntp_source.rs`) — 200/206/416, `bytes=a-b`/`a-`/`-suffix`, header
+        gövdeden önce; gerçek Easynews mkv'siyle `curl --range` ile baştan,
+        ortadan (759M), açık-uçlu, dosya-sonu ve segment-sınırı kanıtlandı
+  - [ ] media_kit ile gerçek pencerede oynatma + seek (Xcode lisansı sonrası)
 - [ ] **Faz 2+** — Newznab/Easynews arama; RAR/7z/AES stream; PAR2
       healthcheck+repair (NZBDav MIT kaynağı algoritma referansı, kod
       kopyalanmaz).
