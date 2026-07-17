@@ -20,20 +20,24 @@ String _dylibPath() {
 
 void main() {
   setUpAll(() async {
-    await RustLib.init(
-      externalLibrary: ExternalLibrary.open(_dylibPath()),
-    );
+    await RustLib.init(externalLibrary: ExternalLibrary.open(_dylibPath()));
   });
 
   test('Dart, Rust fonksiyonunu çağırabiliyor (köprü ayakta)', () {
-    expect(greet(name: 'UseNews'), 'Merhaba UseNews, Rust çekirdeği ayakta! 🦀');
+    expect(
+      greet(name: 'UseNews'),
+      'Merhaba UseNews, Rust çekirdeği ayakta! 🦀',
+    );
     expect(engineInfo(), startsWith('rust_lib_usenews v'));
   });
 
   testWidgets('Rust motor bilgisi ana ekranda görünüyor', (tester) async {
     await tester.pumpWidget(const UseNewsApp());
-    // Ana ekrandaki "Motor: ..." satırı engine_info() ile Rust'tan gelir.
-    expect(find.textContaining('Motor: rust_lib_usenews'), findsOneWidget);
+    // Ana ekrandaki durum satırı engine_info() ile Rust'tan gelir.
+    expect(
+      find.textContaining('Yerel motor hazır · rust_lib_usenews'),
+      findsOneWidget,
+    );
     expect(find.text('NZB seç ve oynat'), findsOneWidget);
   });
 }

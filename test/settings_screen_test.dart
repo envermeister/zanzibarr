@@ -21,13 +21,19 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Sunucu adresi'), 'news.example.com');
+      find.widgetWithText(TextFormField, 'Sunucu adresi'),
+      'news.example.com',
+    );
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Kullanıcı adı'), 'kullanici');
+      find.widgetWithText(TextFormField, 'Kullanıcı adı'),
+      'kullanici',
+    );
     await tester.enterText(
-        find.widgetWithText(TextFormField, 'Şifre'), 'cok-gizli');
+      find.widgetWithText(TextFormField, 'Parola'),
+      'cok-gizli',
+    );
 
-    await tester.tap(find.text('Kaydet'));
+    await tester.tap(find.text('Güvenle kaydet'));
     await tester.pumpAndSettle();
 
     expect(store.saved.host, 'news.example.com');
@@ -44,7 +50,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: SettingsScreen(store: store)));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Kaydet'));
+    await tester.tap(find.text('Güvenle kaydet'));
     await tester.pumpAndSettle();
 
     expect(find.text('Sunucu adresi gerekli'), findsOneWidget);

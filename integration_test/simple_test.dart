@@ -8,6 +8,9 @@ void main() {
   setUpAll(() async => await RustLib.init());
   testWidgets('Can call rust function', (WidgetTester tester) async {
     await tester.pumpWidget(const UseNewsApp());
-    expect(find.textContaining('Rust çekirdeği ayakta'), findsOneWidget);
+    expect(
+      find.textContaining('Yerel motor hazır · rust_lib_usenews'),
+      findsOneWidget,
+    );
   });
 }

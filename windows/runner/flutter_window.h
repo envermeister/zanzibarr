@@ -2,7 +2,9 @@
 #define RUNNER_FLUTTER_WINDOW_H_
 
 #include <flutter/dart_project.h>
+#include <flutter/encodable_value.h>
 #include <flutter/flutter_view_controller.h>
+#include <flutter/method_channel.h>
 
 #include <memory>
 
@@ -23,11 +25,24 @@ class FlutterWindow : public Win32Window {
                          LPARAM const lparam) noexcept override;
 
  private:
+  // Switches the top-level HWND between its regular placement and a compact,
+  // always-on-top video window. Calls are intentionally idempotent because the
+  // Dart side may retry after a delayed platform response.
+  bool EnterPictureInPicture();
+  bool ExitPictureInPicture();
+
   // The project to run.
   flutter::DartProject project_;
 
   // The Flutter instance hosted by this window.
   std::unique_ptr<flutter::FlutterViewController> flutter_controller_;
+
+  // Platform channel shared with the existing macOS implementation.
+  std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+      window_channel_;
+
+  bool is_picture_in_picture_ = false;
+  WINDOWPLACEMENT picture_in_picture_restore_placement_{};
 };
 
 #endif  // RUNNER_FLUTTER_WINDOW_H_
