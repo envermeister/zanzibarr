@@ -1,0 +1,40 @@
+name: Windows build
+
+# Yalnızca elle tetiklenir: private repoda Windows dakikası 2x tüketir.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Yerel geliştirme sürümüyle aynı Flutter (pubspec.lock üretimiyle uyum).
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: stable
+          cache: true
+
+      # cargokit, Rust motorunu MSVC toolchain ile derler.
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter build windows (release)
+        run: flutter build windows --release
+
+      # Release klasörü exe + tüm DLL'leri içerir; tek başına taşınabilir.
+      - name: Paketle (zip)
+        shell: pwsh
+        run: |
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" `
+            -DestinationPath "usenews-windows-x64.zip" -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: usenews-windows-x64
+          path: usenews-windows-x64.zip
+          retention-days: 14
