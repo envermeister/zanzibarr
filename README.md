@@ -38,6 +38,33 @@ flutter test
 flutter run -d macos
 ```
 
+## Platformlar ve paketleme
+
+Rust çekirdeği her platformda [cargokit](https://github.com/irondash/cargokit)
+ile `flutter build` sırasında otomatik derlenir; ayrı bir Rust build adımı
+gerekmez. TLS `rustls` (ring) olduğundan OpenSSL bağımlılığı yoktur.
+
+| Platform | Komut | Ön koşullar |
+|---|---|---|
+| macOS | `flutter build macos` | Xcode + Apple ID (otomatik imza; takım `AppInfo.xcconfig`'te) |
+| Windows | `flutter build windows` | Visual Studio (C++ workload) + Rust (MSVC toolchain) |
+| Linux | `flutter build linux` | `clang cmake ninja-build libgtk-3-dev libmpv-dev mpv` |
+| Android | `flutter build apk` / `appbundle` | Android Studio/SDK + NDK; `rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android` |
+| iOS | `flutter build ipa` | Xcode + imza; `rustup target add aarch64-apple-ios` |
+
+Platform notları:
+
+- **Android:** `INTERNET` izni ana manifest'te hazır. Kimlik deposu Keystore
+  (flutter_secure_storage) — ek kurulum gerekmez.
+- **iOS:** `Info.plist`'te `NSAllowsLocalNetworking` hazır (media_kit,
+  localhost server'dan okur). İmza için kendi takımını seç.
+- **macOS:** Sandbox + Keychain için gerçek geliştirici imzası gerekir
+  (ad-hoc imzada Keychain `-34018` verir). `AppInfo.xcconfig`'teki
+  `DEVELOPMENT_TEAM`'i kendi takımınla değiştir; ilk seferde
+  `xcodebuild -allowProvisioningUpdates` profil üretir.
+- **Windows/Linux:** media_kit, libmpv'yi Windows'ta paketle getirir;
+  Linux'ta sistem `libmpv` kullanılır.
+
 ## Geçici CLI (uygulama çalışana dek)
 
 ```sh

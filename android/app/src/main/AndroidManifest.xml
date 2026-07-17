@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- NNTP (TLS) istemcisi ve localhost HTTP Range server için gerekli.
+         Debug/profile manifest'lerinde Flutter bunu zaten ekler; release
+         paketinin çalışması için burada da olmalı. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
         android:label="usenews"
         android:name="${applicationName}"
