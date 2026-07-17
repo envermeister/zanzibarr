@@ -236,7 +236,7 @@ void main() {
       expect(controller.subtitleDelay, const Duration(milliseconds: -1500));
       expect(backend.calls, [
         'set:sub-scale=1.250000',
-        'set:sub-pos=72.500000',
+        'set:sub-pos=73',
         'set:sub-delay=-1.500000',
       ]);
 
@@ -264,6 +264,20 @@ void main() {
       );
     },
   );
+
+  test('sub-pos mpv tarafına her zaman tamsayı metniyle gönderilir', () async {
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    // Başlangıçta kayıtlı tercih uygulanırken varsayılan 100.0 gönderiliyordu;
+    // mpv 0.36 "100.000000" biçimini reddedip akış açılışını düşürüyordu.
+    await controller.setSubtitlePosition(100.0);
+    await controller.setSubtitlePosition(33.4);
+
+    expect(backend.calls, ['set:sub-pos=100', 'set:sub-pos=33']);
+    expect(backend.properties['sub-pos'], '33');
+    expect(controller.subtitlePosition, 33.4);
+  });
 
   test('ses senkronu artı eksi beş saniyeyle sınırlı', () async {
     final backend = _FakeBackend();

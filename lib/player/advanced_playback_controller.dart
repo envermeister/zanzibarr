@@ -275,7 +275,8 @@ class AdvancedPlaybackController {
       maximumSubtitlePosition,
       'Altyazı konumu',
     );
-    await _backend.setProperty('sub-pos', _number(value));
+    // sub-pos mpv'de OPT_INT'tir; ondalık metin ("100.000000") reddedilir.
+    await _backend.setProperty('sub-pos', _integer(value));
     subtitlePosition = value;
   }
 
@@ -461,6 +462,9 @@ class AdvancedPlaybackController {
   }
 
   static String _number(double value) => value.toStringAsFixed(6);
+
+  /// Yalnız tamsayı kabul eden mpv seçeneklerinin (sub-pos gibi) tel biçimi.
+  static String _integer(double value) => value.round().toString();
 
   static String _seconds(Duration duration) =>
       (duration.inMicroseconds / Duration.microsecondsPerSecond)
