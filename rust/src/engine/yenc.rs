@@ -238,9 +238,8 @@ impl Keywords {
     fn get_u64(&self, key: &str) -> Result<Option<u64>, YencError> {
         self.get(key)
             .map(|v| {
-                v.parse().map_err(|_| {
-                    YencError::Malformed(format!("{key}={v} sayı değil"))
-                })
+                v.parse()
+                    .map_err(|_| YencError::Malformed(format!("{key}={v} sayı değil")))
             })
             .transpose()
     }
@@ -252,9 +251,8 @@ impl Keywords {
     fn get_crc32(&self, key: &str) -> Result<Option<u32>, YencError> {
         self.get(key)
             .map(|v| {
-                u32::from_str_radix(v.trim(), 16).map_err(|_| {
-                    YencError::Malformed(format!("{key}={v} onaltılık değil"))
-                })
+                u32::from_str_radix(v.trim(), 16)
+                    .map_err(|_| YencError::Malformed(format!("{key}={v} onaltılık değil")))
             })
             .transpose()
     }
@@ -277,9 +275,9 @@ fn parse_keywords(line: &[u8], prefix: &[u8]) -> Result<Keywords, YencError> {
 
     let mut pairs = Vec::new();
     for token in attrs.split_ascii_whitespace() {
-        let (key, value) = token.split_once('=').ok_or_else(|| {
-            YencError::Malformed(format!("anahtar=değer değil: {token}"))
-        })?;
+        let (key, value) = token
+            .split_once('=')
+            .ok_or_else(|| YencError::Malformed(format!("anahtar=değer değil: {token}")))?;
         pairs.push((key.to_string(), value.to_string()));
     }
     Ok(Keywords { pairs, name })
@@ -380,7 +378,10 @@ bc\r\n\
         .unwrap();
         assert!(matches!(
             assemble(&[p1, p3]),
-            Err(YencError::PartsNotContiguous { expected: 5, found: 7 })
+            Err(YencError::PartsNotContiguous {
+                expected: 5,
+                found: 7
+            })
         ));
     }
 
@@ -392,7 +393,10 @@ bc\r\n\
 =yend size=9 pcrc32=deadbeef\r\n";
         assert!(matches!(
             decode(article),
-            Err(YencError::CrcMismatch { expected: 0xDEADBEEF, .. })
+            Err(YencError::CrcMismatch {
+                expected: 0xDEADBEEF,
+                ..
+            })
         ));
     }
 
@@ -404,7 +408,10 @@ bc\r\n\
 =yend size=8\r\n";
         assert!(matches!(
             decode(article),
-            Err(YencError::SizeMismatch { expected: 8, actual: 9 })
+            Err(YencError::SizeMismatch {
+                expected: 8,
+                actual: 9
+            })
         ));
     }
 
@@ -449,15 +456,16 @@ bc\r\n\
         }
         body.extend_from_slice(b"\r\n");
 
-        let mut article = format!(
-            "=ybegin line=64 size={} name=roundtrip.bin\r\n",
-            data.len()
-        )
-        .into_bytes();
+        let mut article =
+            format!("=ybegin line=64 size={} name=roundtrip.bin\r\n", data.len()).into_bytes();
         article.extend_from_slice(&body);
         article.extend_from_slice(
-            format!("=yend size={} crc32={:08x}\r\n", data.len(), crc32fast::hash(&data))
-                .as_bytes(),
+            format!(
+                "=yend size={} crc32={:08x}\r\n",
+                data.len(),
+                crc32fast::hash(&data)
+            )
+            .as_bytes(),
         );
 
         let part = decode(&article).unwrap();

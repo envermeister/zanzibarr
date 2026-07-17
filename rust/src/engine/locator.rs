@@ -45,6 +45,8 @@ pub enum LocatorError {
     BadIndex(usize),
     #[error("kaydedilen parça dosya boyutu ({new}) öncekiyle ({existing}) çelişiyor")]
     FileSizeConflict { existing: u64, new: u64 },
+    #[error("dosya ofseti {offset} hiçbir NZB segmentiyle eşlenmedi")]
+    UnmappedOffset { offset: u64 },
 }
 
 /// Bir segmentin çözülmüş dosya içindeki yeri; yEnc `begin/end`'ten gelir.
@@ -154,11 +156,7 @@ impl SegmentLocator {
     /// `begin/end` yoksa (nadir, tek parçalı yEnc) parça tüm dosyayı kapsar
     /// kabul edilir: `[0, size)`. Dosya boyutu ilk kayıtta sabitlenir; sonraki
     /// kayıt çelişirse hata döner.
-    pub fn record_part(
-        &mut self,
-        index: usize,
-        part: &YencPart,
-    ) -> Result<(), LocatorError> {
+    pub fn record_part(&mut self, index: usize, part: &YencPart) -> Result<(), LocatorError> {
         if index >= self.segments.len() {
             return Err(LocatorError::BadIndex(index));
         }
@@ -212,16 +210,72 @@ impl SegmentLocator {
         (index < self.segments.len()).then_some(index)
     }
 
+    /// `offset` henüz kayıtlı bir span tarafından kapsanmıyorsa bir
+    /// sonraki anlamlı segment adayını seçer.
+    ///
+    /// Tek tip parça boyu tahmini bazen gerçek yEnc span'lerinden sapabilir.
+    /// Tahmin edilen segment zaten kayıtlıysa onu tekrar istemek çağıranı
+    /// sonsuz bir `NeedSegments` döngüsüne sokar. Bunun yerine ofset kayıtlı
+    /// span'in sonrasındaysa ilerideki, öncesindeyse gerideki ilk kayıtsız
+    /// segment seçilir. Aday kalmadıysa veri gerçekten eşlenemez ve terminal
+    /// bir hata döner.
+    ///
+    /// Dönen `bool`, adayın doğrudan tek tip boyut tahmini olup olmadığını
+    /// belirtir; yalnız o durumda [`resolve`] tahmini segment sonuna atlayarak
+    /// aynı çağrıda birden fazla eksik segment toplayabilir.
+    fn next_segment_to_locate(&self, offset: u64) -> Result<(usize, bool), LocatorError> {
+        if let Some(index) = self.estimate_index(offset) {
+            let entry = &self.segments[index];
+            let Some(span) = entry.decoded else {
+                return Ok((index, true));
+            };
+
+            // `located_segment_at` bunu daha önce yakalamış olmalıydı; yine
+            // de yardımcıyı tek başına aynı kayıtlı indeksi döndürmeyecek
+            // kadar güvenli tutalım.
+            if span.start <= offset && offset < span.end() {
+                return Err(LocatorError::UnmappedOffset { offset });
+            }
+
+            let candidate = if offset < span.start {
+                (0..index)
+                    .rev()
+                    .find(|&i| self.segments[i].decoded.is_none())
+            } else {
+                (index + 1..self.segments.len()).find(|&i| self.segments[i].decoded.is_none())
+            };
+            return candidate
+                .map(|candidate| (candidate, false))
+                .ok_or(LocatorError::UnmappedOffset { offset });
+        }
+
+        let candidate = if self.uniform_part_size.is_none() {
+            // yEnc başlığı `total`/`part` vermediyse güvenli bir ofset
+            // tahmini yapamayız. Her çağrıda ilk kayıtsız segmenti
+            // ilerleterek en azından sonlu ve doğru bir fallback uygularız.
+            self.segments
+                .iter()
+                .position(|entry| entry.decoded.is_none())
+        } else {
+            // Tahmin segment sayısını aşıyorsa ilk parça diğerlerinden
+            // kısa olabilir. Son kayıtsız segmentten geriye doğru denemek,
+            // aynı segmenti yinelemek yerine ilerleme sağlar.
+            self.segments
+                .iter()
+                .rposition(|entry| entry.decoded.is_none())
+        };
+        candidate
+            .map(|candidate| (candidate, false))
+            .ok_or(LocatorError::UnmappedOffset { offset })
+    }
+
     /// Çözülmüş byte aralığını segment dilimlerine çevirir.
     ///
     /// `range` yarı açıktır (`start..end`, `end` hariç). Tüm aralık kayıtlı
     /// segmentlerce kapsanıyorsa dilimler döner; kapsanmayan bölge varsa
     /// [`LocatorError::NeedSegments`] ile önce çekilmesi gereken segment
     /// indeksleri döner.
-    pub fn resolve(
-        &self,
-        range: Range<u64>,
-    ) -> Result<Vec<SegmentSlice>, LocatorError> {
+    pub fn resolve(&self, range: Range<u64>) -> Result<Vec<SegmentSlice>, LocatorError> {
         if range.start >= range.end {
             return Err(LocatorError::EmptyRange);
         }
@@ -251,19 +305,22 @@ impl SegmentLocator {
                     cursor = slice_end;
                 }
                 None => {
-                    // Kayıt yok: tahminle segment seç, eksik listesine al ve
-                    // o segmentin (tahmini) sonuna atla.
-                    let index = self.estimate_index(cursor).ok_or_else(|| {
-                        // Boyut/parça bilgisi hiç yoksa en azından ilk segmenti
-                        // çekmeyi öner; ilk kayıt her şeyi başlatır.
-                        LocatorError::NeedSegments(vec![0])
-                    })?;
+                    // Kayıt yok: tahminle veya sonlu fallback'le segment seç.
+                    // Kayıtlı fakat ofseti kapsamayan aynı segmenti yeniden
+                    // istemek sonsuz döngüye yol açacağından helper bunu yapmaz.
+                    let (index, exact_estimate) = self.next_segment_to_locate(cursor)?;
                     if !missing.contains(&index) {
                         missing.push(index);
                     }
-                    let part_size = self.uniform_part_size.unwrap_or(1);
-                    let next = (index as u64 + 1) * part_size;
-                    cursor = next.max(cursor + 1);
+                    if exact_estimate {
+                        let part_size = self.uniform_part_size.unwrap_or(1);
+                        let next = (index as u64 + 1) * part_size;
+                        cursor = next.max(cursor + 1);
+                    } else {
+                        // Fallback adayının tahmini bir dosya sonu yoktur.
+                        // Önce onu kaydettirip gerçek span ile yeniden çöz.
+                        return Err(LocatorError::NeedSegments(missing));
+                    }
                 }
             }
         }
@@ -278,9 +335,9 @@ impl SegmentLocator {
     /// `offset`'i kapsayan, konumu KAYITLI segmenti bulur (varsa).
     fn located_segment_at(&self, offset: u64) -> Option<(usize, DecodedSpan)> {
         self.segments.iter().enumerate().find_map(|(i, entry)| {
-            entry.decoded.and_then(|span| {
-                (span.start <= offset && offset < span.end()).then_some((i, span))
-            })
+            entry
+                .decoded
+                .and_then(|span| (span.start <= offset && offset < span.end()).then_some((i, span)))
         })
     }
 }
@@ -291,13 +348,7 @@ mod tests {
     use crate::engine::nzb::{NzbFile, NzbSegment};
 
     /// Test için sahte yEnc parçası; sadece konum alanları anlamlı.
-    fn part(
-        file_size: u64,
-        part_no: u32,
-        total: u32,
-        begin: u64,
-        end: u64,
-    ) -> YencPart {
+    fn part(file_size: u64, part_no: u32, total: u32, begin: u64, end: u64) -> YencPart {
         YencPart {
             name: "test.mkv".into(),
             file_size,
@@ -338,7 +389,8 @@ mod tests {
         let mut loc = SegmentLocator::from_nzb_file(&nzb_file(3));
         let file_size = 3 * PART;
         loc.record_part(0, &part(file_size, 1, 3, 1, PART)).unwrap();
-        loc.record_part(1, &part(file_size, 2, 3, PART + 1, 2 * PART)).unwrap();
+        loc.record_part(1, &part(file_size, 2, 3, PART + 1, 2 * PART))
+            .unwrap();
 
         // Segment 1'in (index 1) dosya konumu tam PART..2*PART olmalı —
         // NZB kodlu boyut toplamı (2*1_082_466) DEĞİL.
@@ -367,7 +419,8 @@ mod tests {
     fn iki_segmente_yayilan_aralik_bolunur() {
         let mut loc = SegmentLocator::from_nzb_file(&nzb_file(3));
         loc.record_part(0, &part(3 * PART, 1, 3, 1, PART)).unwrap();
-        loc.record_part(1, &part(3 * PART, 2, 3, PART + 1, 2 * PART)).unwrap();
+        loc.record_part(1, &part(3 * PART, 2, 3, PART + 1, 2 * PART))
+            .unwrap();
 
         // Segment sınırını (PART) aşan aralık iki dilime bölünmeli.
         let slices = loc.resolve((PART - 5)..(PART + 5)).unwrap();
@@ -386,7 +439,8 @@ mod tests {
     fn eksik_segment_tahminle_bildirilir() {
         let mut loc = SegmentLocator::from_nzb_file(&nzb_file(1448));
         // Sadece ilk parçayı kaydet → uniform_part_size öğrenilir.
-        loc.record_part(0, &part(1_518_038_231, 1, 1448, 1, PART)).unwrap();
+        loc.record_part(0, &part(1_518_038_231, 1, 1448, 1, PART))
+            .unwrap();
 
         // Ortadaki bir ofset istenince, kaydı olmayan segment tahminle
         // bildirilmeli (seek senaryosu).
@@ -405,10 +459,11 @@ mod tests {
     fn kayit_sonrasi_ayni_aralik_cozulur() {
         let mut loc = SegmentLocator::from_nzb_file(&nzb_file(1448));
         let file_size = 1_518_038_231;
-        loc.record_part(0, &part(file_size, 1, 1448, 1, PART)).unwrap();
+        loc.record_part(0, &part(file_size, 1, 1448, 1, PART))
+            .unwrap();
 
-        let offset = 724 * PART; // segment 725'in başı
         // Önce eksik.
+        let offset = 724 * PART; // segment 725'in başı
         assert!(matches!(
             loc.resolve(offset..offset + 100),
             Err(LocatorError::NeedSegments(_))
@@ -424,13 +479,82 @@ mod tests {
     }
 
     #[test]
+    fn yanlis_tahminde_ayni_kayitli_segment_yeniden_istenmez() {
+        let mut loc = SegmentLocator::from_nzb_file(&nzb_file(3));
+
+        // İlk parça 100 bayt olduğu için offset 150 başta index 1 olarak
+        // tahmin edilir.
+        loc.record_part(0, &part(270, 1, 3, 1, 100)).unwrap();
+        assert_eq!(
+            loc.resolve(150..151),
+            Err(LocatorError::NeedSegments(vec![1]))
+        );
+
+        // Gerçekte ikinci parça yalnız 40 bayt. Kaydedildikten sonra offset
+        // 150'yi kapsamıyor diye aynı index 1'i yeniden istemek sonsuz döngü
+        // yaratırdı; locator artık ileri, index 2'ye geçmeli.
+        loc.record_part(1, &part(270, 2, 3, 101, 140)).unwrap();
+        assert_eq!(
+            loc.resolve(150..151),
+            Err(LocatorError::NeedSegments(vec![2]))
+        );
+
+        loc.record_part(2, &part(270, 3, 3, 141, 270)).unwrap();
+        let slices = loc.resolve(150..151).unwrap();
+        assert_eq!(slices[0].index, 2);
+        assert_eq!(slices[0].within_segment, 10..11);
+    }
+
+    #[test]
+    fn kayitli_span_boslugu_terminal_hata_dondurur() {
+        let mut loc = SegmentLocator::from_nzb_file(&nzb_file(3));
+        loc.record_part(0, &part(300, 1, 3, 1, 100)).unwrap();
+        loc.record_part(1, &part(300, 2, 3, 111, 200)).unwrap();
+
+        // Offset 105, index 0 ile 1 arasındaki gerçek yEnc boşluğunda.
+        // Tahmin index 1 olsa da o zaten kayıtlı ve ofseti kapsamıyor;
+        // NeedSegments([1]) yerine açık ve sonlu bir hata dönmeli.
+        assert_eq!(
+            loc.resolve(105..106),
+            Err(LocatorError::UnmappedOffset { offset: 105 })
+        );
+    }
+
+    #[test]
+    fn uniform_boyut_ogrenilemezse_ilk_kayitsiz_segmente_ilerler() {
+        let mut loc = SegmentLocator::from_nzb_file(&nzb_file(2));
+        let mut first = part(200, 1, 2, 1, 100);
+        first.total = None;
+        loc.record_part(0, &first).unwrap();
+
+        // Eski davranış uniform_part_size None olduğunda daima index 0'ı
+        // döndürüyor, index 0 zaten kayıtlı olduğu için çağıranı
+        // sonsuz döngüye sokuyordu.
+        assert_eq!(
+            loc.resolve(150..151),
+            Err(LocatorError::NeedSegments(vec![1]))
+        );
+    }
+
+    #[test]
+    fn tahmin_segment_sayisini_asarsa_son_kayitsiz_segmente_doner() {
+        let mut loc = SegmentLocator::from_nzb_file(&nzb_file(3));
+        loc.record_part(0, &part(350, 1, 3, 1, 100)).unwrap();
+
+        // 330 / 100 = 3, fakat geçerli indeksler 0..=2. Parçaların ilki
+        // diğerlerinden kısa olduğunda son segment hâlâ bu ofseti
+        // kapsayabilir; index 0'ı tekrar istemek yerine sondan ilerle.
+        assert_eq!(
+            loc.resolve(330..331),
+            Err(LocatorError::NeedSegments(vec![2]))
+        );
+    }
+
+    #[test]
     fn hicbir_kayit_yokken_ilk_segment_onerilir() {
         let loc = SegmentLocator::from_nzb_file(&nzb_file(10));
         // Boyut/parça bilgisi yok: en azından segment 0 çekilmeli.
-        assert_eq!(
-            loc.resolve(0..10),
-            Err(LocatorError::NeedSegments(vec![0]))
-        );
+        assert_eq!(loc.resolve(0..10), Err(LocatorError::NeedSegments(vec![0])));
     }
 
     #[test]
@@ -438,7 +562,8 @@ mod tests {
         let mut loc = SegmentLocator::from_nzb_file(&nzb_file(3));
         let file_size = 2 * PART + 500; // son parça 500 bayt
         loc.record_part(0, &part(file_size, 1, 3, 1, PART)).unwrap();
-        loc.record_part(1, &part(file_size, 2, 3, PART + 1, 2 * PART)).unwrap();
+        loc.record_part(1, &part(file_size, 2, 3, PART + 1, 2 * PART))
+            .unwrap();
         loc.record_part(2, &part(file_size, 3, 3, 2 * PART + 1, 2 * PART + 500))
             .unwrap();
 

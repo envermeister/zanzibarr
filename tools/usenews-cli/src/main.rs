@@ -10,7 +10,8 @@
 //! ekranından (flutter_secure_storage) yeniden girilecek; bu araç geçicidir.
 
 use std::env;
-use std::io::{self, Write};
+use std::io::{self, Read, Write};
+use std::net::TcpStream;
 use std::process::ExitCode;
 use std::time::Duration;
 
@@ -19,6 +20,7 @@ use std::ops::Range;
 
 use std::sync::Arc;
 
+use rust_lib_usenews::api::streaming::{start_stream, ProviderConfigDto};
 use rust_lib_usenews::engine::locator::{LocatorError, SegmentLocator};
 use rust_lib_usenews::engine::nntp::{self, NntpPool, ProviderConfig, TlsNntpConnector};
 use rust_lib_usenews::engine::nntp_source::NntpByteSource;
@@ -84,6 +86,13 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         },
+        Some("stream-check") => match args.get(1) {
+            Some(nzb_path) => stream_check(nzb_path.clone()),
+            None => {
+                eprintln!("kullanım: usenews-cli stream-check <nzb-dosyası>");
+                return ExitCode::FAILURE;
+            }
+        },
         _ => {
             print_help();
             return ExitCode::SUCCESS;
@@ -113,13 +122,13 @@ fn print_help() {
          probe <nzb> [offset]  NZB'nin en büyük dosyasında verilen çözülmüş\n\
          byte offsetini eşleyiciyle çözer (seek kanıtı)\n\
          serve <nzb> [port]  NZB'nin en büyük dosyasını localhost HTTP Range\n\
-         server olarak sunar (curl --range / media_kit için)"
+         server olarak sunar (curl --range / media_kit için)\n\
+         stream-check <nzb>  Uygulamanın gerçek stream seçimini başlatır ve\n\
+         ilk medya imzasını güvenli biçimde doğrular"
     );
 }
 
-fn run_async(
-    fut: impl std::future::Future<Output = Result<(), String>>,
-) -> Result<(), String> {
+fn run_async(fut: impl std::future::Future<Output = Result<(), String>>) -> Result<(), String> {
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -151,7 +160,9 @@ fn prompt(label: &str, current: Option<&str>) -> Result<String, String> {
     print!("{label}{hint}: ");
     io::stdout().flush().map_err(|e| e.to_string())?;
     let mut input = String::new();
-    io::stdin().read_line(&mut input).map_err(|e| e.to_string())?;
+    io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| e.to_string())?;
     let input = input.trim();
     if input.is_empty() {
         current
@@ -196,8 +207,7 @@ fn setup() -> Result<(), String> {
         }
         println!("Parola değiştirilmedi.");
     } else {
-        let confirm =
-            rpassword::prompt_password("Parola (tekrar): ").map_err(|e| e.to_string())?;
+        let confirm = rpassword::prompt_password("Parola (tekrar): ").map_err(|e| e.to_string())?;
         if password != confirm {
             return Err("parolalar eşleşmedi; hiçbir şey yazılmadı".into());
         }
@@ -270,6 +280,70 @@ fn build_pool() -> Result<Arc<NntpPool<TlsNntpConnector>>, String> {
     Ok(TlsNntpConnector::new(config).into_pool())
 }
 
+/// Uygulamanın FRB ile kullandığı aynı `start_stream` yolunu gerçek sağlayıcı
+/// üzerinde sınar. Kimlik bilgileri yalnızca Keychain'den belleğe alınır;
+/// parola, archive password veya message-ID yazdırılmaz.
+fn stream_check(nzb_path: String) -> Result<(), String> {
+    let config = load_config()?;
+    println!("Akış hazırlanıyor; 7z ciltleri ve arşiv başlığı doğrulanıyor…");
+    let info = start_stream(
+        ProviderConfigDto {
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            password: config.password,
+            max_connections: config.max_connections as u32,
+        },
+        nzb_path,
+    )?;
+
+    let address_and_path = info
+        .url
+        .strip_prefix("http://")
+        .ok_or_else(|| "localhost stream URL biçimi geçersiz".to_string())?;
+    let (address, path) = address_and_path
+        .split_once('/')
+        .ok_or_else(|| "localhost stream URL yolu yok".to_string())?;
+    let mut socket = TcpStream::connect(address).map_err(|error| error.to_string())?;
+    socket
+        .set_read_timeout(Some(Duration::from_secs(60)))
+        .map_err(|error| error.to_string())?;
+    let request = format!(
+        "GET /{path} HTTP/1.1\r\nHost: {address}\r\nRange: bytes=0-31\r\nConnection: close\r\n\r\n"
+    );
+    socket
+        .write_all(request.as_bytes())
+        .map_err(|error| error.to_string())?;
+
+    let mut response = Vec::new();
+    socket
+        .read_to_end(&mut response)
+        .map_err(|error| error.to_string())?;
+    let header_end = response
+        .windows(4)
+        .position(|window| window == b"\r\n\r\n")
+        .map(|index| index + 4)
+        .ok_or_else(|| "localhost HTTP yanıt başlığı eksik".to_string())?;
+    let header = std::str::from_utf8(&response[..header_end])
+        .map_err(|_| "localhost HTTP yanıt başlığı UTF-8 değil".to_string())?;
+    if !header.starts_with("HTTP/1.1 206") {
+        return Err("localhost Range isteği 206 döndürmedi".into());
+    }
+    let body = &response[header_end..];
+    let recognized = body.starts_with(&[0x1A, 0x45, 0xDF, 0xA3])
+        || body.get(4..8) == Some(b"ftyp")
+        || body.first() == Some(&0x47);
+    if !recognized {
+        return Err("arşiv içinden dönen ilk baytlar medya imzası değil".into());
+    }
+
+    println!(
+        "Akış doğrulandı: {} · {} bayt · {} segment · medya imzası geçerli",
+        info.filename, info.size, info.segment_count
+    );
+    Ok(())
+}
+
 async fn connect_and_auth() -> Result<nntp::TlsNntpConnection, String> {
     let config = load_config()?;
     println!("Bağlanılıyor: {}:{} (TLS)…", config.host, config.port);
@@ -307,14 +381,11 @@ async fn check() -> Result<(), String> {
 
 async fn fetch(message_id: String) -> Result<(), String> {
     let mut conn = connect_and_auth().await?;
-    println!("BODY <{message_id}> çekiliyor…");
-    let body = tokio::time::timeout(
-        NETWORK_TIMEOUT,
-        conn.body_by_message_id(&message_id),
-    )
-    .await
-    .map_err(|_| "BODY zaman aşımı".to_string())?
-    .map_err(|e| e.to_string())?;
+    println!("Article gövdesi çekiliyor…");
+    let body = tokio::time::timeout(NETWORK_TIMEOUT, conn.body_by_message_id(&message_id))
+        .await
+        .map_err(|_| "BODY zaman aşımı".to_string())?
+        .map_err(|e| e.to_string())?;
     println!("Gövde alındı: {} bayt (kodlu).", body.len());
 
     match yenc::decode(&body) {
@@ -326,7 +397,8 @@ async fn fetch(message_id: String) -> Result<(), String> {
                 part.file_size
             );
             if let (Some(begin), Some(end)) = (part.begin, part.end) {
-                println!("Parça aralığı: {begin}-{end} (part {}/{})",
+                println!(
+                    "Parça aralığı: {begin}-{end} (part {}/{})",
                     part.part.map_or_else(|| "?".into(), |p| p.to_string()),
                     part.total.map_or_else(|| "?".into(), |t| t.to_string()),
                 );
@@ -366,23 +438,26 @@ async fn read_range(
                         .message_id(index)
                         .ok_or_else(|| format!("segment {index} yok"))?
                         .to_string();
-                    println!("  · segment #{} çekiliyor <{}>…", index + 1, mid);
-                    let body = tokio::time::timeout(
-                        NETWORK_TIMEOUT,
-                        conn.body_by_message_id(&mid),
-                    )
-                    .await
-                    .map_err(|_| "BODY zaman aşımı".to_string())?
-                    .map_err(|e| e.to_string())?;
+                    println!("  · segment #{} çekiliyor…", index + 1);
+                    let body = tokio::time::timeout(NETWORK_TIMEOUT, conn.body_by_message_id(&mid))
+                        .await
+                        .map_err(|_| "BODY zaman aşımı".to_string())?
+                        .map_err(|e| e.to_string())?;
                     let part = yenc::decode(&body).map_err(|e| e.to_string())?;
                     println!(
                         "    çözüldü: {} bayt, aralık {}-{}, pcrc32 {}",
                         part.data.len(),
                         part.begin.map_or(0, |b| b),
                         part.end.map_or(0, |e| e),
-                        if part.part_crc32.is_some() { "✔" } else { "yok" },
+                        if part.part_crc32.is_some() {
+                            "✔"
+                        } else {
+                            "yok"
+                        },
                     );
-                    locator.record_part(index, &part).map_err(|e| e.to_string())?;
+                    locator
+                        .record_part(index, &part)
+                        .map_err(|e| e.to_string())?;
                     cache.insert(index, part.data);
                 }
             }
@@ -403,8 +478,7 @@ async fn read_range(
 }
 
 async fn probe(nzb_path: String, offset: Option<u64>) -> Result<(), String> {
-    let xml = std::fs::read_to_string(&nzb_path)
-        .map_err(|e| format!("NZB okunamadı: {e}"))?;
+    let xml = std::fs::read_to_string(&nzb_path).map_err(|e| format!("NZB okunamadı: {e}"))?;
     let parsed = nzb::parse_nzb(&xml).map_err(|e| e.to_string())?;
     let file = largest_file(&parsed)
         .ok_or_else(|| "NZB'de dosya yok".to_string())?
@@ -429,7 +503,9 @@ async fn probe(nzb_path: String, offset: Option<u64>) -> Result<(), String> {
     println!("    Çözülmüş dosya boyutu (yEnc size): {file_size} bayt");
 
     // Seek hedefi: verilmezse dosyanın ortası.
-    let target = offset.unwrap_or(file_size / 2).min(file_size.saturating_sub(1));
+    let target = offset
+        .unwrap_or(file_size / 2)
+        .min(file_size.saturating_sub(1));
     let want = 64u64.min(file_size - target);
     let range = target..target + want;
     println!(
@@ -461,8 +537,7 @@ async fn probe(nzb_path: String, offset: Option<u64>) -> Result<(), String> {
 }
 
 async fn serve(nzb_path: String, port: u16) -> Result<(), String> {
-    let xml = std::fs::read_to_string(&nzb_path)
-        .map_err(|e| format!("NZB okunamadı: {e}"))?;
+    let xml = std::fs::read_to_string(&nzb_path).map_err(|e| format!("NZB okunamadı: {e}"))?;
     let parsed = nzb::parse_nzb(&xml).map_err(|e| e.to_string())?;
     let file = largest_file(&parsed)
         .ok_or_else(|| "NZB'de dosya yok".to_string())?
@@ -486,10 +561,7 @@ async fn serve(nzb_path: String, port: u16) -> Result<(), String> {
     let listener = server::bind_local(port)
         .await
         .map_err(|e| format!("port bağlanamadı: {e}"))?;
-    let bound = listener
-        .local_addr()
-        .map_err(|e| e.to_string())?
-        .port();
+    let bound = listener.local_addr().map_err(|e| e.to_string())?.port();
 
     let name = source.filename().to_string();
     println!(

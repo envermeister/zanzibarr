@@ -5,6 +5,8 @@
 //! boyutlarıdır; çözülmüş dosya içi ofsetler yEnc başlıklarından
 //! (`=ypart begin/end`) gelir — byte-range eşleyici o bilgiyi kullanır.
 
+use std::{collections::BTreeMap, fmt};
+
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -17,11 +19,69 @@ pub enum NzbError {
     NotAnNzb,
 }
 
+/// NZB içeriğinden oynatılacak dosyayı seçme ve arşiv setlerini
+/// doğrulama hataları.
+#[derive(Debug, Error, Clone, PartialEq, Eq)]
+pub enum NzbContentError {
+    #[error("NZB'de doğrudan oynatılabilir medya dosyası yok")]
+    NoPlayableMedia,
+    #[error("`{filename}` dosyasında segment {missing} eksik veya sırası bozuk")]
+    NonContiguousSegments { filename: String, missing: u32 },
+    #[error("`{filename}` dosyası {declared} segment bildiriyor, NZB'de {actual} segment var")]
+    DeclaredSegmentCountMismatch {
+        filename: String,
+        declared: u32,
+        actual: u32,
+    },
+    #[error(
+        "bölünmüş 7z seti `{archive_name}` için volume {expected:03} beklenirken {found:03} bulundu"
+    )]
+    Split7zVolumeGap {
+        archive_name: String,
+        expected: u32,
+        found: u32,
+    },
+    #[error("bölünmüş 7z seti `{archive_name}` içinde volume {number:03} birden fazla kez var")]
+    DuplicateSplit7zVolume { archive_name: String, number: u32 },
+}
+
+/// Sayısal volume sırasıyla bir 7z parçası.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Split7zVolume<'a> {
+    pub number: u32,
+    pub file: &'a NzbFile,
+}
+
+/// Aynı `.7z` taban adına ait, `001`'den başlayan kesintisiz volume seti.
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Split7zSet<'a> {
+    pub archive_name: String,
+    pub volumes: Vec<Split7zVolume<'a>>,
+}
+
+#[derive(Clone, PartialEq, Eq)]
 pub struct Nzb {
     /// `<head><meta type="...">` çiftleri (ör. title, password).
     pub meta: Vec<(String, String)>,
     pub files: Vec<NzbFile>,
+}
+
+/// Meta değerleri arasında arşiv parolası bulunabilir. `Debug`, yalnızca
+/// anahtar adlarını göstererek bu değerlerin loglara sızmasını engeller.
+impl fmt::Debug for Nzb {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let meta_keys = self
+            .meta
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect::<Vec<_>>();
+
+        formatter
+            .debug_struct("Nzb")
+            .field("meta_keys", &meta_keys)
+            .field("files", &self.files)
+            .finish()
+    }
 }
 
 impl Nzb {
@@ -34,7 +94,74 @@ impl Nzb {
 
     /// Tüm dosyaların kodlu (yEnc) boyut toplamı.
     pub fn total_encoded_bytes(&self) -> u64 {
-        self.files.iter().map(NzbFile::encoded_bytes).sum()
+        self.files.iter().fold(0u64, |total, file| {
+            total.saturating_add(file.encoded_bytes())
+        })
+    }
+
+    /// Doğrudan oynatılabilir dosyalar arasından kodlu boyutu en büyük
+    /// olanı seçer. PAR2 veya arşiv volume'ları segment sayıları yüzünden
+    /// yanlışlıkla medya olarak seçilemez.
+    pub fn select_playable_media(&self) -> Result<&NzbFile, NzbContentError> {
+        let file = self
+            .files
+            .iter()
+            .filter(|file| file.is_playable_media())
+            .max_by_key(|file| file.encoded_bytes())
+            .ok_or(NzbContentError::NoPlayableMedia)?;
+        file.validate_segments()?;
+        Ok(file)
+    }
+
+    /// NZB'deki bölünmüş 7z volume'larını taban ada göre gruplar,
+    /// sayısal sıraya koyar ve her setin `001`'den kesintisiz ilerlediğini
+    /// doğrular.
+    pub fn split_7z_sets(&self) -> Result<Vec<Split7zSet<'_>>, NzbContentError> {
+        let mut groups: BTreeMap<String, (String, Vec<Split7zVolume<'_>>)> = BTreeMap::new();
+
+        for file in &self.files {
+            let Some(filename) = file.filename() else {
+                continue;
+            };
+            let Some((archive_name, number)) = split_7z_volume_name(filename) else {
+                continue;
+            };
+            file.validate_segments()?;
+
+            let entry = groups
+                .entry(archive_name.to_ascii_lowercase())
+                .or_insert_with(|| (archive_name.to_string(), Vec::new()));
+            entry.1.push(Split7zVolume { number, file });
+        }
+
+        let mut sets = Vec::with_capacity(groups.len());
+        for (_, (archive_name, mut volumes)) in groups {
+            volumes.sort_by_key(|volume| volume.number);
+
+            let mut expected = 1;
+            for volume in &volumes {
+                if volume.number < expected {
+                    return Err(NzbContentError::DuplicateSplit7zVolume {
+                        archive_name,
+                        number: volume.number,
+                    });
+                }
+                if volume.number != expected {
+                    return Err(NzbContentError::Split7zVolumeGap {
+                        archive_name,
+                        expected,
+                        found: volume.number,
+                    });
+                }
+                expected = expected.saturating_add(1);
+            }
+
+            sets.push(Split7zSet {
+                archive_name,
+                volumes,
+            });
+        }
+        Ok(sets)
     }
 }
 
@@ -101,16 +228,123 @@ impl NzbFile {
     }
 
     pub fn encoded_bytes(&self) -> u64 {
-        self.segments.iter().map(|s| s.bytes).sum()
+        // Bu değer yalnız seçim/ilerleme tahmini içindir; çözülmüş ofsetlerde
+        // kullanılmaz. Bozuk bir NZB'nin u64 toplamını taşırıp panic üretmesine
+        // izin vermek yerine en büyük tahmin değerine doyurulur.
+        self.segments
+            .iter()
+            .fold(0u64, |total, segment| total.saturating_add(segment.bytes))
+    }
+
+    /// Dosya adı libmpv'ye doğrudan verilebilen yaygın bir video kabı mı?
+    pub fn is_playable_media(&self) -> bool {
+        self.filename().is_some_and(is_playable_media_filename)
+    }
+
+    /// Subject'in sonundaki `(parça/toplam)` bilgisinden ilan edilen segment
+    /// sayısını okur. Bazı poster'lar `(1/0)` yazar; sıfır bilinmeyen toplam
+    /// olarak kabul edilir.
+    pub fn declared_segment_count(&self) -> Option<u32> {
+        let end = self.subject.rfind(')')?;
+        let start = self.subject[..end].rfind('(')?;
+        let (_, total) = self.subject[start + 1..end].split_once('/')?;
+        let total = total.trim();
+        if total.is_empty() || !total.bytes().all(|byte| byte.is_ascii_digit()) {
+            return None;
+        }
+        total.parse::<u32>().ok().filter(|count| *count > 0)
+    }
+
+    /// Segment listesinin 1'den başlayıp kesintisiz ilerlediğini ve subject
+    /// bir toplam bildiriyorsa bu toplamla uyuştuğunu doğrular.
+    pub fn validate_segments(&self) -> Result<(), NzbContentError> {
+        let filename = self.filename().unwrap_or("adı bilinmeyen dosya");
+        let mut expected = 1_u32;
+        for segment in &self.segments {
+            if segment.number != expected {
+                return Err(NzbContentError::NonContiguousSegments {
+                    filename: filename.to_string(),
+                    missing: expected,
+                });
+            }
+            expected = expected.saturating_add(1);
+        }
+
+        if self.segments.is_empty() {
+            return Err(NzbContentError::NonContiguousSegments {
+                filename: filename.to_string(),
+                missing: 1,
+            });
+        }
+
+        if let Some(declared) = self.declared_segment_count() {
+            let actual = self.segments.len().min(u32::MAX as usize) as u32;
+            if actual < declared {
+                return Err(NzbContentError::NonContiguousSegments {
+                    filename: filename.to_string(),
+                    missing: actual.saturating_add(1),
+                });
+            }
+            if actual != declared {
+                return Err(NzbContentError::DeclaredSegmentCountMismatch {
+                    filename: filename.to_string(),
+                    declared,
+                    actual,
+                });
+            }
+        }
+
+        Ok(())
     }
 
     /// Segment numaraları 1'den n'e kesintisiz mi? (eksik segment kontrolü)
     pub fn is_contiguous(&self) -> bool {
-        self.segments
-            .iter()
-            .enumerate()
-            .all(|(i, s)| s.number == i as u32 + 1)
+        !self.segments.is_empty()
+            && self
+                .segments
+                .iter()
+                .enumerate()
+                .all(|(i, s)| s.number == i as u32 + 1)
     }
+}
+
+/// libmpv/FFmpeg'e arşiv açmadan doğrudan verilebilen yaygın video kabı ve
+/// elementary stream uzantıları. Liste `server::content_type_for` ile birlikte
+/// tutulur; server testi her uzantının açık bir MIME eşlemesi olduğunu doğrular.
+pub(crate) const PLAYABLE_VIDEO_EXTENSIONS: &[&str] = &[
+    "264", "265", "3g2", "3gp", "amv", "asf", "av1", "avc", "avi", "bik", "bk2", "divx", "dv",
+    "dvr-ms", "evo", "f4v", "flv", "gxf", "h261", "h263", "h264", "h265", "hevc", "ivf", "m1v",
+    "m2t", "m2ts", "m2v", "m4v", "mj2", "mjpeg", "mjpg", "mjp2", "mk3d", "mkv", "mov", "mp4",
+    "mpeg", "mpg", "mpv", "mts", "mxf", "nsv", "nut", "obu", "ogm", "ogv", "qt", "rm", "rmvb",
+    "roq", "tp", "trp", "ts", "vc1", "vob", "vro", "webm", "wmv", "wtv", "y4m",
+];
+
+/// Karşılaştırma ASCII büyük/küçük harf duyarsızdır. Son uzantıdan sonra ek
+/// taşıyan (`video.mp4.exe`) veya arşiv/kurtarma dosyaları kabul edilmez.
+pub fn is_playable_media_filename(filename: &str) -> bool {
+    let Some((_, extension)) = filename.rsplit_once('.') else {
+        return false;
+    };
+    PLAYABLE_VIDEO_EXTENSIONS
+        .iter()
+        .any(|candidate| extension.eq_ignore_ascii_case(candidate))
+}
+
+/// `film.7z.001` biçimindeki bir adı `(film.7z, 1)` olarak ayırır.
+/// Yalnızca tamamı rakam olan son ekler volume kabul edilir.
+pub fn split_7z_volume_name(filename: &str) -> Option<(&str, u32)> {
+    let lowercase = filename.to_ascii_lowercase();
+    let marker = lowercase.rfind(".7z.")?;
+    if marker == 0 {
+        return None;
+    }
+
+    let digits = &filename[marker + 4..];
+    if digits.is_empty() || !digits.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let number = digits.parse::<u32>().ok()?;
+    Some((&filename[..marker + 3], number))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,7 +360,10 @@ pub fn parse_nzb(xml: &str) -> Result<Nzb, NzbError> {
     use quick_xml::events::Event;
 
     let mut reader = quick_xml::Reader::from_str(xml);
-    let mut nzb = Nzb { meta: Vec::new(), files: Vec::new() };
+    let mut nzb = Nzb {
+        meta: Vec::new(),
+        files: Vec::new(),
+    };
     let mut saw_root = false;
 
     // Anlık durum: içinde bulunulan öğeler ve biriken metin.
@@ -148,8 +385,7 @@ pub fn parse_nzb(xml: &str) -> Result<Nzb, NzbError> {
                 }
                 b"file" => nzb.files.push(NzbFile {
                     poster: attr_value(&e, b"poster")?.unwrap_or_default(),
-                    date: attr_value(&e, b"date")?
-                        .and_then(|v| v.trim().parse().ok()),
+                    date: attr_value(&e, b"date")?.and_then(|v| v.trim().parse().ok()),
                     subject: attr_value(&e, b"subject")?.unwrap_or_default(),
                     groups: Vec::new(),
                     segments: Vec::new(),
@@ -166,8 +402,7 @@ pub fn parse_nzb(xml: &str) -> Result<Nzb, NzbError> {
                     b"file" => {
                         current_file = Some(NzbFile {
                             poster: attr_value(&e, b"poster")?.unwrap_or_default(),
-                            date: attr_value(&e, b"date")?
-                                .and_then(|v| v.trim().parse().ok()),
+                            date: attr_value(&e, b"date")?.and_then(|v| v.trim().parse().ok()),
                             subject: attr_value(&e, b"subject")?.unwrap_or_default(),
                             groups: Vec::new(),
                             segments: Vec::new(),
@@ -176,9 +411,7 @@ pub fn parse_nzb(xml: &str) -> Result<Nzb, NzbError> {
                     b"segment" => {
                         let number = attr_value(&e, b"number")?
                             .and_then(|v| v.trim().parse().ok())
-                            .ok_or_else(|| {
-                                NzbError::Malformed("segmentte number yok".into())
-                            })?;
+                            .ok_or_else(|| NzbError::Malformed("segmentte number yok".into()))?;
                         let bytes = attr_value(&e, b"bytes")?
                             .and_then(|v| v.trim().parse().ok())
                             .unwrap_or(0);
@@ -281,6 +514,24 @@ fn normalize_message_id(raw: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn file(name: &str, segment_numbers: &[u32], bytes_per_segment: u64) -> NzbFile {
+        let declared = segment_numbers.iter().copied().max().unwrap_or(0);
+        NzbFile {
+            poster: "poster@example.test".into(),
+            date: None,
+            subject: format!("\"{name}\" yEnc (1/{declared})"),
+            groups: vec!["alt.binaries.test".into()],
+            segments: segment_numbers
+                .iter()
+                .map(|number| NzbSegment {
+                    number: *number,
+                    bytes: bytes_per_segment,
+                    message_id: format!("{name}-{number}@example.test"),
+                })
+                .collect(),
+        }
+    }
 
     const SAMPLE: &str = r#"<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE nzb PUBLIC "-//newzBin//DTD NZB 1.1//EN" "http://www.newzbin.com/DTD/nzb/nzb-1.1.dtd">
@@ -397,5 +648,211 @@ mod tests {
             </segments></file></nzb>"#;
         let nzb = parse_nzb(xml).unwrap();
         assert_eq!(nzb.files[0].filename(), Some("film.part01.rar"));
+    }
+
+    #[test]
+    fn debug_meta_degerlerini_gizler() {
+        let nzb = Nzb {
+            meta: vec![
+                ("title".into(), "gizli-baslik-degeri".into()),
+                ("password".into(), "asla-debuga-girmemeli".into()),
+            ],
+            files: Vec::new(),
+        };
+
+        let debug = format!("{nzb:?}");
+        assert!(debug.contains("title"));
+        assert!(debug.contains("password"));
+        assert!(!debug.contains("gizli-baslik-degeri"));
+        assert!(!debug.contains("asla-debuga-girmemeli"));
+    }
+
+    #[test]
+    fn oynatilabilir_uzantilar_buyuk_kucuk_harf_duyarsizdir() {
+        assert!(is_playable_media_filename("film.mkv"));
+        assert!(is_playable_media_filename("FILM.MP4"));
+        assert!(is_playable_media_filename("kayit.M2TS"));
+        assert!(is_playable_media_filename("telefon.3GP"));
+        assert!(is_playable_media_filename("kurgu.MXF"));
+        assert!(is_playable_media_filename("arsiv.RMVB"));
+        assert!(is_playable_media_filename("ham.H264"));
+        assert!(is_playable_media_filename("kamera.HEVC"));
+        assert!(is_playable_media_filename("animasyon.AV1"));
+        assert!(is_playable_media_filename("yayın.WTV"));
+        assert!(is_playable_media_filename("stereo.MK3D"));
+        assert!(is_playable_media_filename("acik.OGV"));
+        assert!(!is_playable_media_filename("film.7z.001"));
+        assert!(!is_playable_media_filename("film.vol00+01.par2"));
+        assert!(!is_playable_media_filename("film.nfo"));
+        assert!(!is_playable_media_filename("film.mp4.exe"));
+        assert!(!is_playable_media_filename("altyazi.srt"));
+        assert!(!is_playable_media_filename("kapak.jpg"));
+    }
+
+    #[test]
+    fn genisletilmis_ffmpeg_uzantilari_secici_tarafindan_medya_kabul_edilir() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("recovery.par2", &[1, 2, 3], 10_000),
+                file("master.mxf", &[1, 2], 1_000),
+            ],
+        };
+
+        assert_eq!(
+            nzb.select_playable_media().unwrap().filename(),
+            Some("master.mxf")
+        );
+    }
+
+    #[test]
+    fn secici_segment_sayisi_yerine_medya_uzantisi_ve_boyutu_kullanir() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("recovery.vol00+01.par2", &[1, 2, 3, 4], 10_000),
+                file("sample.mkv", &[1], 100),
+                file("movie.mp4", &[1, 2], 1_000),
+                file("archive.7z.001", &[1, 2, 3, 4, 5], 10_000),
+            ],
+        };
+
+        assert_eq!(
+            nzb.select_playable_media().unwrap().filename(),
+            Some("movie.mp4")
+        );
+    }
+
+    #[test]
+    fn kodlu_boyut_tahmini_tasmada_panik_yerine_doyar() {
+        let first = file("first.mkv", &[1, 2], u64::MAX);
+        let second = file("second.mkv", &[1], 1);
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![first, second],
+        };
+
+        assert_eq!(nzb.files[0].encoded_bytes(), u64::MAX);
+        assert_eq!(nzb.total_encoded_bytes(), u64::MAX);
+    }
+
+    #[test]
+    fn secici_dogrudan_medya_yoksa_acik_hata_verir() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![file("archive.7z.001", &[1], 100)],
+        };
+
+        assert_eq!(
+            nzb.select_playable_media(),
+            Err(NzbContentError::NoPlayableMedia)
+        );
+    }
+
+    #[test]
+    fn secici_medya_segment_boslugunu_reddeder() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![file("movie.mkv", &[1, 3], 100)],
+        };
+
+        assert!(matches!(
+            nzb.select_playable_media(),
+            Err(NzbContentError::NonContiguousSegments { missing: 2, .. })
+        ));
+    }
+
+    #[test]
+    fn ilan_edilen_sondaki_eksik_segment_reddedilir() {
+        let mut media = file("movie.mkv", &[1, 2], 100);
+        media.subject = "\"movie.mkv\" yEnc (1/3)".into();
+
+        assert!(matches!(
+            media.validate_segments(),
+            Err(NzbContentError::NonContiguousSegments { missing: 3, .. })
+        ));
+    }
+
+    #[test]
+    fn split_7z_adi_ve_volume_numarasi_cozulur() {
+        assert_eq!(split_7z_volume_name("Film.7Z.001"), Some(("Film.7Z", 1)));
+        assert_eq!(split_7z_volume_name("film.7z.120"), Some(("film.7z", 120)));
+        assert_eq!(split_7z_volume_name("film.7z"), None);
+        assert_eq!(split_7z_volume_name("film.7z.001.tmp"), None);
+    }
+
+    #[test]
+    fn split_7z_setleri_sayisal_siraya_koyar_ve_gruplar() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("movie.7z.3", &[1], 100),
+                file("extras.7z.1", &[1], 100),
+                file("movie.7z.1", &[1], 100),
+                file("movie.7z.2", &[1], 100),
+            ],
+        };
+
+        let sets = nzb.split_7z_sets().unwrap();
+        assert_eq!(sets.len(), 2);
+        assert_eq!(sets[0].archive_name, "extras.7z");
+        assert_eq!(sets[1].archive_name, "movie.7z");
+        assert_eq!(
+            sets[1]
+                .volumes
+                .iter()
+                .map(|volume| volume.number)
+                .collect::<Vec<_>>(),
+            vec![1, 2, 3]
+        );
+    }
+
+    #[test]
+    fn split_7z_volume_boslugunu_reddeder() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("movie.7z.001", &[1], 100),
+                file("movie.7z.003", &[1], 100),
+            ],
+        };
+
+        assert!(matches!(
+            nzb.split_7z_sets(),
+            Err(NzbContentError::Split7zVolumeGap {
+                expected: 2,
+                found: 3,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn split_7z_duplicate_volume_reddedilir() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("movie.7z.001", &[1], 100),
+                file("movie.7Z.001", &[1], 100),
+            ],
+        };
+
+        assert!(matches!(
+            nzb.split_7z_sets(),
+            Err(NzbContentError::DuplicateSplit7zVolume { number: 1, .. })
+        ));
+    }
+
+    #[test]
+    fn split_7z_segment_boslugunu_reddeder() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![file("movie.7z.001", &[1, 3], 100)],
+        };
+
+        assert!(matches!(
+            nzb.split_7z_sets(),
+            Err(NzbContentError::NonContiguousSegments { missing: 2, .. })
+        ));
     }
 }

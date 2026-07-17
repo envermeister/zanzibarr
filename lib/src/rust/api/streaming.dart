@@ -6,14 +6,31 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `url_encode_path`
+// These functions are ignored because they are not marked as `pub`: `cancel_active_stream`, `cancellation_requested`, `ensure_stream_not_cancelled`, `filename`, `load_stream_selection_blocking`, `load_stream_selection`, `next_session_id`, `prepare_stream_source`, `read_nzb_bytes`, `run_stream_session`, `segment_count`, `select_stream`, `terminate_stream`, `url_encode_path`, `wait_for_cancellation`, `wait_for_stream_ready`
+// These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ActiveStream`, `StreamSelection`, `StreamSource`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`
+// These functions are ignored (category: IgnoreBecauseExplicitAttribute): `content_type`, `total_len`, `write_range`
 
-/// NZB'nin en büyük dosyası için localhost Range server'ı başlatır ve URL
-/// döndürür. Bootstrap (ilk segmentle boyut öğrenme) bu çağrıda tamamlanır;
-/// döndükten sonra URL hemen oynatılabilir.
-///
-/// Bu FRB fonksiyonu ayrı bir worker thread'de çalışır (UI bloklanmaz).
+/// NZB'yi doğrular, iptal edilebilir bir hazırlama oturumu başlatır ve session
+/// kimliğini hemen döndürür. Ağ/bootstrap sonucu [`await_stream`] ile alınır;
+/// bu ayrım Flutter'ın uzun hazırlığı daha sonuç gelmeden durdurabilmesini
+/// sağlar.
+Future<BigInt> beginStream({
+  required ProviderConfigDto config,
+  required String nzbPath,
+}) => RustLib.instance.api.crateApiStreamingBeginStream(
+  config: config,
+  nzbPath: nzbPath,
+);
+
+/// [`begin_stream`] ile başlatılan oturumun localhost server bilgilerini
+/// bekler. Session başka bir seçim veya ekran kapanışıyla iptal edilirse açık
+/// hata döner; hiçbir global kilit ağ I/O'su boyunca tutulmaz.
+Future<StreamInfo> awaitStream({required BigInt sessionId}) =>
+    RustLib.instance.api.crateApiStreamingAwaitStream(sessionId: sessionId);
+
+/// Tek çağrılı Rust/CLI kolaylık yolu. Flutter, hazırlık sırasında iptal
+/// edebilmek için doğrudan [`begin_stream`] + [`await_stream`] kullanır.
 Future<StreamInfo> startStream({
   required ProviderConfigDto config,
   required String nzbPath,
@@ -21,6 +38,11 @@ Future<StreamInfo> startStream({
   config: config,
   nzbPath: nzbPath,
 );
+
+/// Verilen oynatıcı oturumuna ait localhost server'ı ve tüm açık HTTP/NNTP
+/// görevlerini durdurur. Kimlik artık aktif değilse yeni bir oturuma dokunmaz.
+Future<bool> stopStream({required BigInt sessionId}) =>
+    RustLib.instance.api.crateApiStreamingStopStream(sessionId: sessionId);
 
 /// Dart'tan gelen sağlayıcı yapılandırması.
 class ProviderConfigDto {
@@ -60,6 +82,9 @@ class ProviderConfigDto {
 
 /// Başlatılan stream'in oynatıcıya verilecek bilgileri.
 class StreamInfo {
+  /// Yalnız bu localhost server oturumunu durdurmak için kullanılan kimlik.
+  final BigInt sessionId;
+
   /// media_kit'in açacağı localhost URL'i.
   final String url;
 
@@ -69,6 +94,7 @@ class StreamInfo {
   final int segmentCount;
 
   const StreamInfo({
+    required this.sessionId,
     required this.url,
     required this.size,
     required this.filename,
@@ -77,13 +103,18 @@ class StreamInfo {
 
   @override
   int get hashCode =>
-      url.hashCode ^ size.hashCode ^ filename.hashCode ^ segmentCount.hashCode;
+      sessionId.hashCode ^
+      url.hashCode ^
+      size.hashCode ^
+      filename.hashCode ^
+      segmentCount.hashCode;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is StreamInfo &&
           runtimeType == other.runtimeType &&
+          sessionId == other.sessionId &&
           url == other.url &&
           size == other.size &&
           filename == other.filename &&

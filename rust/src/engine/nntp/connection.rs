@@ -12,7 +12,7 @@ use tokio_rustls::rustls;
 use tokio_rustls::rustls::pki_types::ServerName;
 use tokio_rustls::TlsConnector;
 
-use super::{NntpError, Response};
+use super::{is_connection_limit_response, NntpError, Response};
 
 /// Tek durum satırı için üst sınır; saldırgan sunucuya karşı koruma.
 const MAX_LINE: usize = 64 * 1024;
@@ -38,13 +38,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
         match greeting.code {
             200 => conn.posting_allowed = true,
             201 => conn.posting_allowed = false,
-            code => {
-                return Err(NntpError::UnexpectedResponse {
-                    context: "karşılama",
-                    code,
-                    text: greeting.text,
-                })
-            }
+            code => return Err(unexpected_response("karşılama", code, greeting.text)),
         }
         Ok(conn)
     }
@@ -52,11 +46,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
     /// RFC 4643 AUTHINFO USER/PASS akışı.
     ///
     /// Parola yalnızca sokete yazılır; hata mesajlarına ve loglara girmez.
-    pub async fn authenticate(
-        &mut self,
-        username: &str,
-        password: &str,
-    ) -> Result<(), NntpError> {
+    pub async fn authenticate(&mut self, username: &str, password: &str) -> Result<(), NntpError> {
         if username.contains(['\r', '\n']) || username.is_empty() {
             return Err(NntpError::InvalidArgument(
                 "kullanıcı adı boş veya satır sonu içeriyor".into(),
@@ -73,13 +63,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
         match resp.code {
             281 => return Ok(()), // parolasız kabul
             381 => {}             // parola bekleniyor
-            code => return Err(NntpError::AuthFailed { code, text: resp.text }),
+            code => return Err(authentication_failure(code, resp.text)),
         }
 
         let resp = self.command(&format!("AUTHINFO PASS {password}")).await?;
         match resp.code {
             281 => Ok(()),
-            code => Err(NntpError::AuthFailed { code, text: resp.text }),
+            code => Err(authentication_failure(code, resp.text)),
         }
     }
 
@@ -88,11 +78,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
         let resp = self.command("MODE READER").await?;
         match resp.code {
             200 | 201 | 500 | 501 => Ok(()),
-            code => Err(NntpError::UnexpectedResponse {
-                context: "MODE READER",
-                code,
-                text: resp.text,
-            }),
+            code => Err(unexpected_response("MODE READER", code, resp.text)),
         }
     }
 
@@ -101,36 +87,26 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
         let resp = self.command("DATE").await?;
         match resp.code {
             111 => Ok(resp.text),
-            code => Err(NntpError::UnexpectedResponse {
-                context: "DATE",
-                code,
-                text: resp.text,
-            }),
+            code => Err(unexpected_response("DATE", code, resp.text)),
         }
     }
 
     /// `BODY <message-id>`: article gövdesini dot-unstuffing yapılmış ham
     /// bayt olarak döndürür (satır sonları CRLF'e normalize edilir).
     /// `message_id` açılı ayraçsız verilir (NZB'deki kanonik biçim).
-    pub async fn body_by_message_id(
-        &mut self,
-        message_id: &str,
-    ) -> Result<Vec<u8>, NntpError> {
-        let id = message_id.trim().trim_start_matches('<').trim_end_matches('>');
+    pub async fn body_by_message_id(&mut self, message_id: &str) -> Result<Vec<u8>, NntpError> {
+        let id = message_id
+            .trim()
+            .trim_start_matches('<')
+            .trim_end_matches('>');
         if id.is_empty() || id.contains(['\r', '\n', '<', '>']) {
-            return Err(NntpError::InvalidArgument(format!(
-                "geçersiz message-ID: {id:.80}"
-            )));
+            return Err(NntpError::InvalidArgument("geçersiz message-ID".into()));
         }
         let resp = self.command(&format!("BODY <{id}>")).await?;
         match resp.code {
             222 => self.read_multiline().await,
-            430 => Err(NntpError::NoSuchArticle(id.to_string())),
-            code => Err(NntpError::UnexpectedResponse {
-                context: "BODY",
-                code,
-                text: resp.text,
-            }),
+            430 => Err(NntpError::NoSuchArticle),
+            code => Err(unexpected_response("BODY", code, resp.text)),
         }
     }
 
@@ -185,13 +161,37 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
             if line == b"." {
                 return Ok(body);
             }
-            let content: &[u8] = if line.starts_with(b"..") { &line[1..] } else { &line };
+            let content: &[u8] = if line.starts_with(b"..") {
+                &line[1..]
+            } else {
+                &line
+            };
             if body.len() + content.len() + 2 > MAX_BODY {
                 return Err(NntpError::TooLarge { limit: MAX_BODY });
             }
             body.extend_from_slice(content);
             body.extend_from_slice(b"\r\n");
         }
+    }
+}
+
+fn unexpected_response(context: &'static str, code: u16, text: String) -> NntpError {
+    if is_connection_limit_response(&text) {
+        NntpError::ConnectionLimit { code, text }
+    } else {
+        NntpError::UnexpectedResponse {
+            context,
+            code,
+            text,
+        }
+    }
+}
+
+fn authentication_failure(code: u16, text: String) -> NntpError {
+    if is_connection_limit_response(&text) {
+        NntpError::ConnectionLimit { code, text }
+    } else {
+        NntpError::AuthFailed { code, text }
     }
 }
 
@@ -205,9 +205,8 @@ pub async fn connect_tls(host: &str, port: u16) -> Result<TlsNntpConnection, Nnt
         .with_no_client_auth();
     let connector = TlsConnector::from(Arc::new(config));
 
-    let server_name = ServerName::try_from(host.to_string()).map_err(|_| {
-        NntpError::InvalidArgument(format!("geçersiz sunucu adı: {host}"))
-    })?;
+    let server_name = ServerName::try_from(host.to_string())
+        .map_err(|_| NntpError::InvalidArgument(format!("geçersiz sunucu adı: {host}")))?;
     let tcp = TcpStream::connect((host, port)).await?;
     tcp.set_nodelay(true).ok();
     let tls = connector.connect(server_name, tcp).await?;
@@ -271,12 +270,17 @@ mod tests {
             server,
             "200 hazir\r\n",
             vec![
-                ("AUTHINFO USER test-kullanici\r\n", "381 parola bekleniyor\r\n"),
+                (
+                    "AUTHINFO USER test-kullanici\r\n",
+                    "381 parola bekleniyor\r\n",
+                ),
                 ("AUTHINFO PASS test-parola\r\n", "281 hosgeldin\r\n"),
             ],
         );
         let mut conn = NntpConnection::handshake(client).await.unwrap();
-        conn.authenticate("test-kullanici", "test-parola").await.unwrap();
+        conn.authenticate("test-kullanici", "test-parola")
+            .await
+            .unwrap();
         task.await.unwrap();
     }
 
@@ -287,7 +291,10 @@ mod tests {
             server,
             "200 hazir\r\n",
             vec![
-                ("AUTHINFO USER test-kullanici\r\n", "381 parola bekleniyor\r\n"),
+                (
+                    "AUTHINFO USER test-kullanici\r\n",
+                    "381 parola bekleniyor\r\n",
+                ),
                 ("AUTHINFO PASS yanlis\r\n", "481 reddedildi\r\n"),
             ],
         );
@@ -295,6 +302,55 @@ mod tests {
         assert!(matches!(
             conn.authenticate("test-kullanici", "yanlis").await,
             Err(NntpError::AuthFailed { code: 481, .. })
+        ));
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn authinfo_502_baglanti_kotasi_auth_hatasi_sayilmaz() {
+        let (client, server) = duplex(4096);
+        let task = mock_server(
+            server,
+            "200 hazir\r\n",
+            vec![(
+                "AUTHINFO USER test-kullanici\r\n",
+                "502 Too many connections\r\n",
+            )],
+        );
+        let mut conn = NntpConnection::handshake(client).await.unwrap();
+        assert!(matches!(
+            conn.authenticate("test-kullanici", "test-parola").await,
+            Err(NntpError::ConnectionLimit { code: 502, .. })
+        ));
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn authinfo_502_izin_hatasi_auth_hatasi_olarak_kalir() {
+        let (client, server) = duplex(4096);
+        let task = mock_server(
+            server,
+            "200 hazir\r\n",
+            vec![(
+                "AUTHINFO USER test-kullanici\r\n",
+                "502 Permission denied\r\n",
+            )],
+        );
+        let mut conn = NntpConnection::handshake(client).await.unwrap();
+        assert!(matches!(
+            conn.authenticate("test-kullanici", "test-parola").await,
+            Err(NntpError::AuthFailed { code: 502, .. })
+        ));
+        task.await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn karsilama_502_baglanti_kotasi_ayri_siniflanir() {
+        let (client, server) = duplex(4096);
+        let task = mock_server(server, "502 Too many connections\r\n", vec![]);
+        assert!(matches!(
+            NntpConnection::handshake(client).await,
+            Err(NntpError::ConnectionLimit { code: 502, .. })
         ));
         task.await.unwrap();
     }
@@ -370,7 +426,7 @@ mod tests {
         let mut conn = NntpConnection::handshake(client).await.unwrap();
         assert!(matches!(
             conn.body_by_message_id("yok@x").await,
-            Err(NntpError::NoSuchArticle(id)) if id == "yok@x"
+            Err(NntpError::NoSuchArticle)
         ));
         task.await.unwrap();
     }

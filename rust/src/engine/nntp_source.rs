@@ -11,17 +11,32 @@
 //! önbellek kapasitesiyle sınırlı kalır.
 
 use std::collections::{HashMap, VecDeque};
+use std::future::Future;
 use std::io;
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
 use super::locator::{LocatorError, SegmentLocator};
-use super::nntp::{NntpPool, TlsNntpConnector};
+use super::nntp::{NntpError, NntpPool, TlsNntpConnector};
 use super::nzb::NzbFile;
 use super::server::{content_type_for, RangeSource};
 use super::yenc;
+
+const BODY_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+async fn read_body_with_timeout(
+    duration: Duration,
+    future: impl Future<Output = Result<Vec<u8>, NntpError>>,
+) -> Result<Vec<u8>, NntpError> {
+    tokio::time::timeout(duration, future)
+        .await
+        .map_err(|_| NntpError::Timeout {
+            operation: "NNTP BODY",
+        })?
+}
 
 /// Çözülmüş segment verisi için basit kapasiteli FIFO önbellek.
 struct SegmentCache {
@@ -75,10 +90,7 @@ impl NntpByteSource {
     /// Kaynağı kurar ve ilk segmenti çekerek dosya boyutunu (yEnc `size`)
     /// öğrenir; böylece [`RangeSource::total_len`] server başlar başlamaz
     /// hazırdır.
-    pub async fn new(
-        pool: Arc<NntpPool<TlsNntpConnector>>,
-        file: &NzbFile,
-    ) -> io::Result<Self> {
+    pub async fn new(pool: Arc<NntpPool<TlsNntpConnector>>, file: &NzbFile) -> io::Result<Self> {
         Self::with_cache_capacity(pool, file, Self::DEFAULT_CACHE_SEGMENTS).await
     }
 
@@ -99,9 +111,7 @@ impl NntpByteSource {
         // Bootstrap: ilk segment → file_size + tek tip parça boyutu.
         source.ensure_located(0).await?;
         if source.file_size().is_none() {
-            return Err(io::Error::other(
-                "ilk segmentten dosya boyutu öğrenilemedi",
-            ));
+            return Err(io::Error::other("ilk segmentten dosya boyutu öğrenilemedi"));
         }
         Ok(source)
     }
@@ -133,13 +143,17 @@ impl NntpByteSource {
             .checkout()
             .await
             .map_err(|e| io::Error::other(e.to_string()))?;
-        let body_result = conn.body_by_message_id(&message_id).await;
+        let body_result =
+            read_body_with_timeout(BODY_READ_TIMEOUT, conn.body_by_message_id(&message_id)).await;
         let body = match body_result {
-            Ok(body) => body,
-            Err(err) => {
-                conn.discard(); // olası bozuk bağlantıyı havuzdan at
-                return Err(io::Error::other(err.to_string()));
+            Ok(body) => {
+                // Durum satırı ve multiline sonlandırıcısı eksiksiz okundu.
+                // Bu noktadan önce future iptal edilirse varsayılan Drop
+                // davranışı yarım soketi kapatır.
+                conn.mark_reusable();
+                body
             }
+            Err(err) => return Err(io::Error::other(err.to_string())),
         };
         drop(conn); // bağlantı havuza döner
 
@@ -153,7 +167,10 @@ impl NntpByteSource {
                     .map_err(|e| io::Error::other(e.to_string()))?;
             }
         }
-        self.cache.lock().expect("kilit").insert(index, Arc::clone(&data));
+        self.cache
+            .lock()
+            .expect("kilit")
+            .insert(index, Arc::clone(&data));
         Ok(data)
     }
 
@@ -203,6 +220,36 @@ impl NntpByteSource {
                 Err(other) => return Err(io::Error::other(other.to_string())),
             }
         }
+    }
+
+    /// Arşiv başlığı gibi küçük, rastgele aralıkları bellek tamponuna okur.
+    /// Ofset çözümü yine yalnız yEnc `begin/end` kayıtlarıyla yapılır.
+    pub(crate) async fn read_range_bytes(&self, range: Range<u64>) -> io::Result<Vec<u8>> {
+        let file_size = self.file_size().unwrap_or(0);
+        if range.start >= range.end || range.end > file_size {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!(
+                    "geçersiz kaynak aralığı {}..{} (boyut {file_size})",
+                    range.start, range.end
+                ),
+            ));
+        }
+
+        let capacity = usize::try_from(range.end - range.start)
+            .map_err(|_| io::Error::other("istenen aralık belleğe sığmıyor"))?;
+        let mut output = Vec::with_capacity(capacity);
+        let mut cursor = range.start;
+        while cursor < range.end {
+            let (index, span) = self.locate(cursor).await?;
+            let seg_end = span.end.min(range.end);
+            let data = self.segment_data(index).await?;
+            let from = (cursor - span.start) as usize;
+            let to = (seg_end - span.start) as usize;
+            output.extend_from_slice(&data[from..to]);
+            cursor = seg_end;
+        }
+        Ok(output)
     }
 }
 
@@ -257,5 +304,20 @@ mod tests {
         cache.insert(5, Arc::new(vec![5]));
         cache.insert(5, Arc::new(vec![9])); // yok sayılır
         assert_eq!(cache.get(5).unwrap().as_slice(), &[5]);
+    }
+
+    #[tokio::test]
+    async fn body_okumasi_sonlu_zaman_asimi_dondurur() {
+        let result = read_body_with_timeout(
+            Duration::from_millis(5),
+            std::future::pending::<Result<Vec<u8>, NntpError>>(),
+        )
+        .await;
+        assert!(matches!(
+            result,
+            Err(NntpError::Timeout {
+                operation: "NNTP BODY"
+            })
+        ));
     }
 }

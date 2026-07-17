@@ -19,6 +19,7 @@ use std::sync::Arc;
 
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream};
+use tokio::task::JoinSet;
 
 /// Bir byte aralığını çözüp yazan kaynak. Somut hali NZB+NNTP'dir
 /// ([`super::nntp_source::NntpByteSource`]); testlerde bellek içi tampon.
@@ -42,16 +43,52 @@ pub async fn bind_local(port: u16) -> io::Result<TcpListener> {
     TcpListener::bind(("127.0.0.1", port)).await
 }
 
-/// Kabul döngüsü; her bağlantıyı ayrı görevde işler. Sonsuza dek çalışır.
+/// Kabul döngüsü; her bağlantıyı izlenen ayrı bir görevde işler ve
+/// sonsuza dek çalışır.
 pub async fn serve<S: RangeSource>(listener: TcpListener, source: Arc<S>) -> io::Result<()> {
-    loop {
-        let (stream, _) = listener.accept().await?;
-        let source = Arc::clone(&source);
-        tokio::spawn(async move {
-            // Bağlantı hatalarını (player erken kapatması vb.) yut.
-            let _ = handle_connection(stream, source).await;
-        });
-    }
+    serve_until(listener, source, std::future::pending()).await
+}
+
+/// `shutdown` tamamlanana dek bağlantı kabul eder; kapanışta açık HTTP
+/// görevlerini iptal edip hepsini drain etmeden dönmez.
+///
+/// Yalnızca dış server görevini abort etmek, [`JoinSet`]'in child görevlere
+/// iptal isteği göndermesini sağlar ama onların future'larının gerçekten
+/// düşmesini beklemez. Normal shutdown yolu burada child görevleri join ederek
+/// taşıdıkları kaynakların ve bağlantıların dönüşten önce bırakılmasını
+/// garanti eder.
+pub async fn serve_until<S, F>(listener: TcpListener, source: Arc<S>, shutdown: F) -> io::Result<()>
+where
+    S: RangeSource,
+    F: std::future::Future<Output = ()> + Send,
+{
+    let mut connections = JoinSet::new();
+    let mut shutdown = Box::pin(shutdown);
+
+    let outcome = loop {
+        tokio::select! {
+            _ = &mut shutdown => break Ok(()),
+            accepted = listener.accept() => {
+                let (stream, _) = match accepted {
+                    Ok(connection) => connection,
+                    Err(error) => break Err(error),
+                };
+
+                // Önceki isteklerden biten görevlerin sonuçlarını tutmayalım.
+                while connections.try_join_next().is_some() {}
+
+                let source = Arc::clone(&source);
+                connections.spawn(async move {
+                    // Bağlantı hatalarını (player erken kapatması vb.) yut.
+                    let _ = handle_connection(stream, source).await;
+                });
+            }
+        }
+    };
+
+    connections.abort_all();
+    while connections.join_next().await.is_some() {}
+    outcome
 }
 
 const MAX_HEAD: usize = 16 * 1024;
@@ -265,23 +302,53 @@ fn resolve_range(spec: &str, total: u64) -> RangeOutcome {
             if start > end || start >= total {
                 return RangeOutcome::Unsatisfiable;
             }
-            let end_exclusive = (end + 1).min(total);
+            let end_exclusive = end.saturating_add(1).min(total);
             RangeOutcome::Satisfiable(start..end_exclusive)
         }
         (true, true) => RangeOutcome::Unsatisfiable,
     }
 }
 
-/// Dosya adı uzantısından MIME türü. STORE video kapsayıcıları öncelikli.
+/// Dosya adı uzantısından MIME türü. libmpv içeriği kendisi de probe eder;
+/// yine de kapsayıcı/elementary stream için doğru HTTP türünü vermek demuxer
+/// seçimini hızlandırır ve istemcinin octet-stream'e bağımlı kalmasını önler.
 pub fn content_type_for(name: &str) -> &'static str {
     let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
     match ext.as_str() {
-        "mkv" => "video/x-matroska",
-        "mp4" | "m4v" => "video/mp4",
+        "3gp" => "video/3gpp",
+        "3g2" => "video/3gpp2",
+        "264" | "avc" | "h264" => "video/h264",
+        "265" | "h265" | "hevc" => "video/h265",
+        "amv" => "video/x-amv",
+        "asf" => "video/x-ms-asf",
+        "av1" | "obu" => "video/av1",
+        "avi" | "divx" => "video/x-msvideo",
+        "bik" | "bk2" => "video/x-bink",
+        "dv" => "video/dv",
+        "dvr-ms" => "video/x-ms-dvr",
+        "f4v" | "m4v" | "mp4" => "video/mp4",
+        "flv" => "video/x-flv",
+        "gxf" => "application/gxf",
+        "h261" => "video/h261",
+        "h263" => "video/h263",
+        "ivf" => "video/x-ivf",
+        "m1v" | "m2v" | "mpeg" | "mpg" | "mpv" | "evo" | "vob" | "vro" => "video/mpeg",
+        "m2t" | "m2ts" | "mts" | "tp" | "trp" | "ts" => "video/mp2t",
+        "mj2" | "mjp2" => "video/mj2",
+        "mjpeg" | "mjpg" => "video/x-motion-jpeg",
+        "mk3d" | "mkv" => "video/x-matroska",
+        "mov" | "qt" => "video/quicktime",
+        "mxf" => "application/mxf",
+        "nsv" => "video/x-nsv",
+        "nut" => "video/x-nut",
+        "ogm" | "ogv" => "video/ogg",
+        "rm" | "rmvb" => "application/vnd.rn-realmedia",
+        "roq" => "video/x-roq",
+        "vc1" => "video/vc1",
         "webm" => "video/webm",
-        "avi" => "video/x-msvideo",
-        "mov" => "video/quicktime",
-        "ts" => "video/mp2t",
+        "wmv" => "video/x-ms-wmv",
+        "wtv" => "video/x-ms-wtv",
+        "y4m" => "video/x-yuv4mpeg",
         "mp3" => "audio/mpeg",
         "flac" => "audio/flac",
         _ => "application/octet-stream",
@@ -292,6 +359,7 @@ pub fn content_type_for(name: &str) -> &'static str {
 mod tests {
     use super::*;
     use tokio::io::{AsyncReadExt, AsyncWriteExt, BufReader};
+    use tokio::sync::{oneshot, Notify};
 
     // --- Saf birim testleri: Range çözümleme ---
 
@@ -343,12 +411,39 @@ mod tests {
     }
 
     #[test]
+    fn range_u64_max_sonu_tasmadan_dosya_sonuna_kirpilir() {
+        assert_eq!(
+            resolve_range("bytes=0-18446744073709551615", 10_000),
+            RangeOutcome::Satisfiable(0..10_000)
+        );
+        assert_eq!(
+            resolve_range("bytes=18446744073709551614-18446744073709551615", u64::MAX,),
+            RangeOutcome::Satisfiable((u64::MAX - 1)..u64::MAX)
+        );
+    }
+
+    #[test]
     fn range_karsilanamaz_haller() {
-        assert_eq!(resolve_range("bytes=10000-", 10_000), RangeOutcome::Unsatisfiable);
-        assert_eq!(resolve_range("bytes=5000-4000", 10_000), RangeOutcome::Unsatisfiable);
-        assert_eq!(resolve_range("bytes=-0", 10_000), RangeOutcome::Unsatisfiable);
-        assert_eq!(resolve_range("bytes=0-100,200-300", 10_000), RangeOutcome::Unsatisfiable);
-        assert_eq!(resolve_range("items=0-100", 10_000), RangeOutcome::Unsatisfiable);
+        assert_eq!(
+            resolve_range("bytes=10000-", 10_000),
+            RangeOutcome::Unsatisfiable
+        );
+        assert_eq!(
+            resolve_range("bytes=5000-4000", 10_000),
+            RangeOutcome::Unsatisfiable
+        );
+        assert_eq!(
+            resolve_range("bytes=-0", 10_000),
+            RangeOutcome::Unsatisfiable
+        );
+        assert_eq!(
+            resolve_range("bytes=0-100,200-300", 10_000),
+            RangeOutcome::Unsatisfiable
+        );
+        assert_eq!(
+            resolve_range("items=0-100", 10_000),
+            RangeOutcome::Unsatisfiable
+        );
     }
 
     #[test]
@@ -371,7 +466,31 @@ mod tests {
     fn mime_turleri() {
         assert_eq!(content_type_for("film.mkv"), "video/x-matroska");
         assert_eq!(content_type_for("a.MP4"), "video/mp4");
+        assert_eq!(content_type_for("telefon.3gp"), "video/3gpp");
+        assert_eq!(content_type_for("kamera.m2ts"), "video/mp2t");
+        assert_eq!(content_type_for("kurgu.mxf"), "application/mxf");
+        assert_eq!(content_type_for("ham.h264"), "video/h264");
+        assert_eq!(content_type_for("ham.hevc"), "video/h265");
+        assert_eq!(content_type_for("animasyon.av1"), "video/av1");
+        assert_eq!(
+            content_type_for("eski.rmvb"),
+            "application/vnd.rn-realmedia"
+        );
+        assert_eq!(content_type_for("acik.ogv"), "video/ogg");
+        assert_eq!(content_type_for("tv.wtv"), "video/x-ms-wtv");
         assert_eq!(content_type_for("x"), "application/octet-stream");
+    }
+
+    #[test]
+    fn oynatilabilir_her_video_uzantisinin_acik_mime_eslemesi_var() {
+        for extension in crate::engine::nzb::PLAYABLE_VIDEO_EXTENSIONS {
+            let filename = format!("video.{extension}");
+            assert_ne!(
+                content_type_for(&filename),
+                "application/octet-stream",
+                "{extension} uzantısının MIME eşlemesi yok"
+            );
+        }
     }
 
     // --- Uçtan uca: gerçek localhost TCP + bellek içi kaynak (kimliksiz) ---
@@ -431,9 +550,11 @@ mod tests {
     async fn bastan_aralik_206_ve_dogru_govde() {
         let data: Vec<u8> = (0..=255u8).cycle().take(10_000).collect();
         let port = start_test_server(data.clone()).await;
-        let (head, body) =
-            request(port, "GET /f.mkv HTTP/1.1\r\nHost: x\r\nRange: bytes=0-1023\r\n\r\n")
-                .await;
+        let (head, body) = request(
+            port,
+            "GET /f.mkv HTTP/1.1\r\nHost: x\r\nRange: bytes=0-1023\r\n\r\n",
+        )
+        .await;
         assert!(head.starts_with("HTTP/1.1 206 Partial Content"), "{head}");
         assert!(head.contains("Content-Range: bytes 0-1023/10000"));
         assert!(head.contains("Content-Length: 1024"));
@@ -459,8 +580,11 @@ mod tests {
     async fn acik_uclu_tum_dosya_206() {
         let data: Vec<u8> = (0..=255u8).cycle().take(10_000).collect();
         let port = start_test_server(data.clone()).await;
-        let (head, body) =
-            request(port, "GET /f.mkv HTTP/1.1\r\nHost: x\r\nRange: bytes=0-\r\n\r\n").await;
+        let (head, body) = request(
+            port,
+            "GET /f.mkv HTTP/1.1\r\nHost: x\r\nRange: bytes=0-\r\n\r\n",
+        )
+        .await;
         assert!(head.contains("206 Partial Content"));
         assert!(head.contains("Content-Range: bytes 0-9999/10000"));
         assert_eq!(body, data);
@@ -470,8 +594,11 @@ mod tests {
     async fn suffix_dosya_sonu_206() {
         let data: Vec<u8> = (0..=255u8).cycle().take(10_000).collect();
         let port = start_test_server(data.clone()).await;
-        let (head, body) =
-            request(port, "GET /f.mkv HTTP/1.1\r\nHost: x\r\nRange: bytes=-500\r\n\r\n").await;
+        let (head, body) = request(
+            port,
+            "GET /f.mkv HTTP/1.1\r\nHost: x\r\nRange: bytes=-500\r\n\r\n",
+        )
+        .await;
         assert!(head.contains("206 Partial Content"));
         assert!(head.contains("Content-Range: bytes 9500-9999/10000"));
         assert_eq!(body, data[9500..10000]);
@@ -513,5 +640,57 @@ mod tests {
         .await;
         assert!(head.starts_with("HTTP/1.1 416"));
         assert!(head.contains("Content-Range: bytes */1000"));
+    }
+
+    struct BlockingSource {
+        entered: Arc<Notify>,
+    }
+
+    impl RangeSource for BlockingSource {
+        fn total_len(&self) -> u64 {
+            1
+        }
+
+        fn content_type(&self) -> &str {
+            "application/octet-stream"
+        }
+
+        async fn write_range<W>(&self, _range: Range<u64>, _out: &mut W) -> io::Result<()>
+        where
+            W: AsyncWrite + Unpin + Send,
+        {
+            self.entered.notify_one();
+            std::future::pending::<io::Result<()>>().await
+        }
+    }
+
+    #[tokio::test]
+    async fn graceful_shutdown_acik_baglanti_gorevlerini_ve_kaynagi_dusurur() {
+        let entered = Arc::new(Notify::new());
+        let source = Arc::new(BlockingSource {
+            entered: Arc::clone(&entered),
+        });
+        let weak_source = Arc::downgrade(&source);
+        let listener = bind_local(0).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let (shutdown_tx, shutdown_rx) = oneshot::channel();
+        let server = tokio::spawn(serve_until(listener, source, async move {
+            let _ = shutdown_rx.await;
+        }));
+
+        let mut client = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        client
+            .write_all(b"GET /f HTTP/1.1\r\nHost: x\r\nRange: bytes=0-0\r\n\r\n")
+            .await
+            .unwrap();
+        client.flush().await.unwrap();
+        entered.notified().await;
+
+        shutdown_tx.send(()).unwrap();
+        server.await.unwrap().unwrap();
+        assert!(
+            weak_source.upgrade().is_none(),
+            "graceful shutdown döndüğünde child GET görevi kaynağı tutmamalı"
+        );
     }
 }

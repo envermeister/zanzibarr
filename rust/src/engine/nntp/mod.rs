@@ -39,10 +39,27 @@ pub enum NntpError {
     },
     #[error("kimlik doğrulama başarısız: {code} {text}")]
     AuthFailed { code: u16, text: String },
-    #[error("article bulunamadı: <{0}>")]
-    NoSuchArticle(String),
+    #[error("sağlayıcının eşzamanlı bağlantı sınırına ulaşıldı: {code} {text}")]
+    ConnectionLimit { code: u16, text: String },
+    #[error("{operation} zaman aşımı")]
+    Timeout { operation: &'static str },
+    #[error("article bulunamadı")]
+    NoSuchArticle,
     #[error("yanıt çok büyük (sınır {limit} bayt)")]
     TooLarge { limit: usize },
+}
+
+/// Sağlayıcıların bağlantı kotası için kullandığı metinleri, gerçek kimlik
+/// doğrulama hatalarından ayırır. Yalnız durum koduna (özellikle genel amaçlı
+/// 502'ye) bakmak yanlış parola/izin hatalarını bağlantı kotası sanabilir;
+/// bu nedenle açık bir kota ifadesi de zorunludur.
+pub(crate) fn is_connection_limit_response(text: &str) -> bool {
+    let text = text.to_ascii_lowercase();
+    text.contains("too many connection")
+        || text.contains("connection limit")
+        || text.contains("maximum connections")
+        || text.contains("maximum number of connections")
+        || text.contains("max connections")
 }
 
 /// Tek satırlık NNTP durum yanıtı, ör. `222 0 <id@host> body`.
@@ -58,9 +75,7 @@ impl Response {
             .get(0..3)
             .and_then(|s| s.parse::<u16>().ok())
             .filter(|c| (100..=599).contains(c))
-            .ok_or_else(|| {
-                NntpError::Malformed(format!("durum kodu yok: {line:.80}"))
-            })?;
+            .ok_or_else(|| NntpError::Malformed(format!("durum kodu yok: {line:.80}")))?;
         Ok(Response {
             code,
             text: line[3..].trim().to_string(),
@@ -113,6 +128,16 @@ mod tests {
         assert!(Response::parse("bozuk").is_err());
         assert!(Response::parse("99").is_err());
         assert!(Response::parse("999 kod araligi disi").is_err());
+    }
+
+    #[test]
+    fn baglanti_kotasi_metni_izin_hatasindan_ayrilir() {
+        assert!(is_connection_limit_response("Too many connections"));
+        assert!(is_connection_limit_response(
+            "Maximum number of connections reached"
+        ));
+        assert!(!is_connection_limit_response("Permission denied"));
+        assert!(!is_connection_limit_response("Invalid credentials"));
     }
 
     #[test]
