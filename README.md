@@ -12,6 +12,7 @@ uygulama. UI Flutter, ağır motor Rust; ikisi
                                      ├── yEnc decoder (multipart, CRC32)
                                      ├── NZB parser (XML → dosyalar → segmentler)
                                      ├── Segment ↔ byte-range eşleyici (seek'in kalbi)
+                                     ├── 7z çok-cilt sanal kaynağı (STORE + AES, şifreli başlık)
                                      └── Localhost HTTP server (media_kit'e range ile besler)
 [media_kit player] ←HTTP range← localhost server
 ```
@@ -111,6 +112,20 @@ dışlar.
         dakikaya seek + HEVC decode kanıtlandı; uygulama gerçek pencerede
         sağlıklı açılıyor. Uygulama içinde oynatma için kimlik ayar
         ekranından bir kez girilir (flutter_secure_storage; CLI'den ayrı alan).
-- [ ] **Faz 2+** — Newznab/Easynews arama; RAR/7z/AES stream; PAR2
-      healthcheck+repair (NZBDav MIT kaynağı algoritma referansı, kod
-      kopyalanmaz).
+- [x] **7z çok-cilt akışı** (`rust/src/engine/sevenzip.rs`) — `.7z.001…`
+      ciltleri sıralanıp sanal tek dosya olarak sunulur; STORE ve AES şifreli
+      içerik (şifreli başlıklar dahil) byte-range bazlı, diske indirmeden
+      çözülür. LZMA gibi sıkıştırmalı içerik desteklenmez; eksik cilt/segment
+      açık hata verir. Bağlantı yaşam döngüsü sağlamlaştırıldı: cilt
+      hazırlığı sınırlı eşzamanlılıkla ilerler, oturum iptali tüm
+      HTTP/NNTP görevlerini kapatır, `502 Too many connections` parola
+      hatasından ayrı raporlanır.
+- [x] **Oynatıcı katmanı** (`lib/player/`) — sade, gerektiğinde beliren
+      kontrol yerleşimi; Smart Canvas (oran sürükleme, letterbox giderme,
+      dosya başına kayıt), ekran üstü altyazı kontrolleri (boyut/konum/sync),
+      hız kontrolü, A-B döngüsü, kare kare ilerleme, zoom, dönemsel oynatma
+      bilgisi, sağ tık menüsü, HDR tone-mapping profili, macOS/Windows PiP,
+      macOS'ta başlıksız pencere.
+- [ ] **Faz 2+** — Newznab/Easynews arama; RAR stream; PAR2
+      healthcheck+repair; 7z içinde LZMA vb. sıkıştırmalı içerik (NZBDav MIT
+      kaynağı algoritma referansı, kod kopyalanmaz).
