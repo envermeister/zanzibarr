@@ -18,7 +18,6 @@ class GyuniPlayerChrome extends StatelessWidget {
     required this.position,
     required this.duration,
     required this.rate,
-    required this.seekStep,
     required this.tracks,
     required this.selectedTrack,
     required this.onActivity,
@@ -29,8 +28,6 @@ class GyuniPlayerChrome extends StatelessWidget {
     required this.onTogglePictureInPicture,
     required this.onToggleCanvas,
     required this.onToggleSubtitleControls,
-    required this.onSeekBackward,
-    required this.onSeekForward,
     required this.onFrameBackward,
     required this.onFrameForward,
     required this.onScrubStart,
@@ -64,7 +61,6 @@ class GyuniPlayerChrome extends StatelessWidget {
   final String? engineBadge;
   final Duration position;
   final Duration duration;
-  final Duration seekStep;
   final double rate;
   final Tracks tracks;
   final Track selectedTrack;
@@ -79,8 +75,6 @@ class GyuniPlayerChrome extends StatelessWidget {
   final VoidCallback onTogglePictureInPicture;
   final VoidCallback onToggleCanvas;
   final VoidCallback onToggleSubtitleControls;
-  final VoidCallback onSeekBackward;
-  final VoidCallback onSeekForward;
   final VoidCallback onFrameBackward;
   final VoidCallback onFrameForward;
   final ValueChanged<Duration> onScrubStart;
@@ -156,14 +150,11 @@ class GyuniPlayerChrome extends StatelessWidget {
                           position: position,
                           duration: duration,
                           rate: rate,
-                          seekStep: seekStep,
                           tracks: tracks,
                           selectedTrack: selectedTrack,
                           previewImage: previewImage,
                           previewPosition: previewPosition,
                           onTogglePlay: onTogglePlay,
-                          onSeekBackward: onSeekBackward,
-                          onSeekForward: onSeekForward,
                           onFrameBackward: onFrameBackward,
                           onFrameForward: onFrameForward,
                           onScrubStart: onScrubStart,
@@ -485,14 +476,11 @@ class _BottomControls extends StatelessWidget {
     required this.position,
     required this.duration,
     required this.rate,
-    required this.seekStep,
     required this.tracks,
     required this.selectedTrack,
     required this.previewImage,
     required this.previewPosition,
     required this.onTogglePlay,
-    required this.onSeekBackward,
-    required this.onSeekForward,
     required this.onFrameBackward,
     required this.onFrameForward,
     required this.onScrubStart,
@@ -509,14 +497,11 @@ class _BottomControls extends StatelessWidget {
   final Duration position;
   final Duration duration;
   final double rate;
-  final Duration seekStep;
   final Tracks tracks;
   final Track selectedTrack;
   final Uint8List? previewImage;
   final Duration? previewPosition;
   final VoidCallback onTogglePlay;
-  final VoidCallback onSeekBackward;
-  final VoidCallback onSeekForward;
   final VoidCallback onFrameBackward;
   final VoidCallback onFrameForward;
   final ValueChanged<Duration> onScrubStart;
@@ -617,18 +602,6 @@ class _BottomControls extends StatelessWidget {
                               : Icons.play_arrow_rounded,
                           tooltip: playing ? 'Duraklat' : 'Oynat',
                           onPressed: ready ? onTogglePlay : null,
-                        ),
-                        _CompactIconButton(
-                          icon: Icons.replay_rounded,
-                          tooltip: '${seekStep.inSeconds} saniye geri',
-                          onPressed: ready ? onSeekBackward : null,
-                          badge: '-${seekStep.inSeconds}',
-                        ),
-                        _CompactIconButton(
-                          icon: Icons.forward_rounded,
-                          tooltip: '${seekStep.inSeconds} saniye ileri',
-                          onPressed: ready ? onSeekForward : null,
-                          badge: '+${seekStep.inSeconds}',
                         ),
                         if (buffering)
                           const Padding(
@@ -870,14 +843,12 @@ class _CompactIconButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.selected = false,
-    this.badge,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
   final bool selected;
-  final String? badge;
 
   @override
   Widget build(BuildContext context) {
@@ -902,25 +873,7 @@ class _CompactIconButton extends StatelessWidget {
             ),
           ),
           onPressed: onPressed,
-          icon: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Icon(icon, size: 18),
-              if (badge case final text?)
-                Positioned(
-                  right: -7,
-                  bottom: -5,
-                  child: Text(
-                    text,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 7,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-            ],
-          ),
+          icon: Icon(icon, size: 18),
         ),
       ),
     );

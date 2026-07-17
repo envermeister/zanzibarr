@@ -2044,7 +2044,6 @@ class _PlayerScreenState extends State<PlayerScreen>
                 position: _position,
                 duration: _duration,
                 rate: _rate,
-                seekStep: _seekStep,
                 tracks: _tracks,
                 selectedTrack: _track,
                 previewImage: _previewImage,
@@ -2063,9 +2062,6 @@ class _PlayerScreenState extends State<PlayerScreen>
                     unawaited(_togglePictureInPicture()),
                 onToggleCanvas: _toggleCanvasEditor,
                 onToggleSubtitleControls: _toggleSubtitleControls,
-                onSeekBackward: () =>
-                    unawaited(_seekRelative(_negateDuration(_seekStep))),
-                onSeekForward: () => unawaited(_seekRelative(_seekStep)),
                 onFrameBackward: () => unawaited(_stepBackward()),
                 onFrameForward: () => unawaited(_stepForward()),
                 onScrubStart: _onScrubStart,
