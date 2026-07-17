@@ -21,13 +21,14 @@ class GyuniPlayerChrome extends StatelessWidget {
     required this.tracks,
     required this.selectedTrack,
     required this.onActivity,
-    required this.onToggleVisibility,
+    required this.onVideoTap,
     required this.onTogglePlay,
     required this.onClose,
     required this.onToggleFullscreen,
     required this.onTogglePictureInPicture,
     required this.onToggleCanvas,
     required this.onToggleSubtitleControls,
+    required this.onDoubleTapSeek,
     required this.onFrameBackward,
     required this.onFrameForward,
     required this.onScrubStart,
@@ -37,9 +38,13 @@ class GyuniPlayerChrome extends StatelessWidget {
     required this.onSubtitleSelected,
     required this.onAudioSelected,
     required this.onShowContextMenu,
+    required this.volume,
+    required this.onVolumeChanged,
+    required this.onToggleMute,
     this.previewImage,
     this.previewPosition,
     this.editorOverlay,
+    this.seekFlashDirection,
     this.isPictureInPicture = false,
     this.canvasActive = false,
     this.subtitleControlsActive = false,
@@ -67,14 +72,17 @@ class GyuniPlayerChrome extends StatelessWidget {
   final Uint8List? previewImage;
   final Duration? previewPosition;
   final Widget? editorOverlay;
+  final int? seekFlashDirection;
+  final double volume;
   final VoidCallback onActivity;
-  final VoidCallback onToggleVisibility;
+  final VoidCallback onVideoTap;
   final VoidCallback onTogglePlay;
   final VoidCallback onClose;
   final VoidCallback onToggleFullscreen;
   final VoidCallback onTogglePictureInPicture;
   final VoidCallback onToggleCanvas;
   final VoidCallback onToggleSubtitleControls;
+  final ValueChanged<int> onDoubleTapSeek;
   final VoidCallback onFrameBackward;
   final VoidCallback onFrameForward;
   final ValueChanged<Duration> onScrubStart;
@@ -83,12 +91,34 @@ class GyuniPlayerChrome extends StatelessWidget {
   final ValueChanged<double> onRateSelected;
   final ValueChanged<SubtitleTrack> onSubtitleSelected;
   final ValueChanged<AudioTrack> onAudioSelected;
+  final ValueChanged<double> onVolumeChanged;
+  final VoidCallback onToggleMute;
   final ValueChanged<Offset> onShowContextMenu;
+
+  void _handleVideoDoubleTap(BuildContext context, Offset? position) {
+    final size = context.size;
+    if (position == null || size == null || size.width <= 0) {
+      onToggleFullscreen();
+      return;
+    }
+    final fraction = position.dx / size.width;
+    if (fraction < 0.35) {
+      onDoubleTapSeek(-1);
+    } else if (fraction > 0.65) {
+      onDoubleTapSeek(1);
+    } else {
+      onToggleFullscreen();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     final editorActive = editorOverlay != null;
     final chromeVisible = !editorActive && (visible || !playing || !ready);
+    // onDoubleTapDown ve onDoubleTap aynı jest dizisinde art arda tetiklenir
+    // ve aynı build'in closure'ını paylaşır; çift tık konumu state tutmadan
+    // güvenle okunur.
+    Offset? doubleTapPosition;
     return MouseRegion(
       cursor: editorActive
           ? MouseCursor.defer
@@ -99,8 +129,13 @@ class GyuniPlayerChrome extends StatelessWidget {
       onHover: (_) => onActivity(),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onTap: editorActive ? null : onToggleVisibility,
-        onDoubleTap: editorActive ? null : onToggleFullscreen,
+        onTap: editorActive ? null : onVideoTap,
+        onDoubleTapDown: editorActive
+            ? null
+            : (details) => doubleTapPosition = details.localPosition,
+        onDoubleTap: editorActive
+            ? null
+            : () => _handleVideoDoubleTap(context, doubleTapPosition),
         onSecondaryTapDown: editorActive
             ? null
             : (details) {
@@ -112,6 +147,20 @@ class GyuniPlayerChrome extends StatelessWidget {
           children: [
             if (!ready) _StartupStatus(status: status, buffering: buffering),
             ?editorOverlay,
+            // YouTube tarzı: ara belleğe alma göstergesi videonun ortasında
+            // belirir; alt çubuk temiz kalır.
+            if (ready && buffering)
+              const Center(
+                child: SizedBox.square(
+                  dimension: 46,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3,
+                    color: Colors.white70,
+                  ),
+                ),
+              ),
+            if (seekFlashDirection case final direction?)
+              _SeekFlash(direction: direction),
             if (periodicInfoVisible && !chromeVisible)
               _PeriodicPlaybackInfo(position: position, duration: duration),
             IgnorePointer(
@@ -131,13 +180,11 @@ class GyuniPlayerChrome extends StatelessWidget {
                           filename: filename,
                           engineBadge: engineBadge,
                           ready: ready,
-                          playing: playing,
                           canvasActive: canvasActive,
                           subtitleControlsActive: subtitleControlsActive,
                           pictureInPictureSupported: pictureInPictureSupported,
                           isPictureInPicture: isPictureInPicture,
                           onClose: onClose,
-                          onTogglePlay: onTogglePlay,
                           onToggleCanvas: onToggleCanvas,
                           onToggleSubtitleControls: onToggleSubtitleControls,
                           onTogglePictureInPicture: onTogglePictureInPicture,
@@ -146,7 +193,6 @@ class GyuniPlayerChrome extends StatelessWidget {
                         _BottomControls(
                           ready: ready,
                           playing: playing,
-                          buffering: buffering,
                           position: position,
                           duration: duration,
                           rate: rate,
@@ -154,7 +200,10 @@ class GyuniPlayerChrome extends StatelessWidget {
                           selectedTrack: selectedTrack,
                           previewImage: previewImage,
                           previewPosition: previewPosition,
+                          volume: volume,
                           onTogglePlay: onTogglePlay,
+                          onToggleMute: onToggleMute,
+                          onVolumeChanged: onVolumeChanged,
                           onFrameBackward: onFrameBackward,
                           onFrameForward: onFrameForward,
                           onScrubStart: onScrubStart,
@@ -330,13 +379,11 @@ class _TopToolbar extends StatelessWidget {
     required this.filename,
     required this.engineBadge,
     required this.ready,
-    required this.playing,
     required this.canvasActive,
     required this.subtitleControlsActive,
     required this.pictureInPictureSupported,
     required this.isPictureInPicture,
     required this.onClose,
-    required this.onTogglePlay,
     required this.onToggleCanvas,
     required this.onToggleSubtitleControls,
     required this.onTogglePictureInPicture,
@@ -346,13 +393,11 @@ class _TopToolbar extends StatelessWidget {
   final String filename;
   final String? engineBadge;
   final bool ready;
-  final bool playing;
   final bool canvasActive;
   final bool subtitleControlsActive;
   final bool pictureInPictureSupported;
   final bool isPictureInPicture;
   final VoidCallback onClose;
-  final VoidCallback onTogglePlay;
   final VoidCallback onToggleCanvas;
   final VoidCallback onToggleSubtitleControls;
   final VoidCallback onTogglePictureInPicture;
@@ -378,13 +423,6 @@ class _TopToolbar extends StatelessWidget {
                       icon: Icons.close_rounded,
                       tooltip: 'Oynatıcıyı kapat',
                       onPressed: onClose,
-                    ),
-                    _CompactIconButton(
-                      icon: playing
-                          ? Icons.pause_rounded
-                          : Icons.play_arrow_rounded,
-                      tooltip: playing ? 'Duraklat' : 'Oynat',
-                      onPressed: ready ? onTogglePlay : null,
                     ),
                   ],
                 ),
@@ -472,7 +510,6 @@ class _BottomControls extends StatelessWidget {
   const _BottomControls({
     required this.ready,
     required this.playing,
-    required this.buffering,
     required this.position,
     required this.duration,
     required this.rate,
@@ -480,7 +517,10 @@ class _BottomControls extends StatelessWidget {
     required this.selectedTrack,
     required this.previewImage,
     required this.previewPosition,
+    required this.volume,
     required this.onTogglePlay,
+    required this.onToggleMute,
+    required this.onVolumeChanged,
     required this.onFrameBackward,
     required this.onFrameForward,
     required this.onScrubStart,
@@ -493,7 +533,6 @@ class _BottomControls extends StatelessWidget {
 
   final bool ready;
   final bool playing;
-  final bool buffering;
   final Duration position;
   final Duration duration;
   final double rate;
@@ -501,7 +540,10 @@ class _BottomControls extends StatelessWidget {
   final Track selectedTrack;
   final Uint8List? previewImage;
   final Duration? previewPosition;
+  final double volume;
   final VoidCallback onTogglePlay;
+  final VoidCallback onToggleMute;
+  final ValueChanged<double> onVolumeChanged;
   final VoidCallback onFrameBackward;
   final VoidCallback onFrameForward;
   final ValueChanged<Duration> onScrubStart;
@@ -603,17 +645,6 @@ class _BottomControls extends StatelessWidget {
                           tooltip: playing ? 'Duraklat' : 'Oynat',
                           onPressed: ready ? onTogglePlay : null,
                         ),
-                        if (buffering)
-                          const Padding(
-                            padding: EdgeInsets.symmetric(horizontal: 6),
-                            child: SizedBox.square(
-                              dimension: 13,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 1.6,
-                                color: Colors.white54,
-                              ),
-                            ),
-                          ),
                         const SizedBox(width: 4),
                         Expanded(
                           child: Text(
@@ -629,15 +660,21 @@ class _BottomControls extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (showAudio)
+                        if (showAudio) ...[
+                          _VolumeControl(
+                            volume: volume,
+                            onToggleMute: onToggleMute,
+                            onChanged: onVolumeChanged,
+                          ),
                           _TrackMenu<AudioTrack>(
                             tooltip: 'Ses izi',
-                            icon: Icons.volume_up_rounded,
+                            icon: Icons.graphic_eq_rounded,
                             tracks: tracks.audio,
                             selectedId: selectedTrack.audio.id,
                             label: trackLabel,
                             onSelected: onAudioSelected,
                           ),
+                        ],
                         _TrackMenu<SubtitleTrack>(
                           tooltip: 'Altyazı izi',
                           icon: Icons.subtitles_rounded,
@@ -703,6 +740,92 @@ class _BottomControls extends StatelessWidget {
                   },
                 ),
               ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ses düzeyi kontrolü: sessize alma düğmesi + kompakt kaydırıcı.
+class _VolumeControl extends StatelessWidget {
+  const _VolumeControl({
+    required this.volume,
+    required this.onToggleMute,
+    required this.onChanged,
+  });
+
+  final double volume;
+  final VoidCallback onToggleMute;
+  final ValueChanged<double> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = volume <= 0.5;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _CompactIconButton(
+          icon: muted
+              ? Icons.volume_off_rounded
+              : volume < 50
+              ? Icons.volume_down_rounded
+              : Icons.volume_up_rounded,
+          tooltip: muted ? 'Sesi aç' : 'Sesi kapat',
+          onPressed: onToggleMute,
+        ),
+        SizedBox(
+          width: 76,
+          height: 32,
+          child: SliderTheme(
+            data: const SliderThemeData(
+              trackHeight: 3,
+              thumbShape: RoundSliderThumbShape(enabledThumbRadius: 5),
+              overlayShape: RoundSliderOverlayShape(overlayRadius: 10),
+              activeTrackColor: Colors.white,
+              inactiveTrackColor: Colors.white24,
+              thumbColor: Colors.white,
+              overlayColor: Colors.white24,
+            ),
+            child: Slider(
+              value: (volume / 100).clamp(0.0, 1.0),
+              onChanged: (value) => onChanged(value * 100),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Çift tık seek'inin YouTube tarzı anlık geri bildirimi.
+class _SeekFlash extends StatelessWidget {
+  const _SeekFlash({required this.direction});
+
+  final int direction;
+
+  @override
+  Widget build(BuildContext context) {
+    final forward = direction >= 0;
+    return Positioned(
+      left: forward ? null : 42,
+      right: forward ? 42 : null,
+      top: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: Center(
+          child: Container(
+            width: 72,
+            height: 72,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.45),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              forward ? Icons.forward_10_rounded : Icons.replay_10_rounded,
+              color: Colors.white,
+              size: 32,
             ),
           ),
         ),

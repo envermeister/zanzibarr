@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -80,6 +81,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   StreamSubscription<int?>? _widthSubscription;
   StreamSubscription<Tracks>? _tracksSubscription;
   StreamSubscription<Track>? _trackSubscription;
+  StreamSubscription<double>? _volumeSubscription;
 
   String _status = 'Hazırlanıyor…';
   String _engineStatus = 'Native libmpv hazırlanıyor…';
@@ -117,8 +119,12 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _playbackReady = false;
   bool _buffering = false;
   double _bufferingPercentage = 0.0;
+  double _volume = 100.0;
+  double _lastNonZeroVolume = 100.0;
+  int? _seekFlashDirection;
 
   Timer? _controlsTimer;
+  Timer? _seekFlashTimer;
   Timer? _periodicInfoTimer;
   Timer? _periodicInfoHideTimer;
   Timer? _previewDebounce;
@@ -206,6 +212,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     _trackSubscription = _player.stream.track.listen((track) {
       if (!mounted) return;
       setState(() => _track = track);
+    });
+    _volumeSubscription = _player.stream.volume.listen((volume) {
+      if (!mounted) return;
+      setState(() {
+        _volume = volume;
+        if (volume > 0.5) _lastNonZeroVolume = volume;
+      });
     });
     unawaited(_start());
   }
@@ -611,6 +624,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _queuedSubtitleDelay = null;
     _startupGuard.dispose();
     _controlsTimer?.cancel();
+    _seekFlashTimer?.cancel();
     _periodicInfoTimer?.cancel();
     _periodicInfoHideTimer?.cancel();
     _previewDebounce?.cancel();
@@ -631,6 +645,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       _widthSubscription,
       _tracksSubscription,
       _trackSubscription,
+      _volumeSubscription,
     ];
     unawaited(_disposeResources(subscriptions));
     super.dispose();
@@ -759,6 +774,39 @@ class _PlayerScreenState extends State<PlayerScreen>
       _showControlError(error);
     }
   }
+
+  void _onVolumeChanged(double value) {
+    final clamped = value.clamp(0.0, 100.0);
+    if (clamped > 0.5) _lastNonZeroVolume = clamped;
+    unawaited(_player.setVolume(clamped));
+  }
+
+  void _toggleMute() {
+    _revealControls();
+    if (_volume > 0.5) {
+      _lastNonZeroVolume = _volume;
+      unawaited(_player.setVolume(0));
+    } else {
+      unawaited(_player.setVolume(_lastNonZeroVolume));
+    }
+  }
+
+  /// YouTube tarzı çift tık bölgesi: sabit ±10 saniye atlama ve kısa bir
+  /// ekran geri bildirimi.
+  void _flashSeek(int direction) {
+    unawaited(_seekRelative(Duration(seconds: 10 * direction)));
+    _seekFlashTimer?.cancel();
+    setState(() => _seekFlashDirection = direction);
+    _seekFlashTimer = Timer(const Duration(milliseconds: 650), () {
+      if (mounted) setState(() => _seekFlashDirection = null);
+    });
+  }
+
+  /// Masaüstünde tek tık oynat/duraklat demektir (YouTube davranışı);
+  /// dokunmatik ana platformlarda tek dokunma kontrolleri gösterir/gizler.
+  bool get _touchPrimary =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.android;
 
   Future<void> _selectSubtitle(SubtitleTrack track) async {
     try {
@@ -2037,6 +2085,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                 ready: _playbackReady,
                 playing: _playing,
                 buffering: _buffering,
+                volume: _volume,
                 periodicInfoVisible: _periodicInfoVisible,
                 filename: _info?.filename ?? 'Video hazırlanıyor…',
                 status: _status,
@@ -2049,12 +2098,15 @@ class _PlayerScreenState extends State<PlayerScreen>
                 previewImage: _previewImage,
                 previewPosition: _previewPosition,
                 editorOverlay: _buildEditorOverlay(),
+                seekFlashDirection: _seekFlashDirection,
                 isPictureInPicture: _isPictureInPicture,
                 canvasActive: _canvasEditing,
                 subtitleControlsActive: _subtitleControlsVisible,
                 pictureInPictureSupported: _pictureInPictureWindow.isSupported,
                 onActivity: _revealControls,
-                onToggleVisibility: _toggleControlsVisibility,
+                onVideoTap: _touchPrimary
+                    ? _toggleControlsVisibility
+                    : () => unawaited(_togglePlay()),
                 onTogglePlay: () => unawaited(_togglePlay()),
                 onClose: () => unawaited(_closePlayer()),
                 onToggleFullscreen: () => unawaited(_toggleFullscreen()),
@@ -2062,6 +2114,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                     unawaited(_togglePictureInPicture()),
                 onToggleCanvas: _toggleCanvasEditor,
                 onToggleSubtitleControls: _toggleSubtitleControls,
+                onDoubleTapSeek: _flashSeek,
+                onVolumeChanged: _onVolumeChanged,
+                onToggleMute: _toggleMute,
                 onFrameBackward: () => unawaited(_stepBackward()),
                 onFrameForward: () => unawaited(_stepForward()),
                 onScrubStart: _onScrubStart,
