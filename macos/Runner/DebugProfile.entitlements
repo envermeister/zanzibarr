@@ -12,5 +12,12 @@
 	<true/>
 	<key>com.apple.security.files.user-selected.read-only</key>
 	<true/>
+	<!-- Keychain (flutter_secure_storage): application-identifier'lı
+	     provisioning profile gömülmesini zorlar; onsuz macOS Keychain
+	     yazımı -34018 (errSecMissingEntitlement) verir. -->
+	<key>keychain-access-groups</key>
+	<array>
+		<string>$(AppIdentifierPrefix)com.usenews.usenews</string>
+	</array>
 </dict>
 </plist>

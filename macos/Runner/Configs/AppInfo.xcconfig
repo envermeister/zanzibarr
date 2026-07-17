@@ -13,6 +13,6 @@ PRODUCT_BUNDLE_IDENTIFIER = com.usenews.usenews
 // The copyright displayed in application information
 PRODUCT_COPYRIGHT = Copyright © 2026 com.usenews. All rights reserved.
 
-// Otomatik imzalama takımı (kişisel/development). Yerel Keychain erişimi
-// (flutter_secure_storage) gerçek imza gerektirir; ad-hoc imza -34018 verir.
-DEVELOPMENT_TEAM = V3VJ8PC2BC
+// Otomatik imzalama takımı (Enver Anil Karakoc, Individual). Yerel Keychain
+// erişimi (flutter_secure_storage) gerçek imza gerektirir; ad-hoc -34018 verir.
+DEVELOPMENT_TEAM = 8665FDLXA6
