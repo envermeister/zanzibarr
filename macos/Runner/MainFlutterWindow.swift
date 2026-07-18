@@ -15,9 +15,13 @@ class MainFlutterWindow: NSWindow {
 
     super.awakeFromNib()
 
-    // Trafik ışıklarını ve yerel pencere çerçevesini korurken başlıktaki
-    // uygulama adını gizle.
+    // Yerel başlık çubuğunu tamamen kaldır: içerik pencerenin üst kenarına
+    // kadar uzanır, trafik ışıkları içeriğin üzerinde yüzer ve pencerenin
+    // herhangi bir noktasından sürükleme yapılabilir.
     self.titleVisibility = .hidden
+    self.titlebarAppearsTransparent = true
+    self.styleMask.insert(.fullSizeContentView)
+    self.isMovableByWindowBackground = true
 
     let channel = FlutterMethodChannel(
       name: "com.usenews/window",

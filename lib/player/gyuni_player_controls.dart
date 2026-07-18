@@ -50,6 +50,8 @@ class GyuniPlayerChrome extends StatelessWidget {
     this.subtitleControlsActive = false,
     this.pictureInPictureSupported = false,
     this.engineBadge,
+    this.onLoadExternalAudio,
+    this.onLoadExternalSubtitle,
   });
 
   final bool visible;
@@ -94,6 +96,12 @@ class GyuniPlayerChrome extends StatelessWidget {
   final ValueChanged<double> onVolumeChanged;
   final VoidCallback onToggleMute;
   final ValueChanged<Offset> onShowContextMenu;
+
+  /// Kullanıcının kendi diskinden harici ses/altyazı dosyası eklemesi için
+  /// parça menülerindeki "Dosyadan yükle…" girişlerinin callback'i.
+  /// null bırakılırsa ilgili menüde yükleme girişi gösterilmez.
+  final VoidCallback? onLoadExternalAudio;
+  final VoidCallback? onLoadExternalSubtitle;
 
   void _handleVideoDoubleTap(BuildContext context, Offset? position) {
     final size = context.size;
@@ -212,6 +220,8 @@ class GyuniPlayerChrome extends StatelessWidget {
                           onRateSelected: onRateSelected,
                           onSubtitleSelected: onSubtitleSelected,
                           onAudioSelected: onAudioSelected,
+                          onLoadExternalAudio: onLoadExternalAudio,
+                          onLoadExternalSubtitle: onLoadExternalSubtitle,
                         ),
                       ],
                     ),
@@ -529,6 +539,8 @@ class _BottomControls extends StatelessWidget {
     required this.onRateSelected,
     required this.onSubtitleSelected,
     required this.onAudioSelected,
+    this.onLoadExternalAudio,
+    this.onLoadExternalSubtitle,
   });
 
   final bool ready;
@@ -552,6 +564,8 @@ class _BottomControls extends StatelessWidget {
   final ValueChanged<double> onRateSelected;
   final ValueChanged<SubtitleTrack> onSubtitleSelected;
   final ValueChanged<AudioTrack> onAudioSelected;
+  final VoidCallback? onLoadExternalAudio;
+  final VoidCallback? onLoadExternalSubtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -673,6 +687,7 @@ class _BottomControls extends StatelessWidget {
                             selectedId: selectedTrack.audio.id,
                             label: trackLabel,
                             onSelected: onAudioSelected,
+                            onLoadExternal: onLoadExternalAudio,
                           ),
                         ],
                         _TrackMenu<SubtitleTrack>(
@@ -682,6 +697,7 @@ class _BottomControls extends StatelessWidget {
                           selectedId: selectedTrack.subtitle.id,
                           label: trackLabel,
                           onSelected: onSubtitleSelected,
+                          onLoadExternal: onLoadExternalSubtitle,
                         ),
                         PopupMenuButton<double>(
                           tooltip: 'Oynatma hızı',
@@ -1011,6 +1027,7 @@ class _TrackMenu<T> extends StatelessWidget {
     required this.selectedId,
     required this.label,
     required this.onSelected,
+    this.onLoadExternal,
   });
 
   final String tooltip;
@@ -1020,31 +1037,61 @@ class _TrackMenu<T> extends StatelessWidget {
   final String Function(T) label;
   final ValueChanged<T> onSelected;
 
+  /// Verildiğinde listenin altına "Dosyadan yükle…" girişi eklenir. Menü
+  /// generic değer taşıdığından bu giriş `onSelected`'ı tetiklemez; menü
+  /// kapandıktan sonra bu callback çağrılır.
+  final VoidCallback? onLoadExternal;
+
   @override
   Widget build(BuildContext context) {
+    final loadExternal = onLoadExternal;
     return PopupMenuButton<T>(
       tooltip: tooltip,
       color: const Color(0xF2242427),
       onSelected: onSelected,
-      itemBuilder: (context) => tracks
-          .map(
-            (track) => PopupMenuItem<T>(
-              value: track,
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 20,
-                    child: _trackId(track) == selectedId
-                        ? const Icon(Icons.check_rounded, size: 16)
-                        : null,
-                  ),
-                  const SizedBox(width: 6),
-                  Flexible(child: Text(label(track))),
-                ],
-              ),
+      itemBuilder: (context) => [
+        // Yükleme girişi listenin BAŞINDA durur: popup menüler seçili öğeyi
+        // düğmeyle hizalar; sonda kalan bir öğe (özelikle alttaki kontrol
+        // çubuğunda) ekran dışına taşabilir.
+        if (loadExternal != null) ...[
+          PopupMenuItem<T>(
+            // null değer menüyü onSelected olmadan kapatır; dosya seçici
+            // menü kapanışından sonra açılır.
+            value: null,
+            onTap: () => WidgetsBinding.instance.addPostFrameCallback(
+              (_) => loadExternal(),
             ),
-          )
-          .toList(growable: false),
+            child: const Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  child: Icon(Icons.upload_file_rounded, size: 16),
+                ),
+                SizedBox(width: 6),
+                Flexible(child: Text('Dosyadan yükle…')),
+              ],
+            ),
+          ),
+          const PopupMenuDivider(),
+        ],
+        ...tracks.map(
+          (track) => PopupMenuItem<T>(
+            value: track,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 20,
+                  child: _trackId(track) == selectedId
+                      ? const Icon(Icons.check_rounded, size: 16)
+                      : null,
+                ),
+                const SizedBox(width: 6),
+                Flexible(child: Text(label(track))),
+              ],
+            ),
+          ),
+        ),
+      ],
       child: Padding(
         padding: const EdgeInsets.all(7),
         child: Icon(icon, size: 18, color: Colors.white70),

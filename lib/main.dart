@@ -4,7 +4,6 @@ import 'package:media_kit/media_kit.dart';
 
 import 'player/player_screen.dart';
 import 'settings/settings_screen.dart';
-import 'src/rust/api/simple.dart';
 import 'src/rust/frb_generated.dart';
 
 void main() {
@@ -246,8 +245,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final engine = engineInfo();
-
     return Scaffold(
       body: DecoratedBox(
         decoration: const BoxDecoration(
@@ -307,33 +304,6 @@ class _HomeScreenState extends State<HomeScreen> {
                       _OpenMediaCard(
                         busy: _pickingFile,
                         onPressed: () => _pickAndPlay(context),
-                      ),
-                      const SizedBox(height: 18),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: Color(0xFF30D158),
-                              shape: BoxShape.circle,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              'Yerel motor hazır · $engine',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.bodySmall
-                                  ?.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.32),
-                                    fontSize: 11,
-                                  ),
-                            ),
-                          ),
-                        ],
                       ),
                     ],
                   ),

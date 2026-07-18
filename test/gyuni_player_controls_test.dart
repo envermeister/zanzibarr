@@ -13,6 +13,8 @@ Widget _buildChrome({
   VoidCallback? onToggleFullscreen,
   ValueChanged<double>? onVolumeChanged,
   VoidCallback? onToggleMute,
+  VoidCallback? onLoadExternalAudio,
+  VoidCallback? onLoadExternalSubtitle,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -53,6 +55,8 @@ Widget _buildChrome({
           onShowContextMenu: (_) {},
           onVolumeChanged: onVolumeChanged ?? (_) {},
           onToggleMute: onToggleMute ?? () {},
+          onLoadExternalAudio: onLoadExternalAudio,
+          onLoadExternalSubtitle: onLoadExternalSubtitle,
         ),
       ),
     ),
@@ -131,5 +135,65 @@ void main() {
 
     // Alt çubuktaki küçük gösterge kaldırıldı; yalnız merkezi halka kalır.
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
+  });
+
+  testWidgets('parça menülerinde dosyadan yükle girişi callback tetikler', (
+    tester,
+  ) async {
+    var audioLoads = 0;
+    var subtitleLoads = 0;
+    await tester.pumpWidget(
+      _buildChrome(
+        onLoadExternalAudio: () => audioLoads++,
+        onLoadExternalSubtitle: () => subtitleLoads++,
+      ),
+    );
+
+    // Popup route'un açılış animasyonu fake-async altında koordinatları
+    // kaydırdığından fiziksel dokunma yerine menü öğesinin onTap'i doğrudan
+    // çağrılır; öğenin varlığı ve bağlantısı burada doğrulanır.
+    Future<void> settleMenu() async {
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    await tester.tap(find.byTooltip('Ses izi'));
+    await settleMenu();
+    final audioItem = find.widgetWithText(
+      PopupMenuItem<AudioTrack>,
+      'Dosyadan yükle…',
+    );
+    expect(audioItem, findsOneWidget);
+    tester.widget<PopupMenuItem<AudioTrack>>(audioItem).onTap!();
+    // Gerçek kullanımda InkWell dokunması route'u da kapatır; testte menüyü
+    // aynı şekilde elle kapatıyoruz ki ikinci menünün bariyeri açık kalmasın.
+    Navigator.of(tester.element(audioItem)).pop();
+    await settleMenu();
+    expect(audioLoads, 1);
+    expect(subtitleLoads, 0);
+
+    await tester.tap(find.byTooltip('Altyazı izi'));
+    await settleMenu();
+    final subtitleItem = find.widgetWithText(
+      PopupMenuItem<SubtitleTrack>,
+      'Dosyadan yükle…',
+    );
+    expect(subtitleItem, findsOneWidget);
+    tester.widget<PopupMenuItem<SubtitleTrack>>(subtitleItem).onTap!();
+    Navigator.of(tester.element(subtitleItem)).pop();
+    await settleMenu();
+    expect(subtitleLoads, 1);
+    expect(audioLoads, 1);
+  });
+
+  testWidgets('yükleme callback yoksa menüde dosya girişi gösterilmez', (
+    tester,
+  ) async {
+    await tester.pumpWidget(_buildChrome());
+
+    await tester.tap(find.byTooltip('Altyazı izi'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
+    expect(find.text('Dosyadan yükle…'), findsNothing);
   });
 }

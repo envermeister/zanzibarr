@@ -90,6 +90,14 @@ class AdvancedPlaybackController {
     'gamut-mapping-mode': 'desaturate',
   };
 
+  /// Ton eşleme kapalıyken HDR sinyali ekrana olduğu gibi verilir; SDR
+  /// ekranda görüntü bilinçli olarak soluklaşır (kullanıcı tercihi).
+  static const hdrDisabledProfile = <String, String>{
+    'tone-mapping': 'no',
+    'hdr-compute-peak': 'no',
+    'gamut-mapping-mode': 'auto',
+  };
+
   /// localhost HTTP yanıtı bir NNTP segmentini beklerken media_kit'in beş
   /// saniyelik ağ zaman aşımına takılmaz. Cache bellekte kalır; izlenen medya
   /// sessizce diske yazılmaz.
@@ -167,11 +175,45 @@ class AdvancedPlaybackController {
   VideoPreset videoPreset = VideoPreset.natural;
   UpscalingPreset upscalingPreset = UpscalingPreset.balanced;
   AudioPreset audioPreset = AudioPreset.balanced;
+  bool hdrToneMappingEnabled = false;
+  bool hardwareDecoding = true;
 
   /// media_kit'in kapattığı dinamik peak detection'ı yeniden açar ve her
   /// ayarın libmpv tarafından kabul edildiğini geri okuyarak doğrular.
-  Future<void> applyHdrToneMappingProfile() =>
-      _applyPropertiesWithReadback(hdrToneMappingProfile);
+  Future<void> applyHdrToneMappingProfile() async {
+    await _applyPropertiesWithReadback(hdrToneMappingProfile);
+    hdrToneMappingEnabled = true;
+  }
+
+  /// Ton eşlemeyi kapatır; HDR sinyali ekrana işlenmeden verilir.
+  Future<void> disableHdrToneMapping() async {
+    await _applyPropertiesAtomically(hdrDisabledProfile);
+    hdrToneMappingEnabled = false;
+  }
+
+  /// Donanım kod çözmeyi açar (`auto-safe`) veya kapatır (yazılım). mpv bu
+  /// özelliğin çalışma zamanında değişmesini destekler.
+  Future<void> setHardwareDecoding(bool enabled) async {
+    await _backend.setProperty('hwdec', enabled ? 'auto-safe' : 'no');
+    hardwareDecoding = enabled;
+  }
+
+  /// Geçerli içeriğin HDR sinyali taşıyıp taşımadığını libmpv video
+  /// parametrelerinden okur. Başlık henüz açılmadıysa veya okuma
+  /// başarısızsa güvenli tarafta kalıp false döner.
+  Future<bool> detectHdrContent() async {
+    try {
+      final primaries = (await _backend.getProperty('video-params/primaries'))
+          .trim()
+          .toLowerCase();
+      final gamma = (await _backend.getProperty('video-params/gamma'))
+          .trim()
+          .toLowerCase();
+      return primaries.contains('bt.2020') || gamma == 'pq' || gamma == 'hlg';
+    } catch (_) {
+      return false;
+    }
+  }
 
   Future<void> applyStreamingTransportProfile() =>
       _applyPropertiesWithReadback(streamingTransportProfile);

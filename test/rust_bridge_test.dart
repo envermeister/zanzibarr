@@ -31,13 +31,8 @@ void main() {
     expect(engineInfo(), startsWith('rust_lib_usenews v'));
   });
 
-  testWidgets('Rust motor bilgisi ana ekranda görünüyor', (tester) async {
+  testWidgets('Ana ekran medya açma akışını sunuyor', (tester) async {
     await tester.pumpWidget(const UseNewsApp());
-    // Ana ekrandaki durum satırı engine_info() ile Rust'tan gelir.
-    expect(
-      find.textContaining('Yerel motor hazır · rust_lib_usenews'),
-      findsOneWidget,
-    );
     expect(find.text('NZB seç ve oynat'), findsOneWidget);
   });
 }

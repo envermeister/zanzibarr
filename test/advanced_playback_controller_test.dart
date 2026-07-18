@@ -466,4 +466,67 @@ void main() {
     );
     expect(backend.calls, isEmpty);
   });
+
+  test('HDR ton eşleme kapatma profili doğal yolu geri yükler', () async {
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.applyHdrToneMappingProfile();
+    expect(controller.hdrToneMappingEnabled, isTrue);
+    backend.calls.clear();
+
+    await controller.disableHdrToneMapping();
+
+    expect(controller.hdrToneMappingEnabled, isFalse);
+    expect(backend.calls, [
+      'get:tone-mapping',
+      'get:hdr-compute-peak',
+      'get:gamut-mapping-mode',
+      'set:tone-mapping=no',
+      'set:hdr-compute-peak=no',
+      'set:gamut-mapping-mode=auto',
+    ]);
+  });
+
+  test('donanım kod çözme anahtarı auto-safe ve yazılım arasında geçer', () async {
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setHardwareDecoding(false);
+    expect(controller.hardwareDecoding, isFalse);
+    await controller.setHardwareDecoding(true);
+    expect(controller.hardwareDecoding, isTrue);
+
+    expect(backend.calls, ['set:hwdec=no', 'set:hwdec=auto-safe']);
+  });
+
+  test('HDR içerik tespiti primaries ve gamma üzerinden yapılır', () async {
+    final hdrBackend = _FakeBackend()
+      ..readbackOverrides['video-params/primaries'] = 'bt.2020'
+      ..readbackOverrides['video-params/gamma'] = 'pq';
+    expect(
+      await AdvancedPlaybackController(hdrBackend).detectHdrContent(),
+      isTrue,
+    );
+
+    final hlgBackend = _FakeBackend()
+      ..readbackOverrides['video-params/primaries'] = 'bt.2020'
+      ..readbackOverrides['video-params/gamma'] = 'hlg';
+    expect(
+      await AdvancedPlaybackController(hlgBackend).detectHdrContent(),
+      isTrue,
+    );
+
+    final sdrBackend = _FakeBackend()
+      ..readbackOverrides['video-params/primaries'] = 'bt.709'
+      ..readbackOverrides['video-params/gamma'] = 'bt.1886';
+    expect(
+      await AdvancedPlaybackController(sdrBackend).detectHdrContent(),
+      isFalse,
+    );
+
+    // Başlık henüz açılmadıysa (boş parametreler) SDR kabul edilir.
+    expect(await AdvancedPlaybackController(_FakeBackend()).detectHdrContent(),
+        isFalse);
+  });
 }

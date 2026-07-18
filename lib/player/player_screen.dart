@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:math' as math;
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -117,6 +118,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _startupActive = false;
   bool _startupFailed = false;
   bool _playbackReady = false;
+  bool _hdrToneMappingEnabled = false;
+  bool _hardwareDecoding = true;
   bool _buffering = false;
   double _bufferingPercentage = 0.0;
   double _volume = 100.0;
@@ -454,6 +457,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
     if (!mounted) return;
     setState(() {
+      _hdrToneMappingEnabled = hdrReady;
       _engineStatus = [
         engineVersion,
         'GPU render',
@@ -821,6 +825,55 @@ class _PlayerScreenState extends State<PlayerScreen>
     try {
       await _player.setAudioTrack(track);
       if (mounted) setState(() => _track = _track.copyWith(audio: track));
+    } catch (error) {
+      _showControlError(error);
+    }
+  }
+
+  /// İçeriğin gömülü altyazılarına ek olarak kullanıcının diskinden altyazı
+  /// (srt/ass/vtt…) yükler. libmpv izi mevcut oynatmaya ekler.
+  Future<void> _loadExternalSubtitle() async {
+    try {
+      const typeGroup = XTypeGroup(
+        label: 'Altyazılar',
+        extensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'],
+      );
+      final file = await openFile(acceptedTypeGroups: [typeGroup]);
+      final path = file?.path;
+      if (file == null || path == null || path.isEmpty) return;
+      await _player.setSubtitleTrack(
+        SubtitleTrack.uri(path, title: file.name),
+      );
+    } catch (error) {
+      _showControlError(error);
+    }
+  }
+
+  /// İçeriğin gömülü ses izlerine ek olarak kullanıcının diskinden harici
+  /// ses dosyası (ac3/dts/mka…) yükler.
+  Future<void> _loadExternalAudio() async {
+    try {
+      const typeGroup = XTypeGroup(
+        label: 'Ses dosyaları',
+        extensions: [
+          'mp3',
+          'aac',
+          'ac3',
+          'eac3',
+          'dts',
+          'dtshd',
+          'flac',
+          'ogg',
+          'opus',
+          'mka',
+          'wav',
+          'm4a',
+        ],
+      );
+      final file = await openFile(acceptedTypeGroups: [typeGroup]);
+      final path = file?.path;
+      if (file == null || path == null || path.isEmpty) return;
+      await _player.setAudioTrack(AudioTrack.uri(path, title: file.name));
     } catch (error) {
       _showControlError(error);
     }
@@ -1726,6 +1779,9 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Future<void> _showTuningDialog() async {
     _controlsTimer?.cancel();
+    // İçerik HDR mı? Diyalog açılırken libmpv parametrelerinden okunur;
+    // SDR ise ton eşleme anahtarı pasif kalır.
+    final hdrContentFuture = _playback.detectHdrContent();
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -1910,6 +1966,63 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ],
                       ),
                     ),
+                    _TuningRow(
+                      label: 'Kod çözme',
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _hardwareDecoding ? 'Donanım' : 'Yazılım',
+                            style: const TextStyle(
+                              color: Colors.white54,
+                              fontSize: 12,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Switch(
+                            value: _hardwareDecoding,
+                            onChanged: (value) => unawaited(
+                              refresh(_setHardwareDecoding(value)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    _TuningRow(
+                      label: 'HDR ton eşleme',
+                      child: FutureBuilder<bool>(
+                        future: hdrContentFuture,
+                        builder: (context, snapshot) {
+                          final isHdr = snapshot.data ?? false;
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              if (snapshot.connectionState ==
+                                      ConnectionState.done &&
+                                  !isHdr)
+                                const Padding(
+                                  padding: EdgeInsets.only(right: 8),
+                                  child: Text(
+                                    'SDR içerik',
+                                    style: TextStyle(
+                                      color: Colors.white38,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ),
+                              Switch(
+                                value: _hdrToneMappingEnabled && isHdr,
+                                onChanged: isHdr
+                                    ? (value) => unawaited(
+                                        refresh(_setHdrToneMapping(value)),
+                                      )
+                                    : null,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
                     const SizedBox(height: 6),
                     Text(
                       'HDR: BT.2390 · kare başına peak detect · gamut '
@@ -1934,6 +2047,22 @@ class _PlayerScreenState extends State<PlayerScreen>
       ),
     );
     _revealControls();
+  }
+
+  Future<void> _setHdrToneMapping(bool enabled) async {
+    await _runControl(
+      () => enabled
+          ? _playback.applyHdrToneMappingProfile()
+          : _playback.disableHdrToneMapping(),
+      onSuccess: () => _hdrToneMappingEnabled = enabled,
+    );
+  }
+
+  Future<void> _setHardwareDecoding(bool enabled) async {
+    await _runControl(
+      () => _playback.setHardwareDecoding(enabled),
+      onSuccess: () => _hardwareDecoding = enabled,
+    );
   }
 
   Future<void> _setVideoPreset(VideoPreset preset) async {
@@ -2126,6 +2255,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                 onSubtitleSelected: (track) =>
                     unawaited(_selectSubtitle(track)),
                 onAudioSelected: (track) => unawaited(_selectAudio(track)),
+                onLoadExternalAudio: () => unawaited(_loadExternalAudio()),
+                onLoadExternalSubtitle: () =>
+                    unawaited(_loadExternalSubtitle()),
                 onShowContextMenu: (position) =>
                     unawaited(_showContextMenu(position)),
               ),
