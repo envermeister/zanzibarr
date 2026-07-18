@@ -1,4 +1,4 @@
-# UseNews
+# Zanzibarr
 
 Usenet'ten içeriği indirmeden, seek edilebilir şekilde oynatan cross-platform
 uygulama. UI Flutter, ağır motor Rust; ikisi
@@ -20,9 +20,9 @@ uygulama. UI Flutter, ağır motor Rust; ikisi
 ## Dizin yapısı
 
 - `lib/` — Flutter UI (`lib/src/rust/` FRB tarafından üretilir, elle düzenlenmez)
-- `rust/` — Rust çekirdek crate'i (`rust_lib_usenews`); motor `rust/src/engine/`
+- `rust/` — Rust çekirdek crate'i (`rust_lib_zanzibarr`); motor `rust/src/engine/`
 - `rust_builder/` — cargokit build köprüsü (FRB tarafından üretildi)
-- `tools/usenews-cli/` — geçici geliştirme aracı (kimlik → Keychain, bağlantı sınama)
+- `tools/zanzibarr-cli/` — geçici geliştirme aracı (kimlik → Keychain, bağlantı sınama)
 - `flutter_rust_bridge.yaml` — codegen yapılandırması
 
 ## Geliştirme
@@ -69,7 +69,7 @@ Platform notları:
 ## Geçici CLI (uygulama çalışana dek)
 
 ```sh
-cd tools/usenews-cli
+cd tools/zanzibarr-cli
 cargo run -q -- setup   # kimlik bilgilerini sorar (parola echo'suz), Keychain'e yazar
 cargo run -q -- show    # kayıtları gösterir; parolayı asla yazmaz
 cargo run -q -- check   # TLS + AUTHINFO + DATE ile bağlantı sınaması
@@ -101,7 +101,7 @@ dışlar.
         kullanıcı kimliğiyle yapılacak)
   - [x] Segment ↔ byte-range eşleyici (`rust/src/engine/locator.rs`) —
         çözülmüş ofsetler yalnız yEnc begin/end'ten; gerçek Easynews
-        verisiyle seek kanıtlandı (`usenews-cli probe`)
+        verisiyle seek kanıtlandı (`zanzibarr-cli probe`)
   - [x] Localhost HTTP Range server (`rust/src/engine/server.rs` +
         `nntp_source.rs`) — 200/206/416, `bytes=a-b`/`a-`/`-suffix`, header
         gövdeden önce; gerçek Easynews mkv'siyle `curl --range` ile baştan,

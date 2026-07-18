@@ -384,7 +384,7 @@ class MediaPreferencesStore {
 
   final PlayerPreferenceStorage _storage;
 
-  static const storageKeyPrefix = 'usenews.player_preferences.';
+  static const storageKeyPrefix = 'zanzibarr.player_preferences.';
   static final BigInt _fnvOffsetBasis64 = BigInt.parse(
     'cbf29ce484222325',
     radix: 16,

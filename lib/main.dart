@@ -8,7 +8,7 @@ import 'src/rust/frb_generated.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const UseNewsBootstrap());
+  runApp(const ZanzibarrBootstrap());
 }
 
 Future<void> _initializeNativeEngine() async {
@@ -18,16 +18,16 @@ Future<void> _initializeNativeEngine() async {
 
 /// İlk native çağrı hata verse veya takılsa bile boş pencere yerine anlaşılır
 /// bir durum ve güvenli yeniden-deneme yolu gösterir.
-class UseNewsBootstrap extends StatefulWidget {
-  const UseNewsBootstrap({super.key, this.initialize});
+class ZanzibarrBootstrap extends StatefulWidget {
+  const ZanzibarrBootstrap({super.key, this.initialize});
 
   final Future<void> Function()? initialize;
 
   @override
-  State<UseNewsBootstrap> createState() => _UseNewsBootstrapState();
+  State<ZanzibarrBootstrap> createState() => _ZanzibarrBootstrapState();
 }
 
-class _UseNewsBootstrapState extends State<UseNewsBootstrap> {
+class _ZanzibarrBootstrapState extends State<ZanzibarrBootstrap> {
   late Future<void> _initialization = _startInitialization();
 
   Future<void> _startInitialization() => Future<void>.sync(
@@ -44,9 +44,9 @@ class _UseNewsBootstrapState extends State<UseNewsBootstrap> {
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.done &&
           !snapshot.hasError) {
-        return const UseNewsApp();
+        return const ZanzibarrApp();
       }
-      return UseNewsApp(
+      return ZanzibarrApp(
         home: _EngineStartupView(
           failed: snapshot.hasError,
           onRetry: snapshot.hasError ? _retry : null,
@@ -56,8 +56,8 @@ class _UseNewsBootstrapState extends State<UseNewsBootstrap> {
   );
 }
 
-class UseNewsApp extends StatelessWidget {
-  const UseNewsApp({super.key, this.home = const HomeScreen()});
+class ZanzibarrApp extends StatelessWidget {
+  const ZanzibarrApp({super.key, this.home = const HomeScreen()});
 
   final Widget home;
 
@@ -70,7 +70,7 @@ class UseNewsApp extends StatelessWidget {
       surface: const Color(0xFF141416),
     );
     return MaterialApp(
-      title: 'UseNews',
+      title: 'Zanzibarr',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,

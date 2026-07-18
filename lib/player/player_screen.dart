@@ -172,7 +172,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     WidgetsBinding.instance.addObserver(this);
     _player = Player(
       configuration: const PlayerConfiguration(
-        title: 'UseNews',
+        title: 'Zanzibarr',
         // Desteklenen altyazıları libmpv'nin yerel video yüzeyinde işler;
         // Flutter metin katmanına bağımlı kalmaz.
         libass: true,

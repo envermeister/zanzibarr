@@ -1,4 +1,4 @@
-//! UseNews geçici geliştirme aracı (Xcode kurulup uygulama çalışana dek).
+//! Zanzibarr geçici geliştirme aracı (Xcode kurulup uygulama çalışana dek).
 //!
 //! Kimlik bilgileri yalnızca OS Keychain'de durur:
 //! - Parola echo'suz gizli prompt ile alınır (`rpassword`), asla komut satırı
@@ -20,16 +20,16 @@ use std::ops::Range;
 
 use std::sync::Arc;
 
-use rust_lib_usenews::api::streaming::{start_stream, ProviderConfigDto};
-use rust_lib_usenews::engine::locator::{LocatorError, SegmentLocator};
-use rust_lib_usenews::engine::nntp::{self, NntpPool, ProviderConfig, TlsNntpConnector};
-use rust_lib_usenews::engine::nntp_source::NntpByteSource;
-use rust_lib_usenews::engine::nzb::{self, NzbFile};
-use rust_lib_usenews::engine::server::{self, RangeSource};
-use rust_lib_usenews::engine::yenc;
+use rust_lib_zanzibarr::api::streaming::{start_stream, ProviderConfigDto};
+use rust_lib_zanzibarr::engine::locator::{LocatorError, SegmentLocator};
+use rust_lib_zanzibarr::engine::nntp::{self, NntpPool, ProviderConfig, TlsNntpConnector};
+use rust_lib_zanzibarr::engine::nntp_source::NntpByteSource;
+use rust_lib_zanzibarr::engine::nzb::{self, NzbFile};
+use rust_lib_zanzibarr::engine::server::{self, RangeSource};
+use rust_lib_zanzibarr::engine::yenc;
 
 /// Keychain servis adı; anahtarlar uygulamadakiyle aynı adları izler.
-const SERVICE: &str = "usenews";
+const SERVICE: &str = "zanzibarr";
 const KEY_HOST: &str = "provider.host";
 const KEY_PORT: &str = "provider.port";
 const KEY_USERNAME: &str = "provider.username";
@@ -50,7 +50,7 @@ fn main() -> ExitCode {
             // (başlık incelemesi gibi tanı işleri için).
             Some(message_id) => run_async(fetch(message_id.clone(), args.get(2).cloned())),
             None => {
-                eprintln!("kullanım: usenews-cli fetch <message-id> [çıktı-dosyası]");
+                eprintln!("kullanım: zanzibarr-cli fetch <message-id> [çıktı-dosyası]");
                 return ExitCode::FAILURE;
             }
         },
@@ -67,7 +67,7 @@ fn main() -> ExitCode {
                 }
             }
             None => {
-                eprintln!("kullanım: usenews-cli probe <nzb-dosyası> [çözülmüş-offset]");
+                eprintln!("kullanım: zanzibarr-cli probe <nzb-dosyası> [çözülmüş-offset]");
                 return ExitCode::FAILURE;
             }
         },
@@ -84,7 +84,7 @@ fn main() -> ExitCode {
                 }
             }
             None => {
-                eprintln!("kullanım: usenews-cli serve <nzb-dosyası> [port]");
+                eprintln!("kullanım: zanzibarr-cli serve <nzb-dosyası> [port]");
                 return ExitCode::FAILURE;
             }
         },
@@ -101,7 +101,7 @@ fn main() -> ExitCode {
                 }
             }
             None => {
-                eprintln!("kullanım: usenews-cli stream-check <nzb-dosyası> [çözülmüş-offset]");
+                eprintln!("kullanım: zanzibarr-cli stream-check <nzb-dosyası> [çözülmüş-offset]");
                 return ExitCode::FAILURE;
             }
         },
@@ -122,13 +122,13 @@ fn main() -> ExitCode {
 
 fn print_help() {
     println!(
-        "usenews-cli — geçici geliştirme aracı\n\
+        "zanzibarr-cli — geçici geliştirme aracı\n\
          \n\
          Komutlar:\n\
          setup   Sağlayıcı bilgilerini sorar, Keychain'e yazar\n\
          (parola gizli prompt ile alınır, asla argüman değildir)\n\
          show    Kayıtlı ayarları gösterir (parolayı asla yazmaz)\n\
-         clear   Keychain'deki UseNews kayıtlarını siler\n\
+         clear   Keychain'deki Zanzibarr kayıtlarını siler\n\
          check   TLS + AUTHINFO + DATE ile bağlantıyı sınar\n\
          fetch <message-id>  Tek article çeker, yEnc olarak çözmeyi dener\n\
          probe <nzb> [offset]  NZB'nin en büyük dosyasında verilen çözülmüş\n\
@@ -186,7 +186,7 @@ fn prompt(label: &str, current: Option<&str>) -> Result<String, String> {
 }
 
 fn setup() -> Result<(), String> {
-    println!("UseNews sağlayıcı kurulumu — değerler yalnızca Keychain'e yazılır.\n");
+    println!("Zanzibarr sağlayıcı kurulumu — değerler yalnızca Keychain'e yazılır.\n");
 
     let host = prompt("NNTP sunucusu", read_secret(KEY_HOST)?.as_deref())?;
     let port = prompt(
@@ -231,7 +231,7 @@ fn setup() -> Result<(), String> {
     write_secret(KEY_USERNAME, &username)?;
     write_secret(KEY_MAX_CONNECTIONS, &max_connections)?;
 
-    println!("\nKaydedildi. Sınamak için: usenews-cli check");
+    println!("\nKaydedildi. Sınamak için: zanzibarr-cli check");
     Ok(())
 }
 
@@ -265,12 +265,12 @@ fn clear() -> Result<(), String> {
             Err(err) => return Err(err.to_string()),
         }
     }
-    println!("Keychain'deki UseNews kayıtları silindi.");
+    println!("Keychain'deki Zanzibarr kayıtları silindi.");
     Ok(())
 }
 
 fn load_config() -> Result<ProviderConfig, String> {
-    let missing = || "eksik ayar; önce çalıştır: usenews-cli setup".to_string();
+    let missing = || "eksik ayar; önce çalıştır: zanzibarr-cli setup".to_string();
     Ok(ProviderConfig {
         host: read_secret(KEY_HOST)?.ok_or_else(missing)?,
         port: read_secret(KEY_PORT)?

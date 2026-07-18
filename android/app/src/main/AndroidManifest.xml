@@ -4,7 +4,7 @@
          paketinin çalışması için burada da olmalı. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="usenews"
+        android:label="zanzibarr"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

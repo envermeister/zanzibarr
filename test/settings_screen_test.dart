@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usenews/settings/provider_settings.dart';
-import 'package:usenews/settings/settings_screen.dart';
+import 'package:zanzibarr/settings/provider_settings.dart';
+import 'package:zanzibarr/settings/settings_screen.dart';
 
 /// Gerçek secure storage yerine bellek içi sahte depo.
 class _FakeStore extends ProviderSettingsStore {

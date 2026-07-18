@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usenews/player/playback_startup_guard.dart';
+import 'package:zanzibarr/player/playback_startup_guard.dart';
 
 void main() {
   testWidgets('startup guard zaman aşımında bir kez çalışır', (tester) async {

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usenews/player/smart_canvas.dart';
-import 'package:usenews/player/smart_canvas_overlay.dart';
+import 'package:zanzibarr/player/smart_canvas.dart';
+import 'package:zanzibarr/player/smart_canvas_overlay.dart';
 
 void main() {
   group('Smart Canvas geometry', () {

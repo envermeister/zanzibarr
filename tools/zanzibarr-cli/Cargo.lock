@@ -762,7 +762,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust_lib_usenews"
+name = "rust_lib_zanzibarr"
 version = "0.1.0"
 dependencies = [
  "aes",
@@ -1008,16 +1008,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
-name = "usenews-cli"
-version = "0.1.0"
-dependencies = [
- "keyring",
- "rpassword",
- "rust_lib_usenews",
- "tokio",
-]
-
-[[package]]
 name = "version_check"
 version = "0.9.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1199,6 +1189,16 @@ name = "windows_x86_64_msvc"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "589f6da84c646204747d1270a2a5661ea66ed1cced2631d546fdfb155959f9ec"
+
+[[package]]
+name = "zanzibarr-cli"
+version = "0.1.0"
+dependencies = [
+ "keyring",
+ "rpassword",
+ "rust_lib_zanzibarr",
+ "tokio",
+]
 
 [[package]]
 name = "zeroize"

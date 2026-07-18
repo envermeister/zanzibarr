@@ -12,7 +12,7 @@
 	<true/>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)com.usenews.usenews</string>
+		<string>$(AppIdentifierPrefix)com.zanzibarr.zanzibarr</string>
 	</array>
 </dict>
 </plist>

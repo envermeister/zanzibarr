@@ -24,7 +24,7 @@ class MainFlutterWindow: NSWindow {
     self.isMovableByWindowBackground = true
 
     let channel = FlutterMethodChannel(
-      name: "com.usenews/window",
+      name: "com.zanzibarr/window",
       binaryMessenger: flutterViewController.engine.binaryMessenger
     )
     channel.setMethodCallHandler { [weak self] call, result in

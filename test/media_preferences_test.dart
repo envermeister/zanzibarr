@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usenews/player/media_preferences.dart';
+import 'package:zanzibarr/player/media_preferences.dart';
 
 class _MemoryPreferenceStorage implements PlayerPreferenceStorage {
   final Map<String, String> values = <String, String>{};
@@ -33,16 +33,16 @@ void main() {
       expect(first, second);
       expect(
         first,
-        matches(RegExp(r'^usenews\.player_preferences\.[0-9a-f]{16}$')),
+        matches(RegExp(r'^zanzibarr\.player_preferences\.[0-9a-f]{16}$')),
       );
       expect(first, isNot(contains(path)));
       expect(
         MediaPreferencesStore.storageKeyFor(''),
-        'usenews.player_preferences.cbf29ce484222325',
+        'zanzibarr.player_preferences.cbf29ce484222325',
       );
       expect(
         MediaPreferencesStore.storageKeyFor('a'),
-        'usenews.player_preferences.af63dc4c8601ec8c',
+        'zanzibarr.player_preferences.af63dc4c8601ec8c',
       );
       expect(MediaPreferencesStore.storageKeyFor('$path.copy'), isNot(first));
     });

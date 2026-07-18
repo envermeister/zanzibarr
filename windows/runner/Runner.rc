@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.usenews" "\0"
-            VALUE "FileDescription", "usenews" "\0"
+            VALUE "CompanyName", "com.zanzibarr" "\0"
+            VALUE "FileDescription", "zanzibarr" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "usenews" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.usenews. All rights reserved." "\0"
-            VALUE "OriginalFilename", "usenews.exe" "\0"
-            VALUE "ProductName", "usenews" "\0"
+            VALUE "InternalName", "zanzibarr" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 com.zanzibarr. All rights reserved." "\0"
+            VALUE "OriginalFilename", "zanzibarr.exe" "\0"
+            VALUE "ProductName", "zanzibarr" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

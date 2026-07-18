@@ -1,11 +1,11 @@
 [package]
-name = "usenews-cli"
+name = "zanzibarr-cli"
 version = "0.1.0"
 edition = "2021"
-description = "UseNews geçici geliştirme aracı: kimlik bilgilerini Keychain'e yazar, NNTP bağlantısını sınar"
+description = "Zanzibarr geçici geliştirme aracı: kimlik bilgilerini Keychain'e yazar, NNTP bağlantısını sınar"
 
 [dependencies]
-rust_lib_usenews = { path = "../../rust" }
+rust_lib_zanzibarr = { path = "../../rust" }
 keyring = { version = "3", features = ["apple-native"] }
 rpassword = "7"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "time"] }

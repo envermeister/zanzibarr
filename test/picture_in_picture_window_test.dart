@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:usenews/player/picture_in_picture_window.dart';
+import 'package:zanzibarr/player/picture_in_picture_window.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -8,7 +8,7 @@ void main() {
   test(
     'desteklenen native masaüstünde PiP kanalına giriş ve çıkış gönderiliyor',
     () async {
-      const channel = MethodChannel('com.usenews/test-window');
+      const channel = MethodChannel('com.zanzibarr/test-window');
       final calls = <String>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
@@ -35,7 +35,7 @@ void main() {
   test(
     'desteklenmeyen platform kanal çağrısı yapmadan false döndürür',
     () async {
-      const channel = MethodChannel('com.usenews/test-window-unsupported');
+      const channel = MethodChannel('com.zanzibarr/test-window-unsupported');
       var calls = 0;
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {

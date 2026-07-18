@@ -16,7 +16,7 @@ abstract interface class PictureInPictureWindow {
 
 class NativePictureInPictureWindow implements PictureInPictureWindow {
   NativePictureInPictureWindow({MethodChannel? channel, bool? supported})
-    : _channel = channel ?? const MethodChannel('com.usenews/window'),
+    : _channel = channel ?? const MethodChannel('com.zanzibarr/window'),
       _supported = supported ?? (Platform.isMacOS || Platform.isWindows);
 
   final MethodChannel _channel;

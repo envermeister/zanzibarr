@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
-import 'package:usenews/settings/provider_settings.dart';
+import 'package:zanzibarr/settings/provider_settings.dart';
 
 /// Gerçek OS Keychain'e karşı ProviderSettingsStore doğrulaması.
 ///

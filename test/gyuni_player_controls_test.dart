@@ -2,7 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:usenews/player/gyuni_player_controls.dart';
+import 'package:zanzibarr/player/gyuni_player_controls.dart';
 
 Widget _buildChrome({
   bool playing = true,

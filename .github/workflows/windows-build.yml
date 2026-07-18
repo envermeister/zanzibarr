@@ -31,10 +31,10 @@ jobs:
         shell: pwsh
         run: |
           Compress-Archive -Path "build/windows/x64/runner/Release/*" `
-            -DestinationPath "usenews-windows-x64.zip" -Force
+            -DestinationPath "zanzibarr-windows-x64.zip" -Force
 
       - uses: actions/upload-artifact@v4
         with:
-          name: usenews-windows-x64
-          path: usenews-windows-x64.zip
+          name: zanzibarr-windows-x64
+          path: zanzibarr-windows-x64.zip
           retention-days: 14

@@ -714,7 +714,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "rust_lib_usenews"
+name = "rust_lib_zanzibarr"
 version = "0.1.0"
 dependencies = [
  "aes",
