@@ -31,7 +31,9 @@ android {
 
     // Bumping the plugin compileSdkVersion requires all clients of this plugin
     // to bump the version in their app.
-    compileSdkVersion 33
+    // Uygulama flutter.compileSdkVersion (3.44: 36) kullanıyor; androidx
+    // bağımlılıkları (fragment 1.7.1, window 1.2.0) en az 34 istiyor.
+    compileSdkVersion 36
 
     // Use the NDK version
     // declared in /android/app/build.gradle file of the Flutter project.
