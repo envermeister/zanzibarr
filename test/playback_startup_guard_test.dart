@@ -80,8 +80,16 @@ void main() {
         'bölünmüş 7z seti film.7z için volume 002 beklenirken 003 bulundu',
       );
 
-      expect(message, contains('Çok parçalı 7z arşivi eksik veya bozuk'));
+      expect(message, contains('Çok parçalı arşiv (7z/RAR) eksik veya bozuk'));
       expect(message, contains('Tüm ciltleri'));
+    });
+
+    test('eksik split RAR cildini arşiv seti olarak açıklar', () {
+      final message = describeStreamStartupError(
+        'bölünmüş RAR seti movie için volume 2 beklenirken 3 bulundu',
+      );
+
+      expect(message, contains('Çok parçalı arşiv (7z/RAR) eksik veya bozuk'));
     });
 
     test('7z dosyasındaki segment açığını cilt hatası olarak açıklar', () {
@@ -89,7 +97,7 @@ void main() {
         'film.7z.017 dosyası 732 segment bildiriyor, NZB\x27de 622 segment var',
       );
 
-      expect(message, contains('Çok parçalı 7z arşivi'));
+      expect(message, contains('Çok parçalı arşiv (7z/RAR)'));
     });
 
     test('eksik parola metasını kullanıcıya açıklar', () {
@@ -106,13 +114,50 @@ void main() {
         describeStreamStartupError(
           '7z arşivi sıkıştırılmış; yalnız COPY/STORE arşivleri desteklenir',
         ),
-        contains('Bu 7z arşivi sıkıştırılmış'),
+        contains('Bu arşiv sıkıştırılmış'),
+      );
+      expect(
+        describeStreamStartupError(
+          'RAR arşivi sıkıştırılmış; yalnız STORE arşivleri seek edilerek oynatılabilir',
+        ),
+        contains('Bu arşiv sıkıştırılmış'),
       );
       expect(
         describeStreamStartupError(
           '7z arşivi solid; rastgele seek için non-solid STORE gerekli',
         ),
-        contains('Bu 7z arşivi solid yapıda'),
+        contains('Bu arşiv solid yapıda'),
+      );
+    });
+
+    test('şifreli ve eski RAR arşivlerini ayrı açıklar', () {
+      expect(
+        describeStreamStartupError(
+          'RAR arşivi şifreli; parola korumalı RAR setleri oynatılamaz',
+        ),
+        contains('RAR arşivi şifreli'),
+      );
+      expect(
+        describeStreamStartupError(
+          'RAR4 ve daha eski arşivler desteklenmiyor; RAR5 STORE seti gerekli',
+        ),
+        contains('eski (RAR4 veya öncesi) biçimde'),
+      );
+    });
+
+    test('RAR yerleşim bozukluğunu arşiv hatası olarak açıklar', () {
+      expect(
+        describeStreamStartupError(
+          'geçersiz RAR yerleşimi: `film.mkv` parça toplamı 200 bayt, '
+          'başlık 999 bayt bildiriyor; set eksik veya bozuk',
+        ),
+        contains('Çok parçalı arşiv (7z/RAR) eksik veya bozuk'),
+      );
+      expect(
+        describeStreamStartupError(
+          'geçersiz RAR yerleşimi: `film.mkv` split zinciri bayrakları bozuk (parça 2/3)',
+        ),
+        contains('oynatmaya uygun değil veya arşiv yapısı bozuk'),
       );
     });
 

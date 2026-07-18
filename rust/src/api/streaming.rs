@@ -20,6 +20,7 @@ use tokio::task::JoinHandle;
 use crate::engine::nntp::{ProviderConfig, TlsNntpConnector};
 use crate::engine::nntp_source::NntpByteSource;
 use crate::engine::nzb::{self, NzbContentError, NzbFile};
+use crate::engine::rar::RarEntrySource;
 use crate::engine::server::{self, RangeSource};
 use crate::engine::sevenzip::SevenZipEntrySource;
 
@@ -151,6 +152,7 @@ fn next_session_id() -> u64 {
 enum StreamSource {
     Direct(NntpByteSource),
     SevenZip(SevenZipEntrySource),
+    Rar(RarEntrySource),
 }
 
 impl StreamSource {
@@ -158,6 +160,7 @@ impl StreamSource {
         match self {
             Self::Direct(source) => source.filename(),
             Self::SevenZip(source) => source.filename(),
+            Self::Rar(source) => source.filename(),
         }
     }
 
@@ -165,6 +168,7 @@ impl StreamSource {
         match self {
             Self::Direct(source) => source.segment_count(),
             Self::SevenZip(source) => source.segment_count(),
+            Self::Rar(source) => source.segment_count(),
         }
     }
 }
@@ -175,6 +179,7 @@ impl RangeSource for StreamSource {
         match self {
             Self::Direct(source) => source.total_len(),
             Self::SevenZip(source) => source.total_len(),
+            Self::Rar(source) => source.total_len(),
         }
     }
 
@@ -182,6 +187,7 @@ impl RangeSource for StreamSource {
         match self {
             Self::Direct(source) => source.content_type(),
             Self::SevenZip(source) => source.content_type(),
+            Self::Rar(source) => source.content_type(),
         }
     }
 
@@ -192,6 +198,7 @@ impl RangeSource for StreamSource {
         match self {
             Self::Direct(source) => source.write_range(range, out).await,
             Self::SevenZip(source) => source.write_range(range, out).await,
+            Self::Rar(source) => source.write_range(range, out).await,
         }
     }
 }
@@ -201,6 +208,9 @@ enum StreamSelection {
     SevenZip {
         volumes: Vec<NzbFile>,
         password: Option<String>,
+    },
+    Rar {
+        volumes: Vec<NzbFile>,
     },
 }
 
@@ -225,6 +235,11 @@ async fn prepare_stream_source(
         }
         StreamSelection::SevenZip { volumes, password } => Ok(StreamSource::SevenZip(
             SevenZipEntrySource::new_cancellable(pool, volumes, password, cancellation)
+                .await
+                .map_err(|error| error.to_string())?,
+        )),
+        StreamSelection::Rar { volumes } => Ok(StreamSource::Rar(
+            RarEntrySource::new_cancellable(pool, volumes, cancellation)
                 .await
                 .map_err(|error| error.to_string())?,
         )),
@@ -412,7 +427,25 @@ fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
     match parsed.select_playable_media() {
         Ok(file) => Ok(StreamSelection::Direct(file.clone())),
         Err(NzbContentError::NoPlayableMedia) => {
+            // Önce 7z setleri; bulunamazsa RAR setleri. Her iki biçimde de en
+            // büyük kodlu boyutlu set seçilir.
             let sets = parsed.split_7z_sets().map_err(|error| error.to_string())?;
+            if let Some(set) = sets.into_iter().max_by_key(|set| {
+                set.volumes.iter().fold(0u64, |total, volume| {
+                    total.saturating_add(volume.file.encoded_bytes())
+                })
+            }) {
+                return Ok(StreamSelection::SevenZip {
+                    volumes: set
+                        .volumes
+                        .into_iter()
+                        .map(|volume| volume.file.clone())
+                        .collect(),
+                    password: parsed.meta_value("password").map(str::to_owned),
+                });
+            }
+
+            let sets = parsed.split_rar_sets().map_err(|error| error.to_string())?;
             let set = sets
                 .into_iter()
                 .max_by_key(|set| {
@@ -421,15 +454,14 @@ fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
                     })
                 })
                 .ok_or_else(|| {
-                    "NZB'de doğrudan video veya desteklenen split 7z STORE seti yok".to_string()
+                    "NZB'de doğrudan video veya desteklenen split 7z/RAR STORE seti yok".to_string()
                 })?;
-            Ok(StreamSelection::SevenZip {
+            Ok(StreamSelection::Rar {
                 volumes: set
                     .volumes
                     .into_iter()
                     .map(|volume| volume.file.clone())
                     .collect(),
-                password: parsed.meta_value("password").map(str::to_owned),
             })
         }
         Err(error) => Err(error.to_string()),
@@ -688,5 +720,54 @@ mod tests {
         };
         assert_eq!(volumes.len(), 2);
         assert_eq!(volumes[0].filename(), Some("large.7z.001"));
+    }
+
+    #[test]
+    fn split_rar_ciltleri_sayisal_sirayla_secilir() {
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file("\"movie.part02.rar\" yEnc (1/1)", 1, 1000),
+                file("\"movie.part01.rar\" yEnc (1/1)", 1, 1000),
+            ],
+        };
+        let selection = select_stream(&parsed).unwrap();
+        let StreamSelection::Rar { volumes } = selection else {
+            panic!("RAR seçimi bekleniyordu");
+        };
+        assert_eq!(volumes[0].filename(), Some("movie.part01.rar"));
+        assert_eq!(volumes[1].filename(), Some("movie.part02.rar"));
+    }
+
+    #[test]
+    fn rar_setlerinin_en_buyugu_secilir() {
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file("\"small.part01.rar\" yEnc (1/1)", 1, 10),
+                file("\"large.part01.rar\" yEnc (1/1)", 1, 9000),
+                file("\"large.part02.rar\" yEnc (1/1)", 1, 9000),
+            ],
+        };
+        let StreamSelection::Rar { volumes } = select_stream(&parsed).unwrap() else {
+            panic!("RAR seçimi bekleniyordu");
+        };
+        assert_eq!(volumes.len(), 2);
+        assert_eq!(volumes[0].filename(), Some("large.part01.rar"));
+    }
+
+    #[test]
+    fn yedi_z_ve_rar_birlikteyse_once_7z_secilir() {
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file("\"movie.part01.rar\" yEnc (1/1)", 1, 9000),
+                file("\"archive.7z.001\" yEnc (1/1)", 1, 10),
+            ],
+        };
+        assert!(matches!(
+            select_stream(&parsed).unwrap(),
+            StreamSelection::SevenZip { .. }
+        ));
     }
 }

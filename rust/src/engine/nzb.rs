@@ -43,6 +43,14 @@ pub enum NzbContentError {
     },
     #[error("bölünmüş 7z seti `{archive_name}` içinde volume {number:03} birden fazla kez var")]
     DuplicateSplit7zVolume { archive_name: String, number: u32 },
+    #[error("bölünmüş RAR seti `{archive_name}` için volume {expected} beklenirken {found} bulundu")]
+    SplitRarVolumeGap {
+        archive_name: String,
+        expected: u32,
+        found: u32,
+    },
+    #[error("bölünmüş RAR seti `{archive_name}` içinde volume {number} birden fazla kez var")]
+    DuplicateSplitRarVolume { archive_name: String, number: u32 },
 }
 
 /// Sayısal volume sırasıyla bir 7z parçası.
@@ -57,6 +65,21 @@ pub struct Split7zVolume<'a> {
 pub struct Split7zSet<'a> {
     pub archive_name: String,
     pub volumes: Vec<Split7zVolume<'a>>,
+}
+
+/// Sayısal volume sırasıyla bir RAR parçası.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SplitRarVolume<'a> {
+    pub number: u32,
+    pub file: &'a NzbFile,
+}
+
+/// Aynı taban ada ait, `1`'den başlayan kesintisiz RAR volume seti.
+/// Modern `partNN.rar` ve eski usul `.rar` + `.rNN` adlandırma desteklenir.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SplitRarSet<'a> {
+    pub archive_name: String,
+    pub volumes: Vec<SplitRarVolume<'a>>,
 }
 
 #[derive(Clone, PartialEq, Eq)]
@@ -157,6 +180,58 @@ impl Nzb {
             }
 
             sets.push(Split7zSet {
+                archive_name,
+                volumes,
+            });
+        }
+        Ok(sets)
+    }
+
+    /// NZB'deki bölünmüş RAR volume'larını taban ada göre gruplar, sayısal
+    /// sıraya koyar ve her setin `1`'den kesintisiz ilerlediğini doğrular.
+    /// Modern `partNN.rar` ve eski usul `.rar` + `.rNN` adlandırma aynı
+    /// taban ad altında birleşir.
+    pub fn split_rar_sets(&self) -> Result<Vec<SplitRarSet<'_>>, NzbContentError> {
+        let mut groups: BTreeMap<String, (String, Vec<SplitRarVolume<'_>>)> = BTreeMap::new();
+
+        for file in &self.files {
+            let Some(filename) = file.filename() else {
+                continue;
+            };
+            let Some((archive_name, number)) = split_rar_volume_name(filename) else {
+                continue;
+            };
+            file.validate_segments()?;
+
+            let entry = groups
+                .entry(archive_name.to_ascii_lowercase())
+                .or_insert_with(|| (archive_name.to_string(), Vec::new()));
+            entry.1.push(SplitRarVolume { number, file });
+        }
+
+        let mut sets = Vec::with_capacity(groups.len());
+        for (_, (archive_name, mut volumes)) in groups {
+            volumes.sort_by_key(|volume| volume.number);
+
+            let mut expected = 1;
+            for volume in &volumes {
+                if volume.number < expected {
+                    return Err(NzbContentError::DuplicateSplitRarVolume {
+                        archive_name,
+                        number: volume.number,
+                    });
+                }
+                if volume.number != expected {
+                    return Err(NzbContentError::SplitRarVolumeGap {
+                        archive_name,
+                        expected,
+                        found: volume.number,
+                    });
+                }
+                expected = expected.saturating_add(1);
+            }
+
+            sets.push(SplitRarSet {
                 archive_name,
                 volumes,
             });
@@ -345,6 +420,47 @@ pub fn split_7z_volume_name(filename: &str) -> Option<(&str, u32)> {
     }
     let number = digits.parse::<u32>().ok()?;
     Some((&filename[..marker + 3], number))
+}
+
+/// RAR volume adını `(taban ad, 1'den başlayan numara)` olarak çözer:
+/// - Modern: `film.part03.rar` → `(film, 3)`; tek `film.rar` → `(film, 1)`.
+/// - Eski usul: `film.rar` ilk cilttir, `film.r00` → 2, `film.r01` → 3, ...
+///
+/// Yalnızca tamamı rakam olan ekler volume kabul edilir; `rar` kelimesini
+/// rastgele içeren adlar (ör. `filrarr`) ve `.rev` kurtarma ciltleri elenir.
+pub fn split_rar_volume_name(filename: &str) -> Option<(&str, u32)> {
+    let lowercase = filename.to_ascii_lowercase();
+
+    if let Some(stem) = lowercase.strip_suffix(".rar") {
+        if let Some(marker) = stem.rfind(".part") {
+            let digits = &stem[marker + 5..];
+            if marker > 0
+                && !digits.is_empty()
+                && digits.bytes().all(|byte| byte.is_ascii_digit())
+            {
+                let number = digits.parse::<u32>().ok().filter(|number| *number >= 1)?;
+                return Some((&filename[..marker], number));
+            }
+        }
+        // Tek başına `.rar`: eski usul ilk cilt veya tek ciltlik arşiv.
+        // `.partNN.rar` tabansız kalmışsa (gizli dosya benzeri) geçersizdir.
+        if !stem.is_empty() && !stem.starts_with(".part") {
+            return Some((&filename[..filename.len() - 4], 1));
+        }
+        return None;
+    }
+
+    // Eski usul devam ciltleri: `.r00`, `.r01`, ...
+    let (stem, extension) = lowercase.rsplit_once('.')?;
+    if extension.len() >= 2
+        && extension.starts_with('r')
+        && extension[1..].bytes().all(|byte| byte.is_ascii_digit())
+    {
+        let number = extension[1..].parse::<u32>().ok()?;
+        // `.r00` ikinci cilttir; `.rar` her zaman 1 sayılır.
+        return Some((&filename[..stem.len()], number.checked_add(2)?));
+    }
+    None
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -853,6 +969,99 @@ mod tests {
         assert!(matches!(
             nzb.split_7z_sets(),
             Err(NzbContentError::NonContiguousSegments { missing: 2, .. })
+        ));
+    }
+
+    #[test]
+    fn split_rar_modern_ve_eski_usul_adlar_cozulur() {
+        assert_eq!(
+            split_rar_volume_name("Film.Part03.RAR"),
+            Some(("Film", 3))
+        );
+        assert_eq!(split_rar_volume_name("film.part1.rar"), Some(("film", 1)));
+        assert_eq!(split_rar_volume_name("film.rar"), Some(("film", 1)));
+        assert_eq!(split_rar_volume_name("film.R00"), Some(("film", 2)));
+        assert_eq!(split_rar_volume_name("film.r09"), Some(("film", 11)));
+        // Video uzantıları ve rastgele adlar volume sayılmaz.
+        assert_eq!(split_rar_volume_name("film.rmvb"), None);
+        assert_eq!(split_rar_volume_name("film.r"), None);
+        // `.part` eki rakamsızsa ad, düz `.rar` kuralına düşer.
+        assert_eq!(
+            split_rar_volume_name("film.partx.rar"),
+            Some(("film.partx", 1))
+        );
+        assert_eq!(split_rar_volume_name("film.part00.rar"), None);
+        assert_eq!(split_rar_volume_name(".part01.rar"), None);
+        assert_eq!(split_rar_volume_name(".rar"), None);
+    }
+
+    #[test]
+    fn split_rar_setleri_sayisal_siraya_koyar_ve_gruplar() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("movie.part02.rar", &[1], 100),
+                file("extras.rar", &[1], 100),
+                file("movie.part01.rar", &[1], 100),
+                file("extras.r00", &[1], 100),
+            ],
+        };
+
+        let sets = nzb.split_rar_sets().unwrap();
+        assert_eq!(sets.len(), 2);
+        assert_eq!(sets[0].archive_name, "extras");
+        assert_eq!(sets[1].archive_name, "movie");
+        assert_eq!(
+            sets[0]
+                .volumes
+                .iter()
+                .map(|volume| volume.number)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+        assert_eq!(
+            sets[1]
+                .volumes
+                .iter()
+                .map(|volume| volume.number)
+                .collect::<Vec<_>>(),
+            vec![1, 2]
+        );
+    }
+
+    #[test]
+    fn split_rar_volume_boslugunu_reddeder() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("movie.part01.rar", &[1], 100),
+                file("movie.part03.rar", &[1], 100),
+            ],
+        };
+
+        assert!(matches!(
+            nzb.split_rar_sets(),
+            Err(NzbContentError::SplitRarVolumeGap {
+                expected: 2,
+                found: 3,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn split_rar_duplicate_volume_reddedilir() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("movie.part01.rar", &[1], 100),
+                file("movie.PART01.RAR", &[1], 100),
+            ],
+        };
+
+        assert!(matches!(
+            nzb.split_rar_sets(),
+            Err(NzbContentError::DuplicateSplitRarVolume { number: 1, .. })
         ));
     }
 }

@@ -8,7 +8,6 @@
 //! çözülür. LZMA/LZMA2/solid arşivler, rastgele seek'i bozmamak için açıkça
 //! reddedilir.
 
-use std::future::Future;
 use std::io::{self, Cursor, Read, Seek, SeekFrom};
 use std::ops::Range;
 use std::sync::Arc;
@@ -28,14 +27,14 @@ use zesven::format::streams::{Folder, PackInfo, ResourceLimits, SubStreamsInfo, 
 use zesven::format::{property_id, SIGNATURE_HEADER_SIZE};
 use zesven::Password;
 
+use super::archive::{
+    cancellation_requested, run_blocking_cancellable, validate_range, BlockingArchiveReader,
+    BlockingTaskError, NntpVolumeSet, VolumeSetError,
+};
 use super::nntp::{NntpPool, TlsNntpConnector};
-use super::nntp_source::NntpByteSource;
 use super::nzb::{is_playable_media_filename, NzbFile};
 use super::server::{content_type_for, RangeSource};
 
-const ARCHIVE_VOLUME_CACHE_SEGMENTS: usize = 4;
-const MAX_ARCHIVE_VOLUMES: usize = 4096;
-const BLOCKING_READER_MAX_CHUNK: usize = 1024 * 1024;
 const AES_STREAM_CHUNK: u64 = 1024 * 1024;
 const AES_BLOCK_SIZE: u64 = 16;
 
@@ -63,29 +62,23 @@ pub enum SevenZipError {
     Cancelled,
 }
 
-/// Birleştirilmiş `.7z.001`, `.7z.002`, ... dosyalarını tek byte kaynağı
-/// olarak gösterir. Cilt sınırları gerçek yEnc `size=` bilgisinden öğrenilir.
-struct NntpVolumeSet {
-    volumes: Vec<Arc<NntpByteSource>>,
-    starts: Vec<u64>,
-    total_len: u64,
-    segment_count: usize,
+impl From<VolumeSetError> for SevenZipError {
+    fn from(error: VolumeSetError) -> Self {
+        match error {
+            VolumeSetError::Io(error) => Self::Io(error),
+            VolumeSetError::InvalidLayout(message) => Self::InvalidLayout(message),
+            VolumeSetError::Cancelled => Self::Cancelled,
+        }
+    }
 }
 
-fn validate_volume_count(count: usize) -> Result<(), SevenZipError> {
-    if count == 0 {
-        return Err(SevenZipError::InvalidLayout("7z cildi yok".into()));
+impl From<BlockingTaskError> for SevenZipError {
+    fn from(error: BlockingTaskError) -> Self {
+        match error {
+            BlockingTaskError::Task(message) => Self::Task(message),
+            BlockingTaskError::Cancelled => Self::Cancelled,
+        }
     }
-    if count > MAX_ARCHIVE_VOLUMES {
-        return Err(SevenZipError::InvalidLayout(format!(
-            "7z cilt sayısı {count}; güvenli sınır {MAX_ARCHIVE_VOLUMES}"
-        )));
-    }
-    Ok(())
-}
-
-fn cancellation_requested(cancellation: &watch::Receiver<bool>) -> bool {
-    *cancellation.borrow() || cancellation.has_changed().is_err()
 }
 
 fn ensure_not_cancelled(cancellation: &watch::Receiver<bool>) -> Result<(), SevenZipError> {
@@ -94,158 +87,6 @@ fn ensure_not_cancelled(cancellation: &watch::Receiver<bool>) -> Result<(), Seve
     } else {
         Ok(())
     }
-}
-
-async fn wait_for_cancellation(cancellation: &mut watch::Receiver<bool>) {
-    loop {
-        if cancellation_requested(cancellation) {
-            return;
-        }
-        if cancellation.changed().await.is_err() {
-            return;
-        }
-    }
-}
-
-async fn bootstrap_sequential<I, O, F, Fut>(
-    items: Vec<I>,
-    cancellation: &mut watch::Receiver<bool>,
-    mut bootstrap: F,
-) -> Result<Vec<O>, SevenZipError>
-where
-    F: FnMut(I) -> Fut,
-    Fut: Future<Output = Result<O, SevenZipError>>,
-{
-    let mut output = Vec::with_capacity(items.len());
-    for item in items {
-        ensure_not_cancelled(cancellation)?;
-        let value = tokio::select! {
-            result = bootstrap(item) => result?,
-            _ = wait_for_cancellation(cancellation) => {
-                return Err(SevenZipError::Cancelled);
-            }
-        };
-        output.push(value);
-    }
-    Ok(output)
-}
-
-impl NntpVolumeSet {
-    async fn new_cancellable(
-        pool: Arc<NntpPool<TlsNntpConnector>>,
-        files: Vec<NzbFile>,
-        cancellation: &mut watch::Receiver<bool>,
-    ) -> Result<Self, SevenZipError> {
-        validate_volume_count(files.len())?;
-        ensure_not_cancelled(cancellation)?;
-
-        // Her cildin ilk article'ı yEnc `size=` değerini taşır. Ciltleri tam
-        // sıralı ve tek tek bootstrap etmek, tamamlanan BODY sonrasında aynı
-        // havuz bağlantısının yeniden kullanılmasını sağlar; 140 ciltli bir
-        // set bile bağlantı oturumu yağdırmaz.
-        let volumes = bootstrap_sequential(files, cancellation, |file| {
-            let pool = Arc::clone(&pool);
-            async move {
-                let source =
-                    NntpByteSource::with_cache_capacity(pool, &file, ARCHIVE_VOLUME_CACHE_SEGMENTS)
-                        .await
-                        .map_err(SevenZipError::Io)?;
-                Ok(Arc::new(source))
-            }
-        })
-        .await?;
-        ensure_not_cancelled(cancellation)?;
-
-        let mut starts = Vec::with_capacity(volumes.len());
-        let mut total_len = 0u64;
-        let mut segment_count = 0usize;
-        for volume in &volumes {
-            starts.push(total_len);
-            total_len = total_len
-                .checked_add(volume.total_len())
-                .ok_or_else(|| SevenZipError::InvalidLayout("arşiv boyutu taştı".into()))?;
-            segment_count = segment_count.saturating_add(volume.segment_count());
-        }
-
-        Ok(Self {
-            volumes,
-            starts,
-            total_len,
-            segment_count,
-        })
-    }
-
-    fn total_len(&self) -> u64 {
-        self.total_len
-    }
-
-    fn segment_count(&self) -> usize {
-        self.segment_count
-    }
-
-    fn volume_at(&self, offset: u64) -> Option<usize> {
-        if offset >= self.total_len {
-            return None;
-        }
-        Some(self.starts.partition_point(|&start| start <= offset) - 1)
-    }
-
-    async fn read_range_bytes(&self, range: Range<u64>) -> io::Result<Vec<u8>> {
-        validate_range(range.clone(), self.total_len)?;
-        let capacity = usize::try_from(range.end - range.start)
-            .map_err(|_| io::Error::other("istenen aralık belleğe sığmıyor"))?;
-        let mut output = Vec::with_capacity(capacity);
-        let mut cursor = range.start;
-
-        while cursor < range.end {
-            let index = self
-                .volume_at(cursor)
-                .ok_or_else(|| io::Error::other("7z cilt ofseti bulunamadı"))?;
-            let volume_start = self.starts[index];
-            let volume_len = self.volumes[index].total_len();
-            let end = range.end.min(volume_start + volume_len);
-            let bytes = self.volumes[index]
-                .read_range_bytes((cursor - volume_start)..(end - volume_start))
-                .await?;
-            output.extend_from_slice(&bytes);
-            cursor = end;
-        }
-        Ok(output)
-    }
-
-    async fn write_range<W>(&self, range: Range<u64>, out: &mut W) -> io::Result<()>
-    where
-        W: AsyncWrite + Unpin + Send,
-    {
-        validate_range(range.clone(), self.total_len)?;
-        let mut cursor = range.start;
-        while cursor < range.end {
-            let index = self
-                .volume_at(cursor)
-                .ok_or_else(|| io::Error::other("7z cilt ofseti bulunamadı"))?;
-            let volume_start = self.starts[index];
-            let volume_len = self.volumes[index].total_len();
-            let end = range.end.min(volume_start + volume_len);
-            self.volumes[index]
-                .write_range((cursor - volume_start)..(end - volume_start), out)
-                .await?;
-            cursor = end;
-        }
-        Ok(())
-    }
-}
-
-fn validate_range(range: Range<u64>, total_len: u64) -> io::Result<()> {
-    if range.start >= range.end || range.end > total_len {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            format!(
-                "geçersiz byte aralığı {}..{} (boyut {total_len})",
-                range.start, range.end
-            ),
-        ));
-    }
-    Ok(())
 }
 
 fn checked_pack_sum(values: &[u64]) -> Result<u64, SevenZipError> {
@@ -261,124 +102,6 @@ fn aes_packed_size(decoded_size: u64) -> Result<u64, SevenZipError> {
         .div_ceil(AES_BLOCK_SIZE)
         .checked_mul(AES_BLOCK_SIZE)
         .ok_or_else(|| SevenZipError::InvalidLayout("AES pack boyutu taştı".into()))
-}
-
-/// Senkron `Read + Seek` isteyen 7z parser'ını asenkron NNTP kaynağına
-/// bağlar. Yalnız `spawn_blocking` içinde kullanılır.
-struct BlockingArchiveReader {
-    source: Arc<NntpVolumeSet>,
-    runtime: tokio::runtime::Handle,
-    cancellation: watch::Receiver<bool>,
-    position: u64,
-}
-
-impl BlockingArchiveReader {
-    fn new(
-        source: Arc<NntpVolumeSet>,
-        runtime: tokio::runtime::Handle,
-        cancellation: watch::Receiver<bool>,
-    ) -> Self {
-        Self {
-            source,
-            runtime,
-            cancellation,
-            position: 0,
-        }
-    }
-
-    fn ensure_active(&self) -> io::Result<()> {
-        if cancellation_requested(&self.cancellation) {
-            Err(cancellation_io_error())
-        } else {
-            Ok(())
-        }
-    }
-}
-
-fn cancellation_io_error() -> io::Error {
-    io::Error::new(io::ErrorKind::Interrupted, "7z hazırlama iptal edildi")
-}
-
-impl Read for BlockingArchiveReader {
-    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
-        self.ensure_active()?;
-        if buffer.is_empty() || self.position >= self.source.total_len() {
-            return Ok(0);
-        }
-        let wanted = buffer
-            .len()
-            .min(BLOCKING_READER_MAX_CHUNK)
-            .min((self.source.total_len() - self.position) as usize);
-        let end = self.position + wanted as u64;
-        let source = Arc::clone(&self.source);
-        let range = self.position..end;
-        let runtime = self.runtime.clone();
-        let cancellation = &mut self.cancellation;
-        let bytes = runtime.block_on(async {
-            tokio::select! {
-                result = source.read_range_bytes(range) => result,
-                _ = wait_for_cancellation(cancellation) => Err(cancellation_io_error()),
-            }
-        })?;
-        buffer[..bytes.len()].copy_from_slice(&bytes);
-        self.position += bytes.len() as u64;
-        Ok(bytes.len())
-    }
-}
-
-impl Seek for BlockingArchiveReader {
-    fn seek(&mut self, position: SeekFrom) -> io::Result<u64> {
-        self.ensure_active()?;
-        let target = match position {
-            SeekFrom::Start(value) => i128::from(value),
-            SeekFrom::Current(delta) => i128::from(self.position) + i128::from(delta),
-            SeekFrom::End(delta) => i128::from(self.source.total_len()) + i128::from(delta),
-        };
-        if target < 0 || target > i128::from(self.source.total_len()) {
-            return Err(io::Error::new(
-                io::ErrorKind::InvalidInput,
-                format!(
-                    "7z seek arşiv sınırının dışında: hedef {target}, boyut {}",
-                    self.source.total_len()
-                ),
-            ));
-        }
-        self.position = target as u64;
-        Ok(self.position)
-    }
-}
-
-async fn run_blocking_cancellable<T, F>(
-    mut cancellation: watch::Receiver<bool>,
-    task: F,
-) -> Result<T, SevenZipError>
-where
-    T: Send + 'static,
-    F: FnOnce(watch::Receiver<bool>) -> Result<T, SevenZipError> + Send + 'static,
-{
-    ensure_not_cancelled(&cancellation)?;
-    let task_cancellation = cancellation.clone();
-    let mut handle = tokio::task::spawn_blocking(move || task(task_cancellation));
-
-    tokio::select! {
-        result = &mut handle => {
-            let output = result.map_err(|error| SevenZipError::Task(error.to_string()))?;
-            if cancellation_requested(&cancellation) {
-                Err(SevenZipError::Cancelled)
-            } else {
-                output
-            }
-        }
-        _ = wait_for_cancellation(&mut cancellation) => {
-            // spawn_blocking abort edilemez. Reader aynı watch sinyalini her
-            // read/seek'te görüp Interrupted ile çıkar; burada JoinHandle'ı
-            // sonuna kadar await ederek detached parser bırakmayız.
-            match handle.await {
-                Ok(_) => Err(SevenZipError::Cancelled),
-                Err(error) => Err(SevenZipError::Task(error.to_string())),
-            }
-        }
-    }
 }
 
 struct AesPlan {
@@ -1213,128 +936,6 @@ mod tests {
             plan_from_header(&header, 200, None),
             Err(SevenZipError::InvalidLayout(_))
         ));
-    }
-
-    #[test]
-    fn cilt_sayisi_bos_ve_asiri_setleri_reddeder() {
-        assert!(validate_volume_count(140).is_ok());
-        assert!(matches!(
-            validate_volume_count(0),
-            Err(SevenZipError::InvalidLayout(_))
-        ));
-        assert!(matches!(
-            validate_volume_count(MAX_ARCHIVE_VOLUMES + 1),
-            Err(SevenZipError::InvalidLayout(_))
-        ));
-    }
-
-    #[tokio::test]
-    async fn cilt_bootstrap_tam_sirali_ve_tektir() {
-        use std::sync::atomic::{AtomicUsize, Ordering};
-
-        let (_cancellation_guard, mut cancellation) = watch::channel(false);
-        let active = Arc::new(AtomicUsize::new(0));
-        let peak = Arc::new(AtomicUsize::new(0));
-        let output = bootstrap_sequential(vec![3, 1, 2], &mut cancellation, |item| {
-            let active = Arc::clone(&active);
-            let peak = Arc::clone(&peak);
-            async move {
-                let current = active.fetch_add(1, Ordering::SeqCst) + 1;
-                peak.fetch_max(current, Ordering::SeqCst);
-                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
-                active.fetch_sub(1, Ordering::SeqCst);
-                Ok::<_, SevenZipError>(item)
-            }
-        })
-        .await
-        .unwrap();
-
-        assert_eq!(output, vec![3, 1, 2]);
-        assert_eq!(peak.load(Ordering::SeqCst), 1);
-    }
-
-    #[tokio::test]
-    async fn cilt_bootstrap_devam_eden_okumayi_iptal_eder() {
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        let (cancel_tx, mut cancellation) = watch::channel(false);
-        let started = Arc::new(AtomicBool::new(false));
-        let started_in_task = Arc::clone(&started);
-        let task = tokio::spawn(async move {
-            bootstrap_sequential(vec![1], &mut cancellation, move |_| {
-                let started = Arc::clone(&started_in_task);
-                async move {
-                    started.store(true, Ordering::SeqCst);
-                    std::future::pending::<Result<(), SevenZipError>>().await
-                }
-            })
-            .await
-        });
-
-        while !started.load(Ordering::SeqCst) {
-            tokio::task::yield_now().await;
-        }
-        cancel_tx.send(true).unwrap();
-        let result = tokio::time::timeout(std::time::Duration::from_secs(1), task)
-            .await
-            .expect("bootstrap iptal sinyalinde bitmeli")
-            .unwrap();
-        assert!(matches!(result, Err(SevenZipError::Cancelled)));
-    }
-
-    #[tokio::test]
-    async fn blocking_reader_read_ve_seek_oncesi_iptali_gorur() {
-        let archive = Arc::new(NntpVolumeSet {
-            volumes: Vec::new(),
-            starts: Vec::new(),
-            total_len: 1,
-            segment_count: 0,
-        });
-        let (cancel_tx, cancellation) = watch::channel(false);
-        let mut reader =
-            BlockingArchiveReader::new(archive, tokio::runtime::Handle::current(), cancellation);
-        cancel_tx.send(true).unwrap();
-
-        let read_error = reader.read(&mut [0]).unwrap_err();
-        assert_eq!(read_error.kind(), io::ErrorKind::Interrupted);
-        let seek_error = reader.seek(SeekFrom::Start(0)).unwrap_err();
-        assert_eq!(seek_error.kind(), io::ErrorKind::Interrupted);
-    }
-
-    #[tokio::test]
-    async fn blocking_parser_iptalde_detached_birakilmaz() {
-        use std::sync::atomic::{AtomicBool, Ordering};
-
-        let (cancel_tx, cancellation) = watch::channel(false);
-        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
-        let finished = Arc::new(AtomicBool::new(false));
-        let finished_in_task = Arc::clone(&finished);
-        let task = tokio::spawn(run_blocking_cancellable(
-            cancellation,
-            move |reader_cancellation| {
-                let _ = started_tx.send(());
-                while !cancellation_requested(&reader_cancellation) {
-                    std::thread::yield_now();
-                }
-                // Outer future bu blocking iş gerçekten dönmeden sonuç
-                // vermemeli; gecikme detached-task regresyonunu görünür kılar.
-                std::thread::sleep(std::time::Duration::from_millis(25));
-                finished_in_task.store(true, Ordering::SeqCst);
-                Err::<(), _>(SevenZipError::Cancelled)
-            },
-        ));
-
-        started_rx.await.unwrap();
-        cancel_tx.send(true).unwrap();
-        let result = tokio::time::timeout(std::time::Duration::from_secs(1), task)
-            .await
-            .expect("blocking parser cooperative olarak kapanmalı")
-            .unwrap();
-        assert!(matches!(result, Err(SevenZipError::Cancelled)));
-        assert!(
-            finished.load(Ordering::SeqCst),
-            "outer future blocking parser bitmeden dönmemeli"
-        );
     }
 
     #[test]

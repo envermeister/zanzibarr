@@ -46,9 +46,11 @@ fn main() -> ExitCode {
         Some("clear") => clear(),
         Some("check") => run_async(check()),
         Some("fetch") => match args.get(1) {
-            Some(message_id) => run_async(fetch(message_id.clone())),
+            // İkinci argüman verilirse çözülen baytlar diske yazılır
+            // (başlık incelemesi gibi tanı işleri için).
+            Some(message_id) => run_async(fetch(message_id.clone(), args.get(2).cloned())),
             None => {
-                eprintln!("kullanım: usenews-cli fetch <message-id>");
+                eprintln!("kullanım: usenews-cli fetch <message-id> [çıktı-dosyası]");
                 return ExitCode::FAILURE;
             }
         },
@@ -87,9 +89,19 @@ fn main() -> ExitCode {
             }
         },
         Some("stream-check") => match args.get(1) {
-            Some(nzb_path) => stream_check(nzb_path.clone()),
+            Some(nzb_path) => {
+                let offset = args.get(2).map(|s| s.parse::<u64>());
+                match offset {
+                    Some(Err(_)) => {
+                        eprintln!("offset bir sayı olmalı");
+                        return ExitCode::FAILURE;
+                    }
+                    Some(Ok(o)) => stream_check(nzb_path.clone(), Some(o)),
+                    None => stream_check(nzb_path.clone(), None),
+                }
+            }
             None => {
-                eprintln!("kullanım: usenews-cli stream-check <nzb-dosyası>");
+                eprintln!("kullanım: usenews-cli stream-check <nzb-dosyası> [çözülmüş-offset]");
                 return ExitCode::FAILURE;
             }
         },
@@ -283,9 +295,9 @@ fn build_pool() -> Result<Arc<NntpPool<TlsNntpConnector>>, String> {
 /// Uygulamanın FRB ile kullandığı aynı `start_stream` yolunu gerçek sağlayıcı
 /// üzerinde sınar. Kimlik bilgileri yalnızca Keychain'den belleğe alınır;
 /// parola, archive password veya message-ID yazdırılmaz.
-fn stream_check(nzb_path: String) -> Result<(), String> {
+fn stream_check(nzb_path: String, offset: Option<u64>) -> Result<(), String> {
     let config = load_config()?;
-    println!("Akış hazırlanıyor; 7z ciltleri ve arşiv başlığı doğrulanıyor…");
+    println!("Akış hazırlanıyor; arşiv ciltleri ve arşiv başlığı doğrulanıyor…");
     let info = start_stream(
         ProviderConfigDto {
             host: config.host,
@@ -308,8 +320,13 @@ fn stream_check(nzb_path: String) -> Result<(), String> {
     socket
         .set_read_timeout(Some(Duration::from_secs(60)))
         .map_err(|error| error.to_string())?;
+    // Offset verilmezse dosya başı istenir ve medya imzası doğrulanır; başka
+    // bir offset verilirse amaç arşiv parça eşleminin uzak seek'i doğru
+    // çözümlediğini kanıtlamaktır (206 + tam 32 bayt yeterli).
+    let start = offset.unwrap_or(0).min(info.size.saturating_sub(32));
+    let end = start + 31;
     let request = format!(
-        "GET /{path} HTTP/1.1\r\nHost: {address}\r\nRange: bytes=0-31\r\nConnection: close\r\n\r\n"
+        "GET /{path} HTTP/1.1\r\nHost: {address}\r\nRange: bytes={start}-{end}\r\nConnection: close\r\n\r\n"
     );
     socket
         .write_all(request.as_bytes())
@@ -330,15 +347,23 @@ fn stream_check(nzb_path: String) -> Result<(), String> {
         return Err("localhost Range isteği 206 döndürmedi".into());
     }
     let body = &response[header_end..];
-    let recognized = body.starts_with(&[0x1A, 0x45, 0xDF, 0xA3])
-        || body.get(4..8) == Some(b"ftyp")
-        || body.first() == Some(&0x47);
-    if !recognized {
-        return Err("arşiv içinden dönen ilk baytlar medya imzası değil".into());
+    if body.len() != 32 {
+        return Err(format!(
+            "localhost {start}-{end} aralığı için 32 bayt yerine {} bayt döndü",
+            body.len()
+        ));
+    }
+    if offset.is_none() {
+        let recognized = body.starts_with(&[0x1A, 0x45, 0xDF, 0xA3])
+            || body.get(4..8) == Some(b"ftyp")
+            || body.first() == Some(&0x47);
+        if !recognized {
+            return Err("arşiv içinden dönen ilk baytlar medya imzası değil".into());
+        }
     }
 
     println!(
-        "Akış doğrulandı: {} · {} bayt · {} segment · medya imzası geçerli",
+        "Akış doğrulandı: {} · {} bayt · {} segment · aralık {start}-{end} geçerli",
         info.filename, info.size, info.segment_count
     );
     Ok(())
@@ -379,7 +404,7 @@ async fn check() -> Result<(), String> {
     Ok(())
 }
 
-async fn fetch(message_id: String) -> Result<(), String> {
+async fn fetch(message_id: String, output_path: Option<String>) -> Result<(), String> {
     let mut conn = connect_and_auth().await?;
     println!("Article gövdesi çekiliyor…");
     let body = tokio::time::timeout(NETWORK_TIMEOUT, conn.body_by_message_id(&message_id))
@@ -406,6 +431,11 @@ async fn fetch(message_id: String) -> Result<(), String> {
             match part.part_crc32 {
                 Some(_) => println!("pcrc32 doğrulandı ✔"),
                 None => println!("pcrc32 yok (doğrulanacak CRC bulunamadı)"),
+            }
+            if let Some(path) = output_path {
+                std::fs::write(&path, &part.data)
+                    .map_err(|e| format!("{path} yazılamadı: {e}"))?;
+                println!("Çözülen baytlar {path} dosyasına yazıldı.");
             }
         }
         Err(err) => println!("Gövde yEnc olarak çözülemedi: {err}"),

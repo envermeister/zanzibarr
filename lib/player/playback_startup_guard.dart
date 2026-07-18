@@ -100,6 +100,12 @@ String describeStreamStartupError(Object raw) {
         'Usenet kimlik doğrulaması başarısız. Sağlayıcı ayarlarındaki '
         'kullanıcı adı ve parolayı kontrol edin.';
   } else if (_containsAny(lower, const <String>[
+    'rar arşivi şifreli',
+  ])) {
+    explanation =
+        'RAR arşivi şifreli. Parola korumalı RAR yayınları desteklenmiyor; '
+        'şifresiz hazırlanmış bir STORE yayını seçin.';
+  } else if (_containsAny(lower, const <String>[
     'parola korumalı 7z',
     'password metası yok',
     'password metadata',
@@ -115,10 +121,11 @@ String describeStreamStartupError(Object raw) {
     'unsupported compression',
     'unsupportedcompression',
     '7z arşivi sıkıştırılmış',
+    'rar arşivi sıkıştırılmış',
   ])) {
     explanation =
-        'Bu 7z arşivi sıkıştırılmış. Anlık oynatma için sıkıştırmasız '
-        'COPY/STORE biçiminde hazırlanmış bir yayın gerekir.';
+        'Bu arşiv sıkıştırılmış. Anlık oynatma için sıkıştırmasız '
+        'COPY/STORE (7z/RAR) biçiminde hazırlanmış bir yayın gerekir.';
   } else if (_containsAny(lower, const <String>[
     '7z arşivi solid',
     'solid archive',
@@ -126,11 +133,17 @@ String describeStreamStartupError(Object raw) {
     'non-solid store',
   ])) {
     explanation =
-        'Bu 7z arşivi solid yapıda. Rastgele ileri-geri sarma için '
+        'Bu arşiv solid yapıda. Rastgele ileri-geri sarma için '
         'non-solid STORE biçiminde hazırlanmış bir yayın gerekir.';
+  } else if (_containsAny(lower, const <String>[
+    'rar4',
+  ])) {
+    explanation =
+        'Bu RAR arşivi eski (RAR4 veya öncesi) biçimde. Yalnız RAR5 STORE '
+        'yayınları oynatılabilir.';
   } else if (_isMissingSplitArchive(lower)) {
     explanation =
-        'Çok parçalı 7z arşivi eksik veya bozuk. Tüm ciltleri ve '
+        'Çok parçalı arşiv (7z/RAR) eksik veya bozuk. Tüm ciltleri ve '
         'segmentleri içeren eksiksiz bir NZB dosyası seçin.';
   } else if (_isMissingSegment(lower)) {
     explanation =
@@ -169,10 +182,14 @@ String describeStreamStartupError(Object raw) {
     '7z başlığı okunamadı',
     'geçersiz 7z yerleşimi',
     '7z arşivinde oynatılabilir medya dosyası yok',
+    'rar başlığı okunamadı',
+    'geçersiz rar yerleşimi',
+    'rar arşivinde oynatılabilir medya dosyası yok',
+    'doğrudan video veya desteklenen split 7z/rar',
     'doğrudan video veya desteklenen split 7z',
   ])) {
     explanation =
-        'NZB içindeki 7z arşivi oynatmaya uygun değil veya arşiv yapısı '
+        'NZB içindeki arşiv (7z/RAR) oynatmaya uygun değil veya arşiv yapısı '
         'bozuk. Eksiksiz bir STORE yayını seçin.';
   } else if (_containsAny(lower, const <String>[
     'oynatılabilir medya dosyası yok',
@@ -197,6 +214,12 @@ bool _isMissingSplitArchive(String lower) {
     '7z cilt',
     '7z volume',
     '.7z.',
+    'split rar',
+    'bölünmüş rar',
+    'rar cilt',
+    'rar volume',
+    'rar yerleşimi',
+    '.rar',
   ]);
   final missingOrInvalid = _containsAny(lower, const <String>[
     'eksik',
