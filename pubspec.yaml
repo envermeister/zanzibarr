@@ -43,6 +43,14 @@ dependencies:
   media_kit_libs_video: ^1.0.7
   file_selector: ^1.1.0
 
+# macOS için media_kit'in paketlediği minimal FFmpeg/libmpv 0.36 yerine
+# homebrew libmpv 0.40 + tam FFmpeg gömen yerel çatal kullanılır.
+# Neden: paketli derlemede TrueHD gibi çözücüler kapalıdır (ayrıntı:
+# tools/bundle_mpv_framework.py). Yalnız arm64 dilimi içerir.
+dependency_overrides:
+  media_kit_libs_macos_video:
+    path: vendor/media_kit_libs_macos_video
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

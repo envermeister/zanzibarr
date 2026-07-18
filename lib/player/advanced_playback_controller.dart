@@ -51,6 +51,43 @@ enum UpscalingPreset { balanced, quality, lowPower }
 
 enum AudioPreset { balanced, dialogue, night }
 
+/// Görüntü çıkışı için seçilebilir dinamik aralık modları.
+///
+/// İçerik hangi formatları taşıyorsa yalnız onlar seçilebilir; SDR her zaman
+/// seçilebilir çünkü her HDR sinyali aşağı ton eşlenebilir.
+enum HdrMode { sdr, hdr, hdr10, hdr10plus, dolbyVision }
+
+/// Geçerli içeriğin taşıdığı dinamik aralık yetenekleri. libmpv video
+/// parametreleri ve başlık (track) üstverisinden okunur.
+///
+/// HDR10+ için çalışma zamanında algılama YOKTUR: mpv, SMPTE ST 2094-40
+/// dinamik üstverisinin varlığını bir özellik olarak sunmaz. Bu yüzden
+/// [HdrMode.hdr10plus] hiçbir içerikte etkinleşmez; menüde pasif gösterilir.
+class HdrCapabilities {
+  const HdrCapabilities({
+    this.hdrSignal = false,
+    this.hdr10StaticMetadata = false,
+    this.dolbyVisionProfile,
+  });
+
+  /// PQ/HLG gama veya bt.2020 primaries ile gelen HDR sinyali.
+  final bool hdrSignal;
+
+  /// HDR10 statik üstverisi (MaxCLL/MaxFALL -> video-params/max-luma).
+  final bool hdr10StaticMetadata;
+
+  /// Video başlığının Dolby Vision profili; DV üstverisi yoksa null.
+  final int? dolbyVisionProfile;
+
+  bool supports(HdrMode mode) => switch (mode) {
+    HdrMode.sdr => true,
+    HdrMode.hdr => hdrSignal || dolbyVisionProfile != null,
+    HdrMode.hdr10 => hdr10StaticMetadata,
+    HdrMode.hdr10plus => false,
+    HdrMode.dolbyVision => dolbyVisionProfile != null,
+  };
+}
+
 /// libmpv'nin gelişmiş oynatma yüzeyini doğrulanabilir, test edilebilir bir
 /// API altında toplar.
 class AdvancedPlaybackController {
@@ -84,18 +121,27 @@ class AdvancedPlaybackController {
     16.0,
   ];
 
-  static const hdrToneMappingProfile = <String, String>{
+  /// HDR anahtarı kapalıyken HDR/Dolby Vision içerik SDR'e dönüştürülür.
+  /// Hedef renk uzayı açıkça bt.709/bt.1886 olarak zorlanır ki dönüşüm her
+  /// render yolunda (libmpv render API dahil) gerçekleşsin.
+  static const hdrToSdrProfile = <String, String>{
     'tone-mapping': 'bt.2390',
     'hdr-compute-peak': 'yes',
     'gamut-mapping-mode': 'desaturate',
+    'target-trc': 'bt.1886',
+    'target-prim': 'bt.709',
   };
 
-  /// Ton eşleme kapalıyken HDR sinyali ekrana olduğu gibi verilir; SDR
-  /// ekranda görüntü bilinçli olarak soluklaşır (kullanıcı tercihi).
-  static const hdrDisabledProfile = <String, String>{
-    'tone-mapping': 'no',
+  /// HDR anahtarı açıkken sinyal ekrana sıkıştırılmadan verilir: ton eşleme
+  /// kapanır ve SDR profilinin hedef zorlaması `auto`ya döndürülür.
+  /// mpv 0.36'da `tone-mapping=no` seçeneği yoktur (geçersiz değer hatası
+  /// verir); ton sıkıştırmayı kapatmanın bu sürümdeki karşılığı `clip`tir.
+  static const hdrNativeProfile = <String, String>{
+    'tone-mapping': 'clip',
     'hdr-compute-peak': 'no',
     'gamut-mapping-mode': 'auto',
+    'target-trc': 'auto',
+    'target-prim': 'auto',
   };
 
   /// localhost HTTP yanıtı bir NNTP segmentini beklerken media_kit'in beş
@@ -175,20 +221,40 @@ class AdvancedPlaybackController {
   VideoPreset videoPreset = VideoPreset.natural;
   UpscalingPreset upscalingPreset = UpscalingPreset.balanced;
   AudioPreset audioPreset = AudioPreset.balanced;
-  bool hdrToneMappingEnabled = false;
+  HdrMode hdrMode = HdrMode.sdr;
   bool hardwareDecoding = true;
 
-  /// media_kit'in kapattığı dinamik peak detection'ı yeniden açar ve her
-  /// ayarın libmpv tarafından kabul edildiğini geri okuyarak doğrular.
-  Future<void> applyHdrToneMappingProfile() async {
-    await _applyPropertiesWithReadback(hdrToneMappingProfile);
-    hdrToneMappingEnabled = true;
+  /// HDR modu seçer: SDR dışındaki modlarda doğal HDR/Dolby Vision sinyali
+  /// ekrana işlenmeden verilir, SDR'de içerik bt.709'a ton eşlenir. Her ayarın
+  /// libmpv tarafından kabul edildiği geri okunarak doğrulanır.
+  ///
+  /// `target-colorspace-hint` (mpv 0.37+) HDR sinyalini destekleyen ekrana
+  /// doğrudan iletir; eski libmpv'de yoksa atomik profili bozmamak için
+  /// doğrulamasız, en iyi çabayla denenir.
+  Future<void> setHdrMode(HdrMode mode) async {
+    await _applyPropertiesWithReadback(
+      mode == HdrMode.sdr ? hdrToSdrProfile : hdrNativeProfile,
+    );
+    await _trySetProperty(
+      'target-colorspace-hint',
+      mode == HdrMode.sdr ? 'no' : 'yes',
+    );
+    hdrMode = mode;
   }
 
-  /// Ton eşlemeyi kapatır; HDR sinyali ekrana işlenmeden verilir.
-  Future<void> disableHdrToneMapping() async {
-    await _applyPropertiesAtomically(hdrDisabledProfile);
-    hdrToneMappingEnabled = false;
+  /// Eski aç/kapa arayüzünün karşılığı: açık = [HdrMode.hdr].
+  Future<void> setHdrEnabled(bool enabled) =>
+      setHdrMode(enabled ? HdrMode.hdr : HdrMode.sdr);
+
+  bool get hdrEnabled => hdrMode != HdrMode.sdr;
+
+  /// Derlemenin desteklemediği özelliklerde sessizce geçer.
+  Future<void> _trySetProperty(String name, String value) async {
+    try {
+      await _backend.setProperty(name, value);
+    } catch (_) {
+      // Özellik yoksa profilin geri kalanıyla çalışma sürdürülür.
+    }
   }
 
   /// Donanım kod çözmeyi açar (`auto-safe`) veya kapatır (yazılım). mpv bu
@@ -198,10 +264,11 @@ class AdvancedPlaybackController {
     hardwareDecoding = enabled;
   }
 
-  /// Geçerli içeriğin HDR sinyali taşıyıp taşımadığını libmpv video
-  /// parametrelerinden okur. Başlık henüz açılmadıysa veya okuma
-  /// başarısızsa güvenli tarafta kalıp false döner.
-  Future<bool> detectHdrContent() async {
+  /// Geçerli içeriğin dinamik aralık yeteneklerini libmpv video
+  /// parametrelerinden ve başlık üstverisinden okur. Başlık henüz
+  /// açılmadıysa veya okuma başarısızsa güvenli tarafta kalıp yalnız
+  /// SDR'i destekleyen boş bir sonuç döner.
+  Future<HdrCapabilities> detectHdrCapabilities() async {
     try {
       final primaries = (await _backend.getProperty('video-params/primaries'))
           .trim()
@@ -209,10 +276,62 @@ class AdvancedPlaybackController {
       final gamma = (await _backend.getProperty('video-params/gamma'))
           .trim()
           .toLowerCase();
-      return primaries.contains('bt.2020') || gamma == 'pq' || gamma == 'hlg';
+      final hdrSignal =
+          primaries.contains('bt.2020') || gamma == 'pq' || gamma == 'hlg';
+      var hdr10StaticMetadata = false;
+      if (hdrSignal) {
+        // HDR10 statik üstverisi varsa mpv bunu max-luma olarak sunar;
+        // üstveri yoksa özellik okuma hatası verir/boş döner.
+        final maxLuma = double.tryParse(
+          (await _backend.getProperty('video-params/max-luma')).trim(),
+        );
+        hdr10StaticMetadata = maxLuma != null && maxLuma > 0;
+      }
+      return HdrCapabilities(
+        hdrSignal: hdrSignal,
+        hdr10StaticMetadata: hdr10StaticMetadata,
+        dolbyVisionProfile: await _detectDolbyVisionProfile(),
+      );
     } catch (_) {
-      return false;
+      return const HdrCapabilities();
     }
+  }
+
+  /// Video başlıklarında Dolby Vision profili arar. mpv 0.40, DV üstverisini
+  /// `track-list/<i>/dolby-vision-profile` olarak sunar; DV taşımayan
+  /// başlıkta özellik okuma hatası verir.
+  Future<int?> _detectDolbyVisionProfile() async {
+    try {
+      final count =
+          int.tryParse(
+            (await _backend.getProperty('track-list/count')).trim(),
+          ) ??
+          0;
+      for (var i = 0; i < count; i++) {
+        try {
+          final type = (await _backend.getProperty('track-list/$i/type'))
+              .trim();
+          if (type != 'video') continue;
+          final raw = (await _backend.getProperty(
+                'track-list/$i/dolby-vision-profile',
+              ))
+              .trim();
+          final profile = int.tryParse(raw) ?? double.tryParse(raw)?.toInt();
+          if (profile != null && profile > 0) return profile;
+        } catch (_) {
+          // Bu başlıkta DV üstverisi yok; diğer başlıklar denenir.
+        }
+      }
+    } catch (_) {
+      // Başlık listesi okunamadı: DV yok sayılır.
+    }
+    return null;
+  }
+
+  /// Geçerli içeriğin HDR sinyali taşıyıp taşımadığını raporlar.
+  Future<bool> detectHdrContent() async {
+    final capabilities = await detectHdrCapabilities();
+    return capabilities.hdrSignal || capabilities.dolbyVisionProfile != null;
   }
 
   Future<void> applyStreamingTransportProfile() =>

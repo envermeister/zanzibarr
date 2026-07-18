@@ -118,7 +118,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _startupActive = false;
   bool _startupFailed = false;
   bool _playbackReady = false;
-  bool _hdrToneMappingEnabled = false;
+  HdrMode _hdrMode = HdrMode.sdr;
   bool _hardwareDecoding = true;
   bool _buffering = false;
   double _bufferingPercentage = 0.0;
@@ -444,7 +444,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       // Eski backend'de profil yoksa açılış yine varsayılanlarla sürebilir.
     }
     try {
-      await _playback.applyHdrToneMappingProfile();
+      // Varsayılan güvenli yol: HDR içerik SDR'e ton eşlenir; kullanıcı
+      // diyalogdan HDR modu seçince doğal sinyale geçilir.
+      await _playback.setHdrMode(HdrMode.sdr);
       hdrReady = true;
     } catch (_) {
       // SDR oynatma, HDR profili desteklenmeyen eski libmpv'de sürer.
@@ -457,7 +459,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
     if (!mounted) return;
     setState(() {
-      _hdrToneMappingEnabled = hdrReady;
+      _hdrMode = HdrMode.sdr;
       _engineStatus = [
         engineVersion,
         'GPU render',
@@ -1779,9 +1781,11 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   Future<void> _showTuningDialog() async {
     _controlsTimer?.cancel();
-    // İçerik HDR mı? Diyalog açılırken libmpv parametrelerinden okunur;
-    // SDR ise ton eşleme anahtarı pasif kalır.
-    final hdrContentFuture = _playback.detectHdrContent();
+    // İçerik hangi dinamik aralık formatlarını taşıyor? Diyalog açılırken
+    // libmpv parametrelerinden okunur; desteklenmeyen modlar pasif kalır.
+    final hdrCapsFuture = _playback.detectHdrCapabilities();
+    // Diyalog başlık çubuğundan sürüklenir; konum diyalog süresince saklanır.
+    var dragOffset = Offset.zero;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -1798,250 +1802,336 @@ class _PlayerScreenState extends State<PlayerScreen>
             60000,
             periodicIntervalMilliseconds,
           }.toList()..sort();
+          final screenSize = MediaQuery.of(context).size;
+          final compactSegmentStyle = TextButton.styleFrom(
+            visualDensity: VisualDensity.compact,
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            textStyle: const TextStyle(fontSize: 12),
+          );
 
           Future<void> refresh(Future<void> operation) async {
             await operation;
             if (dialogContext.mounted) setDialogState(() {});
           }
 
-          return AlertDialog(
-            backgroundColor: const Color(0xFF202023),
-            surfaceTintColor: Colors.transparent,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(18),
-              side: const BorderSide(color: Colors.white12),
-            ),
-            title: const Text('Görüntü ve ses'),
-            content: SizedBox(
-              width: 520,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _TuningRow(
-                      label: 'Video teması',
-                      child: SegmentedButton<VideoPreset>(
-                        segments: const [
-                          ButtonSegment(
-                            value: VideoPreset.natural,
-                            label: Text('Doğal'),
-                          ),
-                          ButtonSegment(
-                            value: VideoPreset.cinema,
-                            label: Text('Sinema'),
-                          ),
-                          ButtonSegment(
-                            value: VideoPreset.vivid,
-                            label: Text('Canlı'),
-                          ),
-                        ],
-                        selected: {_playback.videoPreset},
-                        onSelectionChanged: (value) =>
-                            unawaited(refresh(_setVideoPreset(value.single))),
+          void onDialogDrag(DragUpdateDetails details) {
+            setDialogState(() {
+              final candidate = dragOffset + details.delta;
+              // Diyalog her zaman ekrandan taşmayacak bir bölgede kalır.
+              dragOffset = Offset(
+                candidate.dx
+                    .clamp(
+                      120 - screenSize.width / 2,
+                      screenSize.width / 2 - 120,
+                    )
+                    .toDouble(),
+                candidate.dy
+                    .clamp(
+                      80 - screenSize.height / 2,
+                      screenSize.height / 2 - 80,
+                    )
+                    .toDouble(),
+              );
+            });
+          }
+
+          return Transform.translate(
+            offset: dragOffset,
+            child: AlertDialog(
+              backgroundColor: const Color(0xFF202023),
+              surfaceTintColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 24,
+                vertical: 20,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: const BorderSide(color: Colors.white12),
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(16, 8, 6, 8),
+              contentPadding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 8, 6),
+              title: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onPanUpdate: onDialogDrag,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.move,
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.drag_indicator_rounded,
+                        size: 18,
+                        color: Colors.white38,
                       ),
-                    ),
-                    _TuningRow(
-                      label: 'GPU ölçekleme',
-                      child: SegmentedButton<UpscalingPreset>(
-                        segments: const [
-                          ButtonSegment(
-                            value: UpscalingPreset.lowPower,
-                            label: Text('Düşük güç'),
-                          ),
-                          ButtonSegment(
-                            value: UpscalingPreset.balanced,
-                            label: Text('Dengeli'),
-                          ),
-                          ButtonSegment(
-                            value: UpscalingPreset.quality,
-                            label: Text('Kalite'),
-                          ),
-                        ],
-                        selected: {_playback.upscalingPreset},
-                        onSelectionChanged: (value) => unawaited(
-                          refresh(_setUpscalingPreset(value.single)),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Görüntü ve ses',
+                          style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
-                    ),
-                    _TuningRow(
-                      label: 'Ses teması',
-                      child: SegmentedButton<AudioPreset>(
-                        segments: const [
-                          ButtonSegment(
-                            value: AudioPreset.balanced,
-                            label: Text('Dengeli'),
-                          ),
-                          ButtonSegment(
-                            value: AudioPreset.dialogue,
-                            label: Text('Diyalog'),
-                          ),
-                          ButtonSegment(
-                            value: AudioPreset.night,
-                            label: Text('Gece'),
-                          ),
-                        ],
-                        selected: {_playback.audioPreset},
-                        onSelectionChanged: (value) =>
-                            unawaited(refresh(_setAudioPreset(value.single))),
+                      IconButton(
+                        tooltip: 'Kapat',
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => Navigator.pop(dialogContext),
+                        icon: const Icon(Icons.close_rounded, size: 18),
                       ),
-                    ),
-                    _TuningRow(
-                      label: 'Seek adımı',
-                      child: SegmentedButton<int>(
-                        segments: [
-                          for (final seconds in seekStepOptions)
-                            ButtonSegment(
-                              value: seconds,
-                              label: Text('$seconds sn'),
-                            ),
-                        ],
-                        selected: {seekStepSeconds},
-                        onSelectionChanged: (value) =>
-                            unawaited(refresh(_setSeekStep(value.single))),
-                      ),
-                    ),
-                    _TuningRow(
-                      label: 'Periyodik bilgi',
-                      child: SegmentedButton<int>(
-                        segments: [
-                          for (final milliseconds in periodicInfoOptions)
-                            ButtonSegment(
-                              value: milliseconds,
-                              label: Text(
-                                milliseconds == 0
-                                    ? 'Kapalı'
-                                    : _formatIntervalMilliseconds(milliseconds),
-                              ),
-                            ),
-                        ],
-                        selected: {periodicIntervalMilliseconds},
-                        onSelectionChanged: (value) => unawaited(
-                          refresh(
-                            _setPeriodicInfoInterval(
-                              value.single == 0
-                                  ? null
-                                  : Duration(milliseconds: value.single),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                    _TuningRow(
-                      label: 'Ses senkronu',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            tooltip: 'Sesi 0,1 sn erkene al',
-                            onPressed: () => unawaited(
-                              refresh(
-                                _setAudioDelay(
-                                  _audioDelay -
-                                      const Duration(milliseconds: 100),
-                                ),
-                              ),
-                            ),
-                            icon: const Icon(Icons.remove_rounded),
-                          ),
-                          SizedBox(
-                            width: 72,
-                            child: Text(
-                              _formatSignedDuration(_audioDelay),
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          IconButton(
-                            tooltip: 'Sesi 0,1 sn geciktir',
-                            onPressed: () => unawaited(
-                              refresh(
-                                _setAudioDelay(
-                                  _audioDelay +
-                                      const Duration(milliseconds: 100),
-                                ),
-                              ),
-                            ),
-                            icon: const Icon(Icons.add_rounded),
-                          ),
-                        ],
-                      ),
-                    ),
-                    _TuningRow(
-                      label: 'Kod çözme',
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _hardwareDecoding ? 'Donanım' : 'Yazılım',
-                            style: const TextStyle(
-                              color: Colors.white54,
-                              fontSize: 12,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Switch(
-                            value: _hardwareDecoding,
-                            onChanged: (value) => unawaited(
-                              refresh(_setHardwareDecoding(value)),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    _TuningRow(
-                      label: 'HDR ton eşleme',
-                      child: FutureBuilder<bool>(
-                        future: hdrContentFuture,
-                        builder: (context, snapshot) {
-                          final isHdr = snapshot.data ?? false;
-                          return Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              if (snapshot.connectionState ==
-                                      ConnectionState.done &&
-                                  !isHdr)
-                                const Padding(
-                                  padding: EdgeInsets.only(right: 8),
-                                  child: Text(
-                                    'SDR içerik',
-                                    style: TextStyle(
-                                      color: Colors.white38,
-                                      fontSize: 12,
-                                    ),
-                                  ),
-                                ),
-                              Switch(
-                                value: _hdrToneMappingEnabled && isHdr,
-                                onChanged: isHdr
-                                    ? (value) => unawaited(
-                                        refresh(_setHdrToneMapping(value)),
-                                      )
-                                    : null,
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      'HDR: BT.2390 · kare başına peak detect · gamut '
-                      'desaturate. Dolby Vision yalnız güvenli HDR10 taban '
-                      'katmanı bulunan profillerde doğal decoder yolunu kullanır.',
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: Colors.white54),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Bitti'),
+              content: SizedBox(
+                width: 400,
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _TuningRow(
+                        label: 'Video teması',
+                        child: SegmentedButton<VideoPreset>(
+                          style: compactSegmentStyle,
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: VideoPreset.natural,
+                              label: Text('Doğal'),
+                            ),
+                            ButtonSegment(
+                              value: VideoPreset.cinema,
+                              label: Text('Sinema'),
+                            ),
+                            ButtonSegment(
+                              value: VideoPreset.vivid,
+                              label: Text('Canlı'),
+                            ),
+                          ],
+                          selected: {_playback.videoPreset},
+                          onSelectionChanged: (value) =>
+                              unawaited(refresh(_setVideoPreset(value.single))),
+                        ),
+                      ),
+                      _TuningRow(
+                        label: 'GPU ölçekleme',
+                        child: SegmentedButton<UpscalingPreset>(
+                          style: compactSegmentStyle,
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: UpscalingPreset.lowPower,
+                              label: Text('Düşük güç'),
+                            ),
+                            ButtonSegment(
+                              value: UpscalingPreset.balanced,
+                              label: Text('Dengeli'),
+                            ),
+                            ButtonSegment(
+                              value: UpscalingPreset.quality,
+                              label: Text('Kalite'),
+                            ),
+                          ],
+                          selected: {_playback.upscalingPreset},
+                          onSelectionChanged: (value) => unawaited(
+                            refresh(_setUpscalingPreset(value.single)),
+                          ),
+                        ),
+                      ),
+                      _TuningRow(
+                        label: 'Ses teması',
+                        child: SegmentedButton<AudioPreset>(
+                          style: compactSegmentStyle,
+                          showSelectedIcon: false,
+                          segments: const [
+                            ButtonSegment(
+                              value: AudioPreset.balanced,
+                              label: Text('Dengeli'),
+                            ),
+                            ButtonSegment(
+                              value: AudioPreset.dialogue,
+                              label: Text('Diyalog'),
+                            ),
+                            ButtonSegment(
+                              value: AudioPreset.night,
+                              label: Text('Gece'),
+                            ),
+                          ],
+                          selected: {_playback.audioPreset},
+                          onSelectionChanged: (value) =>
+                              unawaited(refresh(_setAudioPreset(value.single))),
+                        ),
+                      ),
+                      _TuningRow(
+                        label: 'Seek adımı',
+                        child: SegmentedButton<int>(
+                          style: compactSegmentStyle,
+                          showSelectedIcon: false,
+                          segments: [
+                            for (final seconds in seekStepOptions)
+                              ButtonSegment(
+                                value: seconds,
+                                label: Text('$seconds sn'),
+                              ),
+                          ],
+                          selected: {seekStepSeconds},
+                          onSelectionChanged: (value) =>
+                              unawaited(refresh(_setSeekStep(value.single))),
+                        ),
+                      ),
+                      _TuningRow(
+                        label: 'Periyodik bilgi',
+                        child: SegmentedButton<int>(
+                          style: compactSegmentStyle,
+                          showSelectedIcon: false,
+                          segments: [
+                            for (final milliseconds in periodicInfoOptions)
+                              ButtonSegment(
+                                value: milliseconds,
+                                label: Text(
+                                  milliseconds == 0
+                                      ? 'Kapalı'
+                                      : _formatIntervalMilliseconds(
+                                          milliseconds,
+                                        ),
+                                ),
+                              ),
+                          ],
+                          selected: {periodicIntervalMilliseconds},
+                          onSelectionChanged: (value) => unawaited(
+                            refresh(
+                              _setPeriodicInfoInterval(
+                                value.single == 0
+                                    ? null
+                                    : Duration(milliseconds: value.single),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      _TuningRow(
+                        label: 'Ses senkronu',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              tooltip: 'Sesi 0,1 sn erkene al',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => unawaited(
+                                refresh(
+                                  _setAudioDelay(
+                                    _audioDelay -
+                                        const Duration(milliseconds: 100),
+                                  ),
+                                ),
+                              ),
+                              icon: const Icon(Icons.remove_rounded, size: 18),
+                            ),
+                            SizedBox(
+                              width: 64,
+                              child: Text(
+                                _formatSignedDuration(_audioDelay),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                            IconButton(
+                              tooltip: 'Sesi 0,1 sn geciktir',
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () => unawaited(
+                                refresh(
+                                  _setAudioDelay(
+                                    _audioDelay +
+                                        const Duration(milliseconds: 100),
+                                  ),
+                                ),
+                              ),
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _TuningRow(
+                        label: 'Kod çözme',
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              _hardwareDecoding ? 'Donanım' : 'Yazılım',
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 12,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Switch(
+                              value: _hardwareDecoding,
+                              materialTapTargetSize:
+                                  MaterialTapTargetSize.shrinkWrap,
+                              onChanged: (value) => unawaited(
+                                refresh(_setHardwareDecoding(value)),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _TuningRow(
+                        label: 'Dinamik aralık',
+                        child: FutureBuilder<HdrCapabilities>(
+                          future: hdrCapsFuture,
+                          builder: (context, snapshot) {
+                            // Algılama sürerken yalnız SDR seçilebilir.
+                            final caps =
+                                snapshot.data ?? const HdrCapabilities();
+                            final selection = caps.supports(_hdrMode)
+                                ? _hdrMode
+                                : HdrMode.sdr;
+                            ButtonSegment<HdrMode> segment(
+                              HdrMode mode,
+                              String text,
+                            ) => ButtonSegment(
+                              value: mode,
+                              enabled: caps.supports(mode),
+                              label: Text(text),
+                            );
+                            return SegmentedButton<HdrMode>(
+                              style: compactSegmentStyle,
+                              showSelectedIcon: false,
+                              segments: [
+                                segment(HdrMode.sdr, 'SDR'),
+                                segment(HdrMode.hdr, 'HDR'),
+                                segment(HdrMode.hdr10, 'HDR10'),
+                                segment(HdrMode.hdr10plus, 'HDR10+'),
+                                segment(HdrMode.dolbyVision, 'DV'),
+                              ],
+                              selected: {selection},
+                              onSelectionChanged: (value) =>
+                                  unawaited(refresh(_setHdrMode(value.single))),
+                            );
+                          },
+                        ),
+                      ),
+                      Text(
+                        'İçeriğin taşıdığı formatlar seçilebilir, diğerleri '
+                        'pasiftir. SDR seçiliyken HDR içerik bt.709\'a ton '
+                        'eşlenir (BT.2390 + peak detect). HDR10+ dinamik '
+                        'üstverisi libmpv tarafından algılanamadığı için '
+                        'pasiftir; Dolby Vision, HDR10 taban katmanı bulunan '
+                        'profillerde desteklenir.',
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: Colors.white54),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-            ],
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Bitti'),
+                ),
+              ],
+            ),
           );
         },
       ),
@@ -2049,12 +2139,10 @@ class _PlayerScreenState extends State<PlayerScreen>
     _revealControls();
   }
 
-  Future<void> _setHdrToneMapping(bool enabled) async {
+  Future<void> _setHdrMode(HdrMode mode) async {
     await _runControl(
-      () => enabled
-          ? _playback.applyHdrToneMappingProfile()
-          : _playback.disableHdrToneMapping(),
-      onSuccess: () => _hdrToneMappingEnabled = enabled,
+      () => _playback.setHdrMode(mode),
+      onSuccess: () => _hdrMode = mode,
     );
   }
 
@@ -2372,7 +2460,7 @@ class _TuningRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 14),
+    padding: const EdgeInsets.only(bottom: 10),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -2382,7 +2470,7 @@ class _TuningRow extends StatelessWidget {
             context,
           ).textTheme.labelMedium?.copyWith(color: Colors.white54),
         ),
-        const SizedBox(height: 7),
+        const SizedBox(height: 6),
         SingleChildScrollView(scrollDirection: Axis.horizontal, child: child),
       ],
     ),

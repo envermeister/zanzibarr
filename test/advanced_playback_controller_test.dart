@@ -7,6 +7,7 @@ class _FakeBackend implements PlaybackBackend {
   final calls = <String>[];
   final properties = <String, String>{};
   final readbackOverrides = <String, String>{};
+  final unsupportedProperties = <String>{};
 
   @override
   Future<void> command(List<String> arguments) async {
@@ -27,6 +28,9 @@ class _FakeBackend implements PlaybackBackend {
   @override
   Future<void> setProperty(String name, String value) async {
     calls.add('set:$name=$value');
+    if (unsupportedProperties.contains(name)) {
+      throw UnsupportedError('$name bu derlemede yok');
+    }
     properties[name] = value;
   }
 
@@ -37,22 +41,30 @@ class _FakeBackend implements PlaybackBackend {
 }
 
 void main() {
-  test('BT.2390 profili uygulanıyor ve etkin değerler doğrulanıyor', () async {
+  test('SDR profili HDR içeriği bt.709 hedefine ton eşleyerek doğrulanır', () async {
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend);
 
-    await controller.applyHdrToneMappingProfile();
+    await controller.setHdrEnabled(false);
 
+    expect(controller.hdrEnabled, isFalse);
     expect(backend.calls, [
       'get:tone-mapping',
       'get:hdr-compute-peak',
       'get:gamut-mapping-mode',
+      'get:target-trc',
+      'get:target-prim',
       'set:tone-mapping=bt.2390',
       'set:hdr-compute-peak=yes',
       'set:gamut-mapping-mode=desaturate',
+      'set:target-trc=bt.1886',
+      'set:target-prim=bt.709',
       'get:tone-mapping',
       'get:hdr-compute-peak',
       'get:gamut-mapping-mode',
+      'get:target-trc',
+      'get:target-prim',
+      'set:target-colorspace-hint=no',
     ]);
   });
 
@@ -467,25 +479,43 @@ void main() {
     expect(backend.calls, isEmpty);
   });
 
-  test('HDR ton eşleme kapatma profili doğal yolu geri yükler', () async {
+  test('HDR anahtarı doğal HDR yolunu açıp SDR zorlamasını kaldırır', () async {
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend);
 
-    await controller.applyHdrToneMappingProfile();
-    expect(controller.hdrToneMappingEnabled, isTrue);
-    backend.calls.clear();
+    await controller.setHdrEnabled(true);
 
-    await controller.disableHdrToneMapping();
-
-    expect(controller.hdrToneMappingEnabled, isFalse);
+    expect(controller.hdrEnabled, isTrue);
     expect(backend.calls, [
       'get:tone-mapping',
       'get:hdr-compute-peak',
       'get:gamut-mapping-mode',
-      'set:tone-mapping=no',
+      'get:target-trc',
+      'get:target-prim',
+      'set:tone-mapping=clip',
       'set:hdr-compute-peak=no',
       'set:gamut-mapping-mode=auto',
+      'set:target-trc=auto',
+      'set:target-prim=auto',
+      'get:tone-mapping',
+      'get:hdr-compute-peak',
+      'get:gamut-mapping-mode',
+      'get:target-trc',
+      'get:target-prim',
+      'set:target-colorspace-hint=yes',
     ]);
+  });
+
+  test('target-colorspace-hint yoksa HDR profili yine de uygulanır', () async {
+    final backend = _FakeBackend()
+      ..unsupportedProperties.add('target-colorspace-hint');
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setHdrEnabled(true);
+
+    expect(controller.hdrEnabled, isTrue);
+    expect(backend.properties['tone-mapping'], 'clip');
+    expect(backend.calls, contains('set:target-colorspace-hint=yes'));
   });
 
   test('donanım kod çözme anahtarı auto-safe ve yazılım arasında geçer', () async {
@@ -529,4 +559,127 @@ void main() {
     expect(await AdvancedPlaybackController(_FakeBackend()).detectHdrContent(),
         isFalse);
   });
+
+  test('HDR yetenekleri HDR10 içerikte sdr/hdr/hdr10 sunar', () async {
+    final backend = _FakeBackend()
+      ..readbackOverrides['video-params/primaries'] = 'bt.2020'
+      ..readbackOverrides['video-params/gamma'] = 'pq'
+      ..readbackOverrides['video-params/max-luma'] = '4000.000000'
+      ..readbackOverrides['track-list/count'] = '2'
+      ..readbackOverrides['track-list/0/type'] = 'video'
+      ..readbackOverrides['track-list/1/type'] = 'audio';
+
+    final caps =
+        await AdvancedPlaybackController(backend).detectHdrCapabilities();
+
+    expect(caps.hdrSignal, isTrue);
+    expect(caps.hdr10StaticMetadata, isTrue);
+    expect(caps.dolbyVisionProfile, isNull);
+    expect(caps.supports(HdrMode.sdr), isTrue);
+    expect(caps.supports(HdrMode.hdr), isTrue);
+    expect(caps.supports(HdrMode.hdr10), isTrue);
+    // HDR10+ dinamik üstverisi libmpv'de algılanamadığı için daima pasif.
+    expect(caps.supports(HdrMode.hdr10plus), isFalse);
+    expect(caps.supports(HdrMode.dolbyVision), isFalse);
+  });
+
+  test('HDR yetenekleri Dolby Vision başlığını track üstverisinden bulur',
+      () async {
+    final backend = _FakeBackend()
+      ..readbackOverrides['video-params/primaries'] = 'bt.2020'
+      ..readbackOverrides['video-params/gamma'] = 'pq'
+      ..readbackOverrides['video-params/max-luma'] = '1000.000000'
+      ..readbackOverrides['track-list/count'] = '1'
+      ..readbackOverrides['track-list/0/type'] = 'video'
+      ..readbackOverrides['track-list/0/dolby-vision-profile'] = '8';
+
+    final caps =
+        await AdvancedPlaybackController(backend).detectHdrCapabilities();
+
+    expect(caps.dolbyVisionProfile, 8);
+    expect(caps.supports(HdrMode.dolbyVision), isTrue);
+    expect(caps.supports(HdrMode.hdr10), isTrue);
+    expect(caps.supports(HdrMode.hdr10plus), isFalse);
+  });
+
+  test('DV özelliği okuma hatası verirse içerik DV sayılmaz', () async {
+    final backend = _ThrowingGetBackend(
+      overrides: {
+        'video-params/primaries': 'bt.2020',
+        'video-params/gamma': 'pq',
+        'video-params/max-luma': '1000.000000',
+        'track-list/count': '1',
+        'track-list/0/type': 'video',
+      },
+      throwingProperties: {'track-list/0/dolby-vision-profile'},
+    );
+
+    final caps =
+        await AdvancedPlaybackController(backend).detectHdrCapabilities();
+
+    expect(caps.dolbyVisionProfile, isNull);
+    expect(caps.supports(HdrMode.dolbyVision), isFalse);
+    expect(caps.supports(HdrMode.hdr10), isTrue);
+  });
+
+  test('SDR içerikte yalnız SDR modu desteklenir', () async {
+    final backend = _FakeBackend()
+      ..readbackOverrides['video-params/primaries'] = 'bt.709'
+      ..readbackOverrides['video-params/gamma'] = 'bt.1886';
+
+    final caps =
+        await AdvancedPlaybackController(backend).detectHdrCapabilities();
+
+    for (final mode in HdrMode.values) {
+      expect(caps.supports(mode), mode == HdrMode.sdr, reason: mode.name);
+    }
+    // Okuma tamamen başarısız olursa da güvenli varsayılan SDR'dir.
+    final empty =
+        await AdvancedPlaybackController(_FakeBackend())
+            .detectHdrCapabilities();
+    expect(empty.supports(HdrMode.sdr), isTrue);
+    expect(empty.hdrSignal, isFalse);
+  });
+
+  test('HDR modu seçimi doğal yolu açıp SDR zorlamasını kaldırır', () async {
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setHdrMode(HdrMode.dolbyVision);
+
+    expect(controller.hdrMode, HdrMode.dolbyVision);
+    expect(controller.hdrEnabled, isTrue);
+    expect(backend.properties['tone-mapping'], 'clip');
+    expect(backend.properties['target-trc'], 'auto');
+    expect(backend.calls, contains('set:target-colorspace-hint=yes'));
+
+    await controller.setHdrMode(HdrMode.sdr);
+
+    expect(controller.hdrMode, HdrMode.sdr);
+    expect(controller.hdrEnabled, isFalse);
+    expect(backend.properties['tone-mapping'], 'bt.2390');
+    expect(backend.properties['target-trc'], 'bt.1886');
+    expect(backend.calls, contains('set:target-colorspace-hint=no'));
+  });
+}
+
+/// DV gibi varlığı içerikle değişen özelliklerde gerçek libmpv davranışını
+/// taklit eder: listelenen özellikler okununca hata fırlatır.
+class _ThrowingGetBackend extends _FakeBackend {
+  _ThrowingGetBackend({
+    Map<String, String>? overrides,
+    this.throwingProperties = const {},
+  }) {
+    if (overrides != null) readbackOverrides.addAll(overrides);
+  }
+
+  final Set<String> throwingProperties;
+
+  @override
+  Future<String> getProperty(String name) async {
+    if (throwingProperties.contains(name)) {
+      throw StateError('$name bu başlıkta yok');
+    }
+    return super.getProperty(name);
+  }
 }
