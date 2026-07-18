@@ -1,0 +1,48 @@
+name: Android build
+
+# Yalnızca elle tetiklenir: private repoda dakika tasarrufu.
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Yerel geliştirme sürümüyle aynı Flutter (pubspec.lock üretimiyle uyum).
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: stable
+          cache: true
+
+      # cargokit, Rust motorunu Android NDK ile çapraz derler.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, armv7-linux-androideabi, x86_64-linux-android
+
+      # Runner imajında kurulu NDK'yı cargokit'e göster.
+      - name: NDK yolunu ayarla
+        run: echo "ANDROID_NDK_HOME=$ANDROID_NDK_LATEST_HOME" >> "$GITHUB_ENV"
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter build apk (release, ABI bölünmüş)
+        run: flutter build apk --release --split-per-abi
+
+      # TV box'lar için anlaşılır adlarla tek zip.
+      - name: Paketle (zip)
+        run: |
+          cd build/app/outputs/flutter-apk
+          mv app-arm64-v8a-release.apk zanzibarr-android-arm64-v8a.apk
+          mv app-armeabi-v7a-release.apk zanzibarr-android-armeabi-v7a.apk
+          mv app-x86_64-release.apk zanzibarr-android-x86_64.apk
+          zip "$GITHUB_WORKSPACE/zanzibarr-android.zip" zanzibarr-android-*.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zanzibarr-android
+          path: zanzibarr-android.zip
+          retention-days: 14

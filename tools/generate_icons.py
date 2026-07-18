@@ -64,4 +64,11 @@ logo.save(
     sizes=[(16, 16), (24, 24), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)],
 )
 
+# Android TV: 16:9 launcher banner'ı (xhdpi: 640x360 px = 320x180 dp).
+# Kare logoyu koyu zeminde ortalar.
+banner = Image.new("RGBA", (640, 360), IOS_BG)
+side = int(360 * 0.82)
+banner.alpha_composite(resize(side), ((640 - side) // 2, (360 - side) // 2))
+banner.save("android/app/src/main/res/mipmap-xhdpi/tv_banner.png")
+
 print("ikonlar üretildi")

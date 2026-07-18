@@ -3,10 +3,15 @@
          Debug/profile manifest'lerinde Flutter bunu zaten ekler; release
          paketinin çalışması için burada da olmalı. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android TV: dokunmatik ekranı olmayan cihazlara (TV box) kurulabilsin;
+         telefon/tablet desteği de korunur (required=false). -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
+    <uses-feature android:name="android.software.leanback" android:required="false"/>
     <application
         android:label="zanzibarr"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:banner="@mipmap/tv_banner">
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -27,6 +32,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
+                <!-- Android TV launcher'ında da görünsün -->
+                <category android:name="android.intent.category.LEANBACK_LAUNCHER"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.
