@@ -38,5 +38,10 @@ end
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_macos_build_settings(target)
+    # Paketli Mpv.xcframework yalnız arm64 dilimi içerir; x86_64 dilimini dışla
+    # (aksi halde Release link'i _mpv_* sembollerinde patlar).
+    target.build_configurations.each do |config|
+      config.build_settings['EXCLUDED_ARCHS[sdk=macosx*]'] = 'x86_64'
+    end
   end
 end
