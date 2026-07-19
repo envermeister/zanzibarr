@@ -6,7 +6,6 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
@@ -18,6 +17,7 @@ import 'gyuni_player_controls.dart';
 import 'media_preferences.dart';
 import 'picture_in_picture_window.dart';
 import 'playback_startup_guard.dart';
+import 'player_keyboard_controls.dart';
 import 'smart_canvas.dart';
 import 'smart_canvas_overlay.dart';
 import 'subtitle_controls_overlay.dart';
@@ -62,7 +62,8 @@ class PlayerScreen extends StatefulWidget {
 }
 
 class _PlayerScreenState extends State<PlayerScreen>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver
+    implements PlayerKeyboardHandler {
   static const _minimumCanvasExtent =
       1 / AdvancedPlaybackController.maximumZoom;
 
@@ -74,6 +75,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   late final MediaPreferencesStore _preferenceStore;
 
   final _videoKey = GlobalKey<VideoState>();
+  final _playButtonFocusNode = FocusNode(debugLabel: 'Oynat/Duraklat düğmesi');
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<bool>? _playingSubscription;
@@ -653,6 +655,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _queuedSubtitlePosition = null;
     _queuedSubtitleDelay = null;
     _startupGuard.dispose();
+    _playButtonFocusNode.dispose();
     _controlsTimer?.cancel();
     _seekFlashTimer?.cancel();
     _periodicInfoTimer?.cancel();
@@ -1487,88 +1490,113 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    final key = event.logicalKey;
-    if (event is KeyUpEvent) {
-      if (key == LogicalKeyboardKey.keyJ || key == LogicalKeyboardKey.keyL) {
-        unawaited(_endFastScan());
-        return KeyEventResult.handled;
-      }
-      return KeyEventResult.ignored;
-    }
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
-      return KeyEventResult.ignored;
-    }
+  // PlayerKeyboardHandler: klavye/TV kumandası yönlendirmesi
+  // lib/player/player_keyboard_controls.dart içindedir; tuş eşlemesi ile
+  // oynatıcı durumu arasındaki köprü bu üyelerdir.
 
-    if (key == LogicalKeyboardKey.escape) {
-      if (_canvasEditing) {
-        unawaited(_cancelCanvasEditing());
-      } else if (_subtitleControlsVisible) {
-        setState(() => _subtitleControlsVisible = false);
-      } else if (_isPictureInPicture) {
-        unawaited(_togglePictureInPicture());
-      } else if (_videoKey.currentState?.isFullscreen() ?? false) {
-        unawaited(_videoKey.currentState!.exitFullscreen());
-      } else {
-        _revealControls();
-      }
-      return KeyEventResult.handled;
-    }
-    if (!_playbackReady) return KeyEventResult.ignored;
+  @override
+  bool get playbackReady => _playbackReady;
 
-    final firstDown = event is KeyDownEvent;
-    if (key == LogicalKeyboardKey.space || key == LogicalKeyboardKey.keyK) {
-      if (firstDown) unawaited(_togglePlay());
-      return KeyEventResult.handled;
+  @override
+  bool get playing => _playing;
+
+  @override
+  bool get controlsVisible => _controlsVisible;
+
+  @override
+  bool get canvasEditing => _canvasEditing;
+
+  @override
+  bool get subtitleControlsVisible => _subtitleControlsVisible;
+
+  @override
+  bool get isPictureInPicture => _isPictureInPicture;
+
+  @override
+  bool get isFullscreen => _videoKey.currentState?.isFullscreen() ?? false;
+
+  @override
+  bool get remoteNavigationMode => _touchPrimary;
+
+  @override
+  Duration get seekStep => _seekStep;
+
+  @override
+  void revealControls() => _revealControls();
+
+  /// TV geri tuşunda kontrolleri kapatır; auto-hide sayacı da iptal edilir.
+  @override
+  void hideControls() {
+    _controlsTimer?.cancel();
+    if (mounted && _controlsVisible) {
+      setState(() => _controlsVisible = false);
     }
-    if (key == LogicalKeyboardKey.arrowLeft ||
-        key == LogicalKeyboardKey.arrowRight) {
-      final direction = key == LogicalKeyboardKey.arrowLeft ? -1 : 1;
-      final exactStep = HardwareKeyboard.instance.isShiftPressed
-          ? const Duration(seconds: 1)
-          : _seekStep;
-      unawaited(
-        _seekRelative(direction < 0 ? _negateDuration(exactStep) : exactStep),
-      );
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.keyJ || key == LogicalKeyboardKey.keyL) {
-      if (firstDown) _beginFastScan(key == LogicalKeyboardKey.keyJ ? -1 : 1);
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.keyF) {
-      if (firstDown) unawaited(_toggleFullscreen());
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.keyP) {
-      if (firstDown) unawaited(_togglePictureInPicture());
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.keyC) {
-      if (firstDown) _toggleCanvasEditor();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.keyS) {
-      if (firstDown) _toggleSubtitleControls();
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.comma) {
-      if (firstDown) unawaited(_stepBackward());
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.period) {
-      if (firstDown) unawaited(_stepForward());
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.bracketLeft) {
-      _queueSubtitleDelay(_subtitleDelay - const Duration(milliseconds: 100));
-      return KeyEventResult.handled;
-    }
-    if (key == LogicalKeyboardKey.bracketRight) {
-      _queueSubtitleDelay(_subtitleDelay + const Duration(milliseconds: 100));
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
+  }
+
+  @override
+  void togglePlay() => unawaited(_togglePlay());
+
+  @override
+  void seekRelative(Duration offset) => unawaited(_seekRelative(offset));
+
+  /// D-pad yukarı/aşağı: sesi ±5 değiştirir ve kontrolleri (ses OSD'si)
+  /// görünür tutar.
+  @override
+  void adjustVolume(double delta) {
+    _revealControls();
+    _onVolumeChanged(_volume + delta);
+  }
+
+  @override
+  void beginFastScan(int direction) => _beginFastScan(direction);
+
+  @override
+  void endFastScan() => unawaited(_endFastScan());
+
+  @override
+  void toggleFullscreen() => unawaited(_toggleFullscreen());
+
+  @override
+  void exitFullscreen() => unawaited(_videoKey.currentState?.exitFullscreen());
+
+  @override
+  void togglePictureInPicture() => unawaited(_togglePictureInPicture());
+
+  @override
+  void toggleCanvasEditor() => _toggleCanvasEditor();
+
+  @override
+  void cancelCanvasEditing() => unawaited(_cancelCanvasEditing());
+
+  @override
+  void toggleSubtitleControls() => _toggleSubtitleControls();
+
+  @override
+  void dismissSubtitleControls() {
+    if (mounted) setState(() => _subtitleControlsVisible = false);
+  }
+
+  @override
+  void stepBackward() => unawaited(_stepBackward());
+
+  @override
+  void stepForward() => unawaited(_stepForward());
+
+  @override
+  void nudgeSubtitleDelay(Duration delta) =>
+      _queueSubtitleDelay(_subtitleDelay + delta);
+
+  @override
+  void closePlayer() => unawaited(_closePlayer());
+
+  /// TV'de OK ile kontroller açıldığında oynat/duraklat düğmesine odak verir;
+  /// böylece D-pad gezintisi düğmelerden başlayabilir. Masaüstünde no-op.
+  @override
+  void focusPlayButton() {
+    if (!_touchPrimary) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_disposing) _playButtonFocusNode.requestFocus();
+    });
   }
 
   Future<void> _toggleFullscreen() async {
@@ -2314,12 +2342,8 @@ class _PlayerScreenState extends State<PlayerScreen>
         controller: _videoController,
         fit: BoxFit.contain,
         filterQuality: FilterQuality.high,
-        controls: (_) => Focus(
-          autofocus: true,
-          onKeyEvent: _handleKeyEvent,
-          onFocusChange: (focused) {
-            if (!focused) unawaited(_endFastScan());
-          },
+        controls: (_) => PlayerKeyboardControls(
+          handler: this,
           child: Builder(
             builder: (focusContext) => Listener(
               behavior: HitTestBehavior.translucent,
@@ -2357,6 +2381,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                 canvasActive: _canvasEditing,
                 subtitleControlsActive: _subtitleControlsVisible,
                 pictureInPictureSupported: _pictureInPictureWindow.isSupported,
+                playButtonFocusNode: _playButtonFocusNode,
                 onActivity: _revealControls,
                 onVideoTap: _touchPrimary
                     ? _toggleControlsVisibility

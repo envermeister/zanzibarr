@@ -462,6 +462,9 @@ class _OpenMediaCard extends StatelessWidget {
       child: InkWell(
         onTap: busy ? null : onPressed,
         hoverColor: foreground.withValues(alpha: 0.045),
+        // TV kumandasında D-pad gezintisinin başlayabilmesi için ilk odağın
+        // bu kartta olması gerekir; yoksa hiçbir widget odaklanamaz.
+        autofocus: true,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Row(

@@ -54,6 +54,7 @@ class GyuniPlayerChrome extends StatelessWidget {
     this.engineBadge,
     this.onLoadExternalAudio,
     this.onLoadExternalSubtitle,
+    this.playButtonFocusNode,
   });
 
   final bool visible;
@@ -108,6 +109,11 @@ class GyuniPlayerChrome extends StatelessWidget {
   /// null bırakılırsa ilgili menüde yükleme girişi gösterilmez.
   final VoidCallback? onLoadExternalAudio;
   final VoidCallback? onLoadExternalSubtitle;
+
+  /// TV kumandasında OK ile kontroller açıldığında odak verilen
+  /// oynat/duraklat düğmesinin düğümü; null bırakılırsa odak yönetimi
+  /// yapılmaz (masaüstü/test).
+  final FocusNode? playButtonFocusNode;
 
   void _handleVideoDoubleTap(BuildContext context, Offset? position) {
     final size = context.size;
@@ -209,6 +215,7 @@ class GyuniPlayerChrome extends StatelessWidget {
                           previewImage: previewImage,
                           previewPosition: previewPosition,
                           volume: volume,
+                          playButtonFocusNode: playButtonFocusNode,
                           onTogglePlay: onTogglePlay,
                           onToggleMute: onToggleMute,
                           onVolumeChanged: onVolumeChanged,
@@ -544,6 +551,7 @@ class _BottomControls extends StatelessWidget {
     required this.onShowAdvancedSettings,
     this.onLoadExternalAudio,
     this.onLoadExternalSubtitle,
+    this.playButtonFocusNode,
   });
 
   final bool ready;
@@ -570,6 +578,7 @@ class _BottomControls extends StatelessWidget {
   final ValueChanged<Offset> onShowAdvancedSettings;
   final VoidCallback? onLoadExternalAudio;
   final VoidCallback? onLoadExternalSubtitle;
+  final FocusNode? playButtonFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -662,6 +671,7 @@ class _BottomControls extends StatelessWidget {
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
                           tooltip: playing ? l10n.pause : l10n.play,
+                          focusNode: playButtonFocusNode,
                           onPressed: ready ? onTogglePlay : null,
                         ),
                         if (showFrameControls) ...[
@@ -1014,12 +1024,14 @@ class _CompactIconButton extends StatelessWidget {
     required this.tooltip,
     required this.onPressed,
     this.selected = false,
+    this.focusNode,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback? onPressed;
   final bool selected;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -1035,6 +1047,7 @@ class _CompactIconButton extends StatelessWidget {
           visualDensity: VisualDensity.compact,
           constraints: const BoxConstraints.tightFor(width: 34, height: 32),
           padding: EdgeInsets.zero,
+          focusNode: focusNode,
           style: IconButton.styleFrom(
             foregroundColor: selected ? Colors.white : Colors.white70,
             backgroundColor: selected ? Colors.white12 : Colors.transparent,
