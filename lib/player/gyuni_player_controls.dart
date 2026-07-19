@@ -477,7 +477,7 @@ class _TopToolbar extends StatelessWidget {
                 _ToolbarGroup(
                   children: [
                     _CompactIconButton(
-                      icon: Icons.crop_free_rounded,
+                      icon: Icons.crop_rounded,
                       tooltip: 'Smart Canvas',
                       selected: canvasActive,
                       onPressed: ready ? onToggleCanvas : null,

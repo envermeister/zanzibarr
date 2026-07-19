@@ -1652,7 +1652,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         _contextItem(
           _PlayerContextAction.canvas,
           _canvasEditing ? 'Canvas düzenlemeyi iptal et' : 'Smart Canvas',
-          Icons.crop_free_rounded,
+          Icons.crop_rounded,
           'C',
         ),
         _contextItem(

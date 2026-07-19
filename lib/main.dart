@@ -248,10 +248,11 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       body: DecoratedBox(
         decoration: const BoxDecoration(
+          // Logo zeminiyle aynı koyu lacivert ailesi (logo: #0B0E17).
           gradient: RadialGradient(
             center: Alignment(0, -0.35),
             radius: 1.15,
-            colors: [Color(0xFF17191D), Color(0xFF09090B)],
+            colors: [Color(0xFF161D33), Color(0xFF05070D)],
           ),
         ),
         child: Stack(
@@ -263,7 +264,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Padding(
                   padding: const EdgeInsets.all(14),
                   child: _GlassIconButton(
-                    icon: Icons.tune_rounded,
+                    icon: Icons.settings_rounded,
                     tooltip: 'Sağlayıcı ayarları',
                     onPressed: () => _openSettings(context),
                   ),
@@ -278,29 +279,19 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const _PlayerMark(),
-                      const SizedBox(height: 26),
+                      const _AppLogoMark(),
+                      const SizedBox(height: 20),
                       Text(
-                        'Videoya odaklan.',
+                        'zanzibarr',
                         textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.headlineMedium
+                        style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w700,
-                              letterSpacing: -0.8,
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontWeight: FontWeight.w600,
+                              letterSpacing: 5.2,
                             ),
                       ),
-                      const SizedBox(height: 9),
-                      Text(
-                        'NZB içeriğini indirmeden, doğrudan ve seek edilebilir '
-                        'olarak oynat.',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.white.withValues(alpha: 0.5),
-                          height: 1.45,
-                        ),
-                      ),
-                      const SizedBox(height: 30),
+                      const SizedBox(height: 34),
                       _OpenMediaCard(
                         busy: _pickingFile,
                         onPressed: () => _pickAndPlay(context),
@@ -329,30 +320,28 @@ Route<T> _fadeRoute<T>(Widget page, {bool opaque = true}) =>
       ),
     );
 
-class _PlayerMark extends StatelessWidget {
-  const _PlayerMark();
+class _AppLogoMark extends StatelessWidget {
+  const _AppLogoMark();
 
   @override
   Widget build(BuildContext context) => ExcludeSemantics(
     child: Container(
-      width: 62,
-      height: 62,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.07),
-        borderRadius: BorderRadius.circular(17),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.1)),
-        boxShadow: const [
+      decoration: const BoxDecoration(
+        boxShadow: [
           BoxShadow(
-            color: Colors.black38,
-            blurRadius: 24,
-            offset: Offset(0, 10),
+            color: Colors.black54,
+            blurRadius: 32,
+            offset: Offset(0, 14),
           ),
         ],
       ),
-      child: const Icon(
-        Icons.play_arrow_rounded,
-        size: 34,
-        color: Colors.white,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Image.asset(
+          'assets/zanzibarr-logo.png',
+          width: 92,
+          height: 92,
+        ),
       ),
     ),
   );
