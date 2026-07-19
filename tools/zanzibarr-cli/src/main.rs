@@ -20,7 +20,9 @@ use std::ops::Range;
 
 use std::sync::Arc;
 
-use rust_lib_zanzibarr::api::streaming::{start_stream, ProviderConfigDto};
+use rust_lib_zanzibarr::api::streaming::{
+    await_stream, begin_stream, start_stream, stop_stream, ProviderConfigDto,
+};
 use rust_lib_zanzibarr::engine::locator::{LocatorError, SegmentLocator};
 use rust_lib_zanzibarr::engine::nntp::{self, NntpPool, ProviderConfig, TlsNntpConnector};
 use rust_lib_zanzibarr::engine::nntp_source::NntpByteSource;
@@ -105,6 +107,20 @@ fn main() -> ExitCode {
                 return ExitCode::FAILURE;
             }
         },
+        Some("serve-stream") => match args.get(1) {
+            Some(nzb_path) => serve_stream(nzb_path.clone()),
+            None => {
+                eprintln!("kullanım: zanzibarr-cli serve-stream <nzb-dosyası>");
+                return ExitCode::FAILURE;
+            }
+        },
+        Some("switch-check") => match (args.get(1), args.get(2)) {
+            (Some(first), Some(second)) => switch_check(first.clone(), second.clone()),
+            _ => {
+                eprintln!("kullanım: zanzibarr-cli switch-check <nzb-1> <nzb-2>");
+                return ExitCode::FAILURE;
+            }
+        },
         _ => {
             print_help();
             return ExitCode::SUCCESS;
@@ -136,7 +152,9 @@ fn print_help() {
          serve <nzb> [port]  NZB'nin en büyük dosyasını localhost HTTP Range\n\
          server olarak sunar (curl --range / media_kit için)\n\
          stream-check <nzb>  Uygulamanın gerçek stream seçimini başlatır ve\n\
-         ilk medya imzasını güvenli biçimde doğrular"
+         ilk medya imzasını güvenli biçimde doğrular\n\
+         serve-stream <nzb>  Uygulamanın gerçek start_stream yolunu açık tutar;\n\
+         mpv/FFmpeg ile uçtan uca oynatma provası için"
     );
 }
 
@@ -576,8 +594,7 @@ async fn probe(nzb_path: String, offset: Option<u64>) -> Result<(), String> {
     Ok(())
 }
 
-async fn serve(nzb_path: String, port: u16) -> Result<(), String> {
-    let xml = std::fs::read_to_string(&nzb_path).map_err(|e| format!("NZB okunamadı: {e}"))?;
+async fn serve(nzb_path: String, port: u16) -> Result<(), String> {    let xml = std::fs::read_to_string(&nzb_path).map_err(|e| format!("NZB okunamadı: {e}"))?;
     let parsed = nzb::parse_nzb(&xml).map_err(|e| e.to_string())?;
     let file = largest_file(&parsed)
         .ok_or_else(|| "NZB'de dosya yok".to_string())?
@@ -618,4 +635,118 @@ async fn serve(nzb_path: String, port: u16) -> Result<(), String> {
     server::serve(listener, Arc::new(source))
         .await
         .map_err(|e| e.to_string())
+}
+
+/// Uygulamanın FRB üzerinden kullandığı gerçek `start_stream` yolunu açık
+/// tutar. Bootstrap ve localhost server uygulamadakiyle birebir aynıdır; mpv
+/// gibi gerçek bir oynatıcının prova isteklerini ölçmek için kullanılır.
+fn serve_stream(nzb_path: String) -> Result<(), String> {
+    let config = load_config()?;
+    println!("Akış hazırlanıyor (uygulamanın kullandığı tam start_stream yolu)…");
+    let started = std::time::Instant::now();
+    let info = start_stream(
+        ProviderConfigDto {
+            host: config.host,
+            port: config.port,
+            username: config.username,
+            password: config.password,
+            max_connections: config.max_connections as u32,
+        },
+        nzb_path,
+    )?;
+    println!(
+        "Hazır ({:.1?}): {}\n  dosya: {}\n  boyut: {} bayt ({} segment)\n  \
+         Şimdi başka bir terminalde mpv ile deneyin; Ctrl-C ile durdurun.",
+        started.elapsed(),
+        info.url,
+        info.filename,
+        info.size,
+        info.segment_count,
+    );
+    // Oturum nesnesi process yaşadıkça ayakta kalır; iç runtime server'ı
+    // sürdürür. Sinyal ile çıkılır.
+    loop {
+        std::thread::sleep(Duration::from_secs(3600));
+    }
+}
+
+/// Uygulamadaki oturum değişim senaryosunu aynı process içinde tekrarlar:
+/// ilk akış hazırlanır, oynatıcı taklidi bir HTTP bağlantısı tam GET ile
+/// açıkken akış durdurulur ve hemen ikinci NZB'nin akışı başlatılır. İkinci
+/// `await_stream`, birinci oturumun tam kapanmasını bekler; kapanış asılı
+/// kalırsa bu komut da asılı kalır (Bug B repro).
+fn switch_check(first_nzb: String, second_nzb: String) -> Result<(), String> {
+    let config = load_config()?;
+    let dto = |config: &ProviderConfig| ProviderConfigDto {
+        host: config.host.clone(),
+        port: config.port,
+        username: config.username.clone(),
+        password: config.password.clone(),
+        max_connections: config.max_connections as u32,
+    };
+
+    println!("1) İlk akış hazırlanıyor: {first_nzb}");
+    let started = std::time::Instant::now();
+    let first_session = begin_stream(dto(&config), first_nzb);
+    let first = await_stream(first_session)?;
+    println!(
+        "   hazır ({:.1?}): {} ({} bayt)",
+        started.elapsed(),
+        first.filename,
+        first.size
+    );
+
+    // Oynatıcı taklidi: tam GET aç, ilk baytları oku, soketi açık bırak.
+    let address_and_path = first
+        .url
+        .strip_prefix("http://")
+        .ok_or_else(|| "localhost stream URL biçimi geçersiz".to_string())?;
+    let (address, path) = address_and_path
+        .split_once('/')
+        .ok_or_else(|| "localhost stream URL yolu yok".to_string())?;
+    let mut socket = TcpStream::connect(address).map_err(|error| error.to_string())?;
+    socket
+        .set_read_timeout(Some(Duration::from_secs(120)))
+        .map_err(|error| error.to_string())?;
+    let request =
+        format!("GET /{path} HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n");
+    socket
+        .write_all(request.as_bytes())
+        .map_err(|error| error.to_string())?;
+    let mut received = 0usize;
+    let mut chunk = [0u8; 64 * 1024];
+    let probe_started = std::time::Instant::now();
+    while received < 2 * 1024 * 1024 {
+        let n = socket
+            .read(&mut chunk)
+            .map_err(|error| format!("tam GET ilk 2MB okunamadı: {error}"))?;
+        if n == 0 {
+            return Err("tam GET akışı 2MB'dan önce kapandı".to_string());
+        }
+        received += n;
+    }
+    println!(
+        "   oynatıcı taklidi ilk 2MB'ı {:.1?} içinde okudu; soket açıkken stop çağrılıyor",
+        probe_started.elapsed()
+    );
+
+    println!("2) Birinci oturum durduruluyor (sunucu hâlâ akıyorken)…");
+    let stop_started = std::time::Instant::now();
+    stop_stream(first_session);
+    drop(socket);
+
+    println!("3) İkinci akış hemen başlatılıyor: {second_nzb}");
+    let second_started = std::time::Instant::now();
+    let second_session = begin_stream(dto(&config), second_nzb);
+    let second = await_stream(second_session)?;
+    println!(
+        "   hazır ({:.1?}): {} ({} bayt); oturum değişimi toplam {:.1?}",
+        second_started.elapsed(),
+        second.filename,
+        second.size,
+        stop_started.elapsed()
+    );
+    stop_stream(second_session);
+    println!("Oturum değişimi BAŞARILI.");
+    Ok(())
 }

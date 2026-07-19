@@ -16,11 +16,11 @@ use tokio::io::AsyncWrite;
 use tokio::sync::watch;
 
 use super::nntp::{NntpPool, TlsNntpConnector};
-use super::nntp_source::NntpByteSource;
+use super::nntp_source::{NntpByteSource, ARCHIVE_PREFETCH_DEPTH};
 use super::nzb::NzbFile;
 use super::server::RangeSource;
 
-pub(crate) const ARCHIVE_VOLUME_CACHE_SEGMENTS: usize = 4;
+pub(crate) const ARCHIVE_VOLUME_CACHE_SEGMENTS: usize = 8;
 pub(crate) const MAX_ARCHIVE_VOLUMES: usize = 4096;
 pub(crate) const BLOCKING_READER_MAX_CHUNK: usize = 1024 * 1024;
 
@@ -80,25 +80,74 @@ fn ensure_not_cancelled(cancellation: &watch::Receiver<bool>) -> Result<(), Volu
     }
 }
 
-async fn bootstrap_sequential<I, O, F, Fut>(
+/// Cilt bootstrap'indeki eşzamanlı ilk-article çekim üst sınırı. Sağlayıcıyı
+/// ve bağlantı kotasını yormadan çok ciltli setlerin bekleme süresini
+/// (sıralı ~0,5 sn × cilt) makul bir düzeye indirir.
+pub(crate) const BOOTSTRAP_CONCURRENCY: usize = 8;
+
+async fn bootstrap_bounded<I, O, F, Fut>(
     items: Vec<I>,
+    concurrency: usize,
     cancellation: &mut watch::Receiver<bool>,
-    mut bootstrap: F,
+    bootstrap: F,
 ) -> Result<Vec<O>, VolumeSetError>
 where
-    F: FnMut(I) -> Fut,
-    Fut: Future<Output = Result<O, VolumeSetError>>,
+    I: Send + 'static,
+    O: Send + 'static,
+    F: Fn(I) -> Fut + Send + Sync + 'static,
+    Fut: Future<Output = Result<O, VolumeSetError>> + Send + 'static,
 {
-    let mut output = Vec::with_capacity(items.len());
-    for item in items {
-        ensure_not_cancelled(cancellation)?;
-        let value = tokio::select! {
-            result = bootstrap(item) => result?,
+    use tokio::task::JoinSet;
+
+    let bootstrap = Arc::new(bootstrap);
+    let mut results: Vec<Option<O>> = Vec::new();
+    results.resize_with(items.len(), || None);
+    let mut pending = items.into_iter().enumerate();
+    let mut tasks: JoinSet<(usize, Result<O, VolumeSetError>)> = JoinSet::new();
+
+    loop {
+        while tasks.len() < concurrency {
+            let Some((index, item)) = pending.next() else {
+                break;
+            };
+            let bootstrap = Arc::clone(&bootstrap);
+            tasks.spawn(async move { (index, bootstrap(item).await) });
+        }
+        if tasks.is_empty() {
+            break;
+        }
+        let joined = tokio::select! {
+            result = tasks.join_next() => result,
             _ = wait_for_cancellation(cancellation) => {
+                tasks.abort_all();
+                while tasks.join_next().await.is_some() {}
                 return Err(VolumeSetError::Cancelled);
             }
         };
-        output.push(value);
+        match joined {
+            Some(Ok((index, Ok(value)))) => results[index] = Some(value),
+            Some(Ok((_, Err(error)))) => {
+                tasks.abort_all();
+                while tasks.join_next().await.is_some() {}
+                return Err(error);
+            }
+            Some(Err(error)) => {
+                tasks.abort_all();
+                while tasks.join_next().await.is_some() {}
+                return Err(VolumeSetError::InvalidLayout(format!(
+                    "bootstrap görevi tamamlanamadı: {error}"
+                )));
+            }
+            None => break,
+        }
+    }
+
+    let mut output = Vec::with_capacity(results.len());
+    for value in results {
+        // Döngü hatasız bittiyse her girdi bir kez üretildi.
+        output.push(value.ok_or_else(|| {
+            VolumeSetError::InvalidLayout("bootstrap sonucu eksik".into())
+        })?);
     }
     Ok(output)
 }
@@ -122,17 +171,24 @@ impl NntpVolumeSet {
         validate_volume_count(files.len())?;
         ensure_not_cancelled(cancellation)?;
 
-        // Her cildin ilk article'ı yEnc `size=` değerini taşır. Ciltleri tam
-        // sıralı ve tek tek bootstrap etmek, tamamlanan BODY sonrasında aynı
-        // havuz bağlantısının yeniden kullanılmasını sağlar; 140 ciltli bir
-        // set bile bağlantı oturumu yağdırmaz.
-        let volumes = bootstrap_sequential(files, cancellation, |file| {
+        // Her cildin ilk article'ı yEnc `size=` değerini taşır. Ciltler sınırlı
+        // eşzamanlılıkla bootstrap edilir: sıralı çekimde çok ciltli setler
+        // onlarca saniye bekletirdi; sınır sayesinde sağlayıcıya aynı anda en
+        // fazla BOOTSTRAP_CONCURRENCY yeni istek gider.
+        let volume_cancellation = cancellation.clone();
+        let volumes = bootstrap_bounded(files, BOOTSTRAP_CONCURRENCY, cancellation, move |file| {
             let pool = Arc::clone(&pool);
+            let volume_cancellation = volume_cancellation.clone();
             async move {
-                let source =
-                    NntpByteSource::with_cache_capacity(pool, &file, ARCHIVE_VOLUME_CACHE_SEGMENTS)
-                        .await
-                        .map_err(VolumeSetError::Io)?;
+                let source = NntpByteSource::with_options(
+                    pool,
+                    &file,
+                    ARCHIVE_VOLUME_CACHE_SEGMENTS,
+                    ARCHIVE_PREFETCH_DEPTH,
+                    Some(volume_cancellation),
+                )
+                .await
+                .map_err(VolumeSetError::Io)?;
                 Ok(Arc::new(source))
             }
         })
@@ -386,19 +442,21 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn cilt_bootstrap_tam_sirali_ve_tektir() {
+    async fn cilt_bootstrap_sirali_ve_eszamanliligi_sinirli() {
         use std::sync::atomic::{AtomicUsize, Ordering};
 
         let (_cancellation_guard, mut cancellation) = watch::channel(false);
         let active = Arc::new(AtomicUsize::new(0));
         let peak = Arc::new(AtomicUsize::new(0));
-        let output = bootstrap_sequential(vec![3, 1, 2], &mut cancellation, |item| {
-            let active = Arc::clone(&active);
-            let peak = Arc::clone(&peak);
+        let active_in_closure = Arc::clone(&active);
+        let peak_in_closure = Arc::clone(&peak);
+        let output = bootstrap_bounded(vec![3, 1, 2, 4], 3, &mut cancellation, move |item| {
+            let active = Arc::clone(&active_in_closure);
+            let peak = Arc::clone(&peak_in_closure);
             async move {
                 let current = active.fetch_add(1, Ordering::SeqCst) + 1;
                 peak.fetch_max(current, Ordering::SeqCst);
-                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
                 active.fetch_sub(1, Ordering::SeqCst);
                 Ok::<_, VolumeSetError>(item)
             }
@@ -406,8 +464,11 @@ mod tests {
         .await
         .unwrap();
 
-        assert_eq!(output, vec![3, 1, 2]);
-        assert_eq!(peak.load(Ordering::SeqCst), 1);
+        // Sıra girdi sırasıyla korunur; eşzamanlılık sınırı aşılmaz ama
+        // sıralı olmayan (1'den büyük) bir tepe görülür.
+        assert_eq!(output, vec![3, 1, 2, 4]);
+        let peak = peak.load(Ordering::SeqCst);
+        assert!(peak > 1 && peak <= 3, "tepe {peak}");
     }
 
     #[tokio::test]
@@ -418,7 +479,7 @@ mod tests {
         let started = Arc::new(AtomicBool::new(false));
         let started_in_task = Arc::clone(&started);
         let task = tokio::spawn(async move {
-            bootstrap_sequential(vec![1], &mut cancellation, move |_| {
+            bootstrap_bounded(vec![1], 8, &mut cancellation, move |_| {
                 let started = Arc::clone(&started_in_task);
                 async move {
                     started.store(true, Ordering::SeqCst);

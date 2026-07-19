@@ -10,15 +10,18 @@
 //! yeniden istenirse tekrar çekilir. Bellek, GB'lık dosyalarda bile
 //! önbellek kapasitesiyle sınırlı kalır.
 
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::future::Future;
 use std::io;
 use std::ops::Range;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use tokio::io::{AsyncWrite, AsyncWriteExt};
+use tokio::sync::{watch, Notify};
 
+use super::archive::wait_for_cancellation;
 use super::locator::{LocatorError, SegmentLocator};
 use super::nntp::{NntpError, NntpPool, TlsNntpConnector};
 use super::nzb::NzbFile;
@@ -26,6 +29,19 @@ use super::server::{content_type_for, RangeSource};
 use super::yenc;
 
 const BODY_READ_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Önden çekim dalgasının genişliği (segment sayısı). Sıralı okuyucu bir
+/// segmenti beklerken sonraki segmentler yedek havuz bağlantılarıyla paralel
+/// çekilir; tek-segmentlik gidiş-dönüş gecikmesi akış hızını sınırlamaz.
+pub(crate) const DEFAULT_PREFETCH_DEPTH: usize = 8;
+
+/// Arşiv ciltleri için daha dar dalga: her cildin kendi kaynağı vardır ve
+/// cilt sayısı çok olduğundan bellek baskısı cilt başına büyür.
+pub(crate) const ARCHIVE_PREFETCH_DEPTH: usize = 4;
+
+/// Başka görevin çekmekte olduğu segmenti beklerken uyanma aralığı. Gerçek
+/// uyanma `Notify` ile anında gelir; bu yalnız kaçan sinyale karşı emniyettir.
+const INFLIGHT_WAIT_POLL: Duration = Duration::from_millis(100);
 
 async fn read_body_with_timeout(
     duration: Duration,
@@ -74,63 +90,71 @@ impl SegmentCache {
     }
 }
 
-pub struct NntpByteSource {
+/// Bir kaynağın segment çekim durumu: havuz, eşleyici, önbellek ve önden
+/// çekim dalgası denetimi. `Arc` içinde paylaşılır; prefetch görevleri bu
+/// bağlamın bir klonuyla (referans sayaçlı) yaşar, kaynak düşse bile görev
+/// gövdesi geçerli kalır — oturum iptali watch kanalından duyurulur.
+struct FetchContext {
     pool: Arc<NntpPool<TlsNntpConnector>>,
     locator: Mutex<SegmentLocator>,
     cache: Mutex<SegmentCache>,
-    content_type: &'static str,
-    filename: String,
+    /// Halen bir görev tarafından çekilmekte olan segmentler. Aynı segmentin
+    /// eşzamanlı iki kez indirilmesini engeller.
+    inflight: Mutex<HashSet<usize>>,
+    inflight_notify: Notify,
+    /// Seek/kaçak sonrası yeni dalga kurulurken artar; eski dalganın görevleri
+    /// jenerasyon uyuşmazlığından kendini durdurur.
+    prefetch_gen: AtomicU64,
+    prefetch_depth: usize,
+    cancellation: Option<watch::Receiver<bool>>,
 }
 
-impl NntpByteSource {
-    /// Varsayılan önbellek kapasitesi (segment sayısı) — ~1 MB'lık parçalarla
-    /// birkaç yüz MB'lık kayan pencere.
-    pub const DEFAULT_CACHE_SEGMENTS: usize = 256;
-
-    /// Kaynağı kurar ve ilk segmenti çekerek dosya boyutunu (yEnc `size`)
-    /// öğrenir; böylece [`RangeSource::total_len`] server başlar başlamaz
-    /// hazırdır.
-    pub async fn new(pool: Arc<NntpPool<TlsNntpConnector>>, file: &NzbFile) -> io::Result<Self> {
-        Self::with_cache_capacity(pool, file, Self::DEFAULT_CACHE_SEGMENTS).await
+impl FetchContext {
+    /// Segmenti önbellekten döndürür; yoksa çeker. Aynı segmenti başka görev
+    /// çekiyorsa onun bitmesini bekler ve önbelleğe düşen veriyi paylaşır.
+    /// Ağdan çeken taraf bizsek, çekilen konumdan önden çekim dalgası kurulur.
+    async fn fetch_and_cache(self: &Arc<Self>, index: usize) -> io::Result<Arc<Vec<u8>>> {
+        self.fetch_and_cache_with_kick(index, true).await
     }
 
-    pub async fn with_cache_capacity(
-        pool: Arc<NntpPool<TlsNntpConnector>>,
-        file: &NzbFile,
-        cache_segments: usize,
-    ) -> io::Result<Self> {
-        let filename = file.filename().unwrap_or("stream.bin").to_string();
-        let content_type = content_type_for(&filename);
-        let source = NntpByteSource {
-            pool,
-            locator: Mutex::new(SegmentLocator::from_nzb_file(file)),
-            cache: Mutex::new(SegmentCache::new(cache_segments)),
-            content_type,
-            filename,
-        };
-        // Bootstrap: ilk segment → file_size + tek tip parça boyutu.
-        source.ensure_located(0).await?;
-        if source.file_size().is_none() {
-            return Err(io::Error::other("ilk segmentten dosya boyutu öğrenilemedi"));
+    /// `kick`: ağdan çekme durumunda önden çekim dalgası kurulsun mu.
+    /// Bootstrap (yalnız yerleşim öğrenimi) çekimlerinde dalga kurmak,
+    /// okunmayacak segmentleri boşuna indirir.
+    async fn fetch_and_cache_with_kick(
+        self: &Arc<Self>,
+        index: usize,
+        kick: bool,
+    ) -> io::Result<Arc<Vec<u8>>> {
+        loop {
+            if let Some(data) = self.cache.lock().expect("kilit").get(index) {
+                return Ok(data);
+            }
+            {
+                let mut inflight = self.inflight.lock().expect("kilit");
+                if inflight.insert(index) {
+                    break; // çekim hakkı bizde
+                }
+            }
+            // Başka görev çekiyor: bitince önbellekten alınır.
+            let _ = tokio::time::timeout(INFLIGHT_WAIT_POLL, self.inflight_notify.notified()).await;
         }
-        Ok(source)
+
+        // Kaçak (miss): önceki dalgayı geçersiz kıl; okunan konum değişti.
+        let gen = self.prefetch_gen.fetch_add(1, Ordering::SeqCst) + 1;
+        let result = self.fetch(index).await;
+        self.inflight.lock().expect("kilit").remove(&index);
+        self.inflight_notify.notify_waiters();
+
+        let data = result?;
+        if kick && self.prefetch_depth > 0 {
+            self.spawn_prefetch(index + 1, gen, self.prefetch_depth);
+        }
+        Ok(data)
     }
 
-    pub fn file_size(&self) -> Option<u64> {
-        self.locator.lock().expect("kilit").file_size()
-    }
-
-    pub fn segment_count(&self) -> usize {
-        self.locator.lock().expect("kilit").segment_count()
-    }
-
-    pub fn filename(&self) -> &str {
-        &self.filename
-    }
-
-    /// Bir segmenti çeker, yEnc çözer; verisini döndürür. Konumu bilinmiyorsa
-    /// eşleyiciye kaydeder, veriyi önbelleğe koyar.
-    async fn fetch_segment(&self, index: usize) -> io::Result<Arc<Vec<u8>>> {
+    /// Segmenti havuzdan çeker, yEnc çözer, konumunu eşleyiciye kaydeder ve
+    /// önbelleğe koyar. Çağıranın inflight hakkını önceden aldığı varsayılır.
+    async fn fetch(&self, index: usize) -> io::Result<Arc<Vec<u8>>> {
         let message_id = {
             let loc = self.locator.lock().expect("kilit");
             loc.message_id(index)
@@ -138,28 +162,48 @@ impl NntpByteSource {
                 .to_string()
         };
 
-        let mut conn = self
-            .pool
-            .checkout()
-            .await
-            .map_err(|e| io::Error::other(e.to_string()))?;
-        let body_result =
-            read_body_with_timeout(BODY_READ_TIMEOUT, conn.body_by_message_id(&message_id)).await;
-        let body = match body_result {
-            Ok(body) => {
-                // Durum satırı ve multiline sonlandırıcısı eksiksiz okundu.
-                // Bu noktadan önce future iptal edilirse varsayılan Drop
-                // davranışı yarım soketi kapatır.
-                conn.mark_reusable();
-                body
-            }
-            Err(err) => return Err(io::Error::other(err.to_string())),
+        let work = async {
+            let mut conn = self
+                .pool
+                .checkout()
+                .await
+                .map_err(|e| io::Error::other(e.to_string()))?;
+            let body_result =
+                read_body_with_timeout(BODY_READ_TIMEOUT, conn.body_by_message_id(&message_id))
+                    .await;
+            let body = match body_result {
+                Ok(body) => {
+                    // Durum satırı ve multiline sonlandırıcısı eksiksiz okundu.
+                    // Bu noktadan önce future iptal edilirse varsayılan Drop
+                    // davranışı yarım soketi kapatır.
+                    conn.mark_reusable();
+                    body
+                }
+                Err(err) => return Err(io::Error::other(err.to_string())),
+            };
+            drop(conn); // bağlantı havuza döner
+
+            yenc::decode(&body).map_err(|e| io::Error::other(e.to_string()))
         };
-        drop(conn); // bağlantı havuza döner
 
-        let part = yenc::decode(&body).map_err(|e| io::Error::other(e.to_string()))?;
+        let part = match &self.cancellation {
+            Some(cancellation) => {
+                let mut cancellation = cancellation.clone();
+                tokio::select! {
+                    biased;
+                    _ = wait_for_cancellation(&mut cancellation) => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::Interrupted,
+                            "segment çekimi iptal edildi",
+                        ));
+                    }
+                    result = work => result?,
+                }
+            }
+            None => work.await?,
+        };
+
         let data = Arc::new(part.data.clone());
-
         {
             let mut loc = self.locator.lock().expect("kilit");
             if !loc.is_located(index) {
@@ -174,21 +218,149 @@ impl NntpByteSource {
         Ok(data)
     }
 
+    /// `start..start+depth` aralığındaki segmentleri arka plan görevleriyle
+    /// çekmeye başlar. Her tamamlanan görev, pencere kayacak biçimde
+    /// `index+depth`'i zincirler; jenerasyon değiştiyse (seek/yeni dalga)
+    /// zincir kırılır.
+    fn spawn_prefetch(self: &Arc<Self>, start: usize, gen: u64, depth: usize) {
+        for index in start..start.saturating_add(depth) {
+            Self::spawn_prefetch_one(&Arc::clone(self), index, gen, depth);
+        }
+    }
+
+    fn spawn_prefetch_one(self: &Arc<Self>, index: usize, gen: u64, depth: usize) {
+        if self.prefetch_gen.load(Ordering::SeqCst) != gen {
+            return;
+        }
+        {
+            let count = self.locator.lock().expect("kilit").segment_count();
+            if index >= count {
+                return;
+            }
+            if self.cache.lock().expect("kilit").get(index).is_some() {
+                return;
+            }
+            if !self.inflight.lock().expect("kilit").insert(index) {
+                return; // zaten çekiliyor
+            }
+        }
+        let ctx = Arc::clone(self);
+        tokio::spawn(async move {
+            let stale = ctx.prefetch_gen.load(Ordering::SeqCst) != gen;
+            let result = if stale {
+                Err(io::Error::new(
+                    io::ErrorKind::Interrupted,
+                    "önden çekim dalgası geçersiz",
+                ))
+            } else {
+                ctx.fetch(index).await
+            };
+            ctx.inflight.lock().expect("kilit").remove(&index);
+            ctx.inflight_notify.notify_waiters();
+            if result.is_ok() && ctx.prefetch_gen.load(Ordering::SeqCst) == gen {
+                let next = index.saturating_add(depth);
+                Self::spawn_prefetch_one(&ctx, next, gen, depth);
+            }
+        });
+    }
+}
+
+pub struct NntpByteSource {
+    ctx: Arc<FetchContext>,
+    content_type: &'static str,
+    filename: String,
+}
+
+impl NntpByteSource {
+    /// Varsayılan önbellek kapasitesi (segment sayısı) — ~1 MB'lık parçalarla
+    /// birkaç yüz MB'lık kayan pencere.
+    pub const DEFAULT_CACHE_SEGMENTS: usize = 256;
+
+    /// Kaynağı kurar ve ilk segmenti çekerek dosya boyutunu (yEnc `size`)
+    /// öğrenir; böylece [`RangeSource::total_len`] server başlar başlamaz
+    /// hazırdır.
+    pub async fn new(pool: Arc<NntpPool<TlsNntpConnector>>, file: &NzbFile) -> io::Result<Self> {
+        Self::with_options(
+            pool,
+            file,
+            Self::DEFAULT_CACHE_SEGMENTS,
+            DEFAULT_PREFETCH_DEPTH,
+            None,
+        )
+        .await
+    }
+
+    pub async fn with_cache_capacity(
+        pool: Arc<NntpPool<TlsNntpConnector>>,
+        file: &NzbFile,
+        cache_segments: usize,
+    ) -> io::Result<Self> {
+        Self::with_options(pool, file, cache_segments, ARCHIVE_PREFETCH_DEPTH, None).await
+    }
+
+    /// Tam yapılandırma: önbellek kapasitesi, önden çekim dalgası derinliği
+    /// (0 = kapalı) ve isteğe bağlı oturum iptali. İptal verilirse yarım kalan
+    /// prefetch/çekim görevleri oturum kapanırken durdurulur.
+    pub async fn with_options(
+        pool: Arc<NntpPool<TlsNntpConnector>>,
+        file: &NzbFile,
+        cache_segments: usize,
+        prefetch_depth: usize,
+        cancellation: Option<watch::Receiver<bool>>,
+    ) -> io::Result<Self> {
+        let filename = file.filename().unwrap_or("stream.bin").to_string();
+        let content_type = content_type_for(&filename);
+        let source = NntpByteSource {
+            ctx: Arc::new(FetchContext {
+                pool,
+                locator: Mutex::new(SegmentLocator::from_nzb_file(file)),
+                cache: Mutex::new(SegmentCache::new(cache_segments)),
+                inflight: Mutex::new(HashSet::new()),
+                inflight_notify: Notify::new(),
+                prefetch_gen: AtomicU64::new(0),
+                prefetch_depth,
+                cancellation,
+            }),
+            content_type,
+            filename,
+        };
+        // Bootstrap: ilk segment → file_size + tek tip parça boyutu. Bu
+        // yerleşim öğrenimidir; önden çekim dalgası kurulmaz (okunmayacak
+        // segmentler boşuna inmez).
+        {
+            let ctx = Arc::clone(&source.ctx);
+            ctx.fetch_and_cache_with_kick(0, false).await?;
+        }
+        if source.file_size().is_none() {
+            return Err(io::Error::other("ilk segmentten dosya boyutu öğrenilemedi"));
+        }
+        Ok(source)
+    }
+
+    pub fn file_size(&self) -> Option<u64> {
+        self.ctx.locator.lock().expect("kilit").file_size()
+    }
+
+    pub fn segment_count(&self) -> usize {
+        self.ctx.locator.lock().expect("kilit").segment_count()
+    }
+
+    pub fn filename(&self) -> &str {
+        &self.filename
+    }
+
     /// Segmentin konumu eşleyicide kayıtlı olana dek çeker.
     async fn ensure_located(&self, index: usize) -> io::Result<()> {
-        if self.locator.lock().expect("kilit").is_located(index) {
+        if self.ctx.locator.lock().expect("kilit").is_located(index) {
             return Ok(());
         }
-        self.fetch_segment(index).await?;
+        self.ctx.fetch_and_cache(index).await?;
         Ok(())
     }
 
     /// Segmentin çözülmüş verisini önbellekten alır; yoksa yeniden çeker.
     async fn segment_data(&self, index: usize) -> io::Result<Arc<Vec<u8>>> {
-        if let Some(data) = self.cache.lock().expect("kilit").get(index) {
-            return Ok(data);
-        }
-        self.fetch_segment(index).await
+        self.ctx.fetch_and_cache(index).await
     }
 
     /// `offset`'i içeren segmentin indeksini ve çözülmüş dosya aralığını,
@@ -198,13 +370,14 @@ impl NntpByteSource {
     async fn locate(&self, offset: u64) -> io::Result<(usize, Range<u64>)> {
         loop {
             let outcome = {
-                let loc = self.locator.lock().expect("kilit");
+                let loc = self.ctx.locator.lock().expect("kilit");
                 loc.resolve(offset..offset + 1)
             };
             match outcome {
                 Ok(slices) => {
                     let index = slices[0].index;
                     let span = self
+                        .ctx
                         .locator
                         .lock()
                         .expect("kilit")

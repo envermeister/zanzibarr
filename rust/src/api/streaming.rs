@@ -18,7 +18,7 @@ use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
 
 use crate::engine::nntp::{ProviderConfig, TlsNntpConnector};
-use crate::engine::nntp_source::NntpByteSource;
+use crate::engine::nntp_source::{NntpByteSource, DEFAULT_PREFETCH_DEPTH};
 use crate::engine::nzb::{self, NzbContentError, NzbFile};
 use crate::engine::rar::RarEntrySource;
 use crate::engine::server::{self, RangeSource};
@@ -225,10 +225,16 @@ async fn prepare_stream_source(
         StreamSelection::Direct(file) => {
             let source = tokio::select! {
                 biased;
-                _ = wait_for_cancellation(cancellation) => {
+                _ = wait_for_cancellation(cancellation.clone()) => {
                     return Err("akış başlatma iptal edildi".into());
                 }
-                result = NntpByteSource::new(pool, &file) => {
+                result = NntpByteSource::with_options(
+                    pool,
+                    &file,
+                    NntpByteSource::DEFAULT_CACHE_SEGMENTS,
+                    DEFAULT_PREFETCH_DEPTH,
+                    Some(cancellation),
+                ) => {
                     result.map_err(|error| error.to_string())?
                 }
             };

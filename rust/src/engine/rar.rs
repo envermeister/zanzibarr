@@ -29,6 +29,7 @@
 //! `arcread.cpp`/`crypt5.cpp` + gerçek `-hp` arşivleriyle doğrulandı). Parola
 //! NZB `password` metasından gelir; PswCheck eşleşmesi parolayı doğrular.
 
+use std::collections::HashMap;
 use std::fmt;
 use std::io::{self, Read, Seek, SeekFrom};
 use std::ops::Range;
@@ -74,6 +75,12 @@ const EXTRA_RECORD_CRYPT: u64 = 1;
 /// extra). Gerçek başlıklar birkaç yüz bayttır; sınır yalnız bozuk bir NZB'nin
 /// belleği şişirmesini engeller.
 const MAX_BLOCK_HEADER_SIZE: u64 = 16 * 1024 * 1024;
+
+/// Şifreli okuma penceresi üst sınırı. Şifreli aralıklar bu boyutta parçalar
+/// halinde getirilip çözülüp yazılır; böylece oynatıcı ilk baytı tek parça
+/// çekim gecikmesiyle görür (tüm cilt parçasını beklemek yerine) ve bellek
+/// kullanımı sabit kalır. Değer 16'nın katı olmalı (CBC blok hizası).
+const MAX_CIPHER_WINDOW: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum RarError {
@@ -135,6 +142,16 @@ struct EncryptionHead {
     /// sağlama bozuksa unrar'ın yaptığı gibi yok sayılır.
     psw_check: Option<[u8; PSW_CHECK_SIZE]>,
 }
+
+/// Bir (salt, tur) çifti için daha önce türetilmiş KDF çıktısı. Çok ciltli
+/// -hp arşivlerde ciltler genellikle aynı salt'ı taşır; KDF (~2^lg2 HMAC
+/// turu) cilt başına tekrarlanmaz, bootstrap dakikalardan saniyelere iner.
+struct CachedKdf {
+    key: Zeroizing<[u8; 32]>,
+    psw_check_value: Zeroizing<[u8; 32]>,
+}
+
+type KdfCache = HashMap<([u8; SALT_SIZE], u8), CachedKdf>;
 
 /// Dosya başlığındaki crypt extra kaydından (FHEXTRA_CRYPT) okunan veri
 /// şifreleme parametreleri. Tüm split parçalar aynı değerleri taşır.
@@ -217,6 +234,12 @@ impl FragmentMap {
     /// pencerelerine çevirir. CBC zinciri parçalar arasında kesintisiz
     /// ilerlediğinden her pencerenin IV'si ya dosyanın InitV'si (global ilk
     /// blok) ya da mantıksal şifreli akışın bir önceki bloğudur.
+    ///
+    /// Pencereler [`MAX_CIPHER_WINDOW`] ile sınırlanır: tüm cilt parçasını
+    /// (yüzlerce MB) tek seferde çekip bellekte çözmek, oynatıcının ilk
+    /// baytı dakikalarca görememesine (ffmpeg `network-timeout`, uygulamada
+    /// video-detect bekçisi) ve yüksek bellek basıncına yol açar. Küçük
+    /// pencerelerle getir→çöz→yaz döngüsü akışkan kalır.
     fn cipher_windows(&self, range: Range<u64>) -> Vec<CipherWindow> {
         let mut out = Vec::new();
         let mut cursor = range.start;
@@ -224,7 +247,9 @@ impl FragmentMap {
             let index = self.starts.partition_point(|&start| start <= cursor) - 1;
             let fragment = self.fragments[index];
             let within = cursor - self.starts[index];
-            let take = (range.end - cursor).min(fragment.len - within);
+            let take = (range.end - cursor)
+                .min(fragment.len - within)
+                .min(MAX_CIPHER_WINDOW);
 
             let aligned = within / AES_BLOCK_SIZE * AES_BLOCK_SIZE;
             let end = rarcrypt::round_up_block(within + take)
@@ -598,6 +623,7 @@ fn parse_volume<R: Read + Seek>(
     volume_start: u64,
     volume_end: u64,
     password: Option<&str>,
+    kdf_cache: &mut KdfCache,
 ) -> Result<Vec<FileEntry>, RarError> {
     let mut parser = VolumeParser {
         reader,
@@ -645,19 +671,44 @@ fn parse_volume<R: Read + Seek>(
                     ));
                 }
                 let password = password.ok_or(RarError::Encrypted)?;
-                let derived = rarcrypt::kdf5(password.as_bytes(), &encryption.salt, encryption.lg2_count)
-                    .ok_or_else(|| {
-                        RarError::Header(format!(
-                            "RAR KDF tur sayısı (2^{}) güvenli sınırı aşıyor",
-                            encryption.lg2_count
-                        ))
-                    })?;
+                let cache_key = (encryption.salt, encryption.lg2_count);
+                let cached = match kdf_cache.get(&cache_key) {
+                    Some(cached) => CachedKdf {
+                        key: cached.key.clone(),
+                        psw_check_value: cached.psw_check_value.clone(),
+                    },
+                    None => {
+                        let derived = rarcrypt::kdf5(
+                            password.as_bytes(),
+                            &encryption.salt,
+                            encryption.lg2_count,
+                        )
+                        .ok_or_else(|| {
+                            RarError::Header(format!(
+                                "RAR KDF tur sayısı (2^{}) güvenli sınırı aşıyor",
+                                encryption.lg2_count
+                            ))
+                        })?;
+                        let fresh = CachedKdf {
+                            key: derived.key,
+                            psw_check_value: derived.psw_check_value,
+                        };
+                        kdf_cache.insert(
+                            cache_key,
+                            CachedKdf {
+                                key: fresh.key.clone(),
+                                psw_check_value: fresh.psw_check_value.clone(),
+                            },
+                        );
+                        fresh
+                    }
+                };
                 if let Some(expected) = encryption.psw_check {
-                    if rarcrypt::psw_check_fold(&derived.psw_check_value) != expected {
+                    if rarcrypt::psw_check_fold(&cached.psw_check_value) != expected {
                         return Err(RarError::WrongPassword);
                     }
                 }
-                header_key = Some(derived.key);
+                header_key = Some(cached.key);
             }
             Block::EndArchive => break,
             Block::File(mut entry) => {
@@ -935,13 +986,16 @@ fn build_fragment_map<R: Read + Seek>(
 ) -> Result<FragmentMap, RarError> {
     // (küçük harf ad) -> parça listesi; ekleme sırası korunur.
     let mut groups: Vec<(String, Vec<FragmentPart>)> = Vec::new();
+    // Ciltler arası KDF önbelleği: aynı salt'ı taşıyan -hp ciltlerinde pahalı
+    // anahtar türetimi bir kez çalışır.
+    let mut kdf_cache = KdfCache::new();
 
     for (volume_index, &(volume_start, volume_len)) in volumes.iter().enumerate() {
         let volume_end = volume_start
             .checked_add(volume_len)
             .ok_or_else(|| RarError::InvalidLayout("cilt ofseti taştı".into()))?;
         reader.seek(SeekFrom::Start(volume_start))?;
-        for entry in parse_volume(reader, volume_start, volume_end, password)? {
+        for entry in parse_volume(reader, volume_start, volume_end, password, &mut kdf_cache)? {
             if entry.is_dir {
                 continue;
             }
@@ -1723,6 +1777,78 @@ mod tests {
         check_range(500..700); // parça sınırını (512) aşıyor
         check_range(512..520); // parça başı: IV önceki parçanın son bloğu
         check_range((plain.len() as u64) - 7..plain.len() as u64);
+    }
+
+    #[test]
+    fn cipher_windows_buyuk_parcalari_akiskan_pencereye_boler() {
+        // Regresyon: pencereler bir zamanlar cilt parçası boyundaydı; tam GET
+        // isteğinde ilk bayt ancak ~yüz MB'lık parça çekilip çözüldükten sonra
+        // yazılıyor, oynatıcı ağ zaman aşımına düşüyordu. Artık her pencere
+        // MAX_CIPHER_WINDOW ile sınırlı ve CBC zinciri pencereler arası doğru.
+        let total = 3 * MAX_CIPHER_WINDOW + 123;
+        let map = FragmentMap {
+            fragments: vec![Fragment {
+                set_offset: 4096,
+                len: total,
+                // Gerçek şifreli parça boyu her zaman 16'nın katıdır (son
+                // düz baytlar sıfır padding ile bloğa tamamlanır).
+                cipher_len: 3 * MAX_CIPHER_WINDOW + 128,
+            }],
+            starts: vec![0],
+            total_len: total,
+            filename: "film.mkv".into(),
+            crypt: None,
+        };
+
+        let windows = map.cipher_windows(0..total);
+        assert_eq!(windows.len(), 4, "3 tam pencere + 123 baytlık kalan");
+        assert!(windows.iter().all(|w| w.take <= MAX_CIPHER_WINDOW));
+        // Her pencerenin şifreli okuma aralığı 16 hizalı ve zincir IV'si bir
+        // önceki şifreli bloğa işaret eder.
+        for window in &windows {
+            assert_eq!(window.data.start % AES_BLOCK_SIZE, 0);
+            assert_eq!((window.data.end - window.data.start) % AES_BLOCK_SIZE, 0);
+        }
+        assert_eq!(windows[0].iv, None, "ilk pencere InitV kullanır");
+        for pair in windows.windows(2) {
+            let expected_iv = (pair[0].data.end - AES_BLOCK_SIZE)..pair[0].data.end;
+            assert_eq!(pair[1].iv, Some(expected_iv));
+        }
+        // Pencereler çözülmüş uzayı eksiksiz ve sıralı kapsar.
+        let covered: u64 = windows.iter().map(|w| w.take).sum();
+        assert_eq!(covered, total);
+    }
+
+    #[test]
+    fn sifreli_buyuk_veri_pencere_sinirlari_arasi_dogru_cozulur() {
+        // MAX_CIPHER_WINDOW'dan büyük gerçek şifreli fixture: pencere ve cilt
+        // sınırlarını aşan CBC zinciri uçtan uca doğrulanır.
+        let plain: Vec<u8> = (0..(MAX_CIPHER_WINDOW as usize + 700_123))
+            .map(|i| ((i * 31 + i / 7) % 256) as u8)
+            .collect();
+        let split_at = (MAX_CIPHER_WINDOW as usize) / 2;
+        let fixture = build_encrypted_fixture("nzbsifresi", &plain, split_at);
+        let bytes = concat(&fixture.volumes);
+        let map = build_fragment_map(
+            &mut Cursor::new(bytes.clone()),
+            &layout(&fixture.volumes),
+            Some(&fixture.password),
+        )
+        .unwrap();
+
+        let windows = map.cipher_windows(0..map.total_len);
+        assert!(
+            windows.len() >= 2,
+            "büyük okuma birden çok pencereye bölünmeli"
+        );
+        assert!(windows.iter().all(|w| w.take <= MAX_CIPHER_WINDOW));
+
+        let out = read_decrypted_range(&map, &bytes, 0..map.total_len);
+        assert_eq!(out, plain);
+        // Ortadan rasgele bir aralık da pencere sınırına denk gelecek biçimde.
+        let mid = MAX_CIPHER_WINDOW - 40_000;
+        let out = read_decrypted_range(&map, &bytes, mid..mid + 100_000);
+        assert_eq!(out, plain[mid as usize..(mid + 100_000) as usize]);
     }
 
     #[test]
