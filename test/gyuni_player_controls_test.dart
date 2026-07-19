@@ -15,6 +15,7 @@ Widget _buildChrome({
   VoidCallback? onToggleMute,
   VoidCallback? onLoadExternalAudio,
   VoidCallback? onLoadExternalSubtitle,
+  ValueChanged<Offset>? onShowAdvancedSettings,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -52,7 +53,7 @@ Widget _buildChrome({
           onRateSelected: (_) {},
           onSubtitleSelected: (_) {},
           onAudioSelected: (_) {},
-          onShowContextMenu: (_) {},
+          onShowAdvancedSettings: onShowAdvancedSettings ?? (_) {},
           onVolumeChanged: onVolumeChanged ?? (_) {},
           onToggleMute: onToggleMute ?? () {},
           onLoadExternalAudio: onLoadExternalAudio,
@@ -195,5 +196,44 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 500));
     expect(find.text('Dosyadan yükle…'), findsNothing);
+  });
+
+  testWidgets(
+    'gelişmiş ayarlar düğmesi alt çubukta görünür ve konumuyla tetikler',
+    (tester) async {
+      final positions = <Offset>[];
+      await tester.pumpWidget(
+        _buildChrome(onShowAdvancedSettings: positions.add),
+      );
+
+      final button = find.byTooltip('Gelişmiş ayarlar');
+      expect(button, findsOneWidget);
+
+      await tester.tap(button);
+      // Dış GestureDetector'da çift tık tanıyıcısı yarıştığından tek tık
+      // geri çağrısı arena zaman aşımı sonrası düşer (dosyadaki diğer tık
+      // testleriyle aynı desen).
+      await tester.pump(kDoubleTapTimeout + const Duration(milliseconds: 50));
+
+      // Menü düğmenin ekran konumundan açılır (orijin değil).
+      expect(positions, hasLength(1));
+      expect(positions.single.dx, greaterThan(0));
+      expect(positions.single.dy, greaterThan(0));
+    },
+  );
+
+  testWidgets('sağ tık gelişmiş ayarlar menüsünü açmaz', (tester) async {
+    final positions = <Offset>[];
+    await tester.pumpWidget(_buildChrome(onShowAdvancedSettings: positions.add));
+
+    // Menünün tek girişi alt çubuktaki düğmedir; video üzerinde sağ tık
+    // (dokunmatik/TV karşılığı yok) artık bağlı değil.
+    await tester.tapAt(
+      const Offset(390, 250),
+      buttons: kSecondaryMouseButton,
+    );
+    await tester.pump();
+
+    expect(positions, isEmpty);
   });
 }

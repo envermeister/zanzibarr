@@ -37,7 +37,7 @@ class GyuniPlayerChrome extends StatelessWidget {
     required this.onRateSelected,
     required this.onSubtitleSelected,
     required this.onAudioSelected,
-    required this.onShowContextMenu,
+    required this.onShowAdvancedSettings,
     required this.volume,
     required this.onVolumeChanged,
     required this.onToggleMute,
@@ -95,7 +95,11 @@ class GyuniPlayerChrome extends StatelessWidget {
   final ValueChanged<AudioTrack> onAudioSelected;
   final ValueChanged<double> onVolumeChanged;
   final VoidCallback onToggleMute;
-  final ValueChanged<Offset> onShowContextMenu;
+  /// Alt çubuktaki "Gelişmiş ayarlar" düğmesinin callback'i. Düğme kendi
+  /// ekran konumunu verir; menü o konumdan yukarı açılır. Dokunmatik
+  /// ekranlarda ve TV kumandasında sağ tık karşılığı olmadığından menünün
+  /// tek giriş noktası bu düğmedir.
+  final ValueChanged<Offset> onShowAdvancedSettings;
 
   /// Kullanıcının kendi diskinden harici ses/altyazı dosyası eklemesi için
   /// parça menülerindeki "Dosyadan yükle…" girişlerinin callback'i.
@@ -144,12 +148,6 @@ class GyuniPlayerChrome extends StatelessWidget {
         onDoubleTap: editorActive
             ? null
             : () => _handleVideoDoubleTap(context, doubleTapPosition),
-        onSecondaryTapDown: editorActive
-            ? null
-            : (details) {
-                onActivity();
-                onShowContextMenu(details.globalPosition);
-              },
         child: Stack(
           fit: StackFit.expand,
           children: [
@@ -222,6 +220,7 @@ class GyuniPlayerChrome extends StatelessWidget {
                           onAudioSelected: onAudioSelected,
                           onLoadExternalAudio: onLoadExternalAudio,
                           onLoadExternalSubtitle: onLoadExternalSubtitle,
+                          onShowAdvancedSettings: onShowAdvancedSettings,
                         ),
                       ],
                     ),
@@ -539,6 +538,7 @@ class _BottomControls extends StatelessWidget {
     required this.onRateSelected,
     required this.onSubtitleSelected,
     required this.onAudioSelected,
+    required this.onShowAdvancedSettings,
     this.onLoadExternalAudio,
     this.onLoadExternalSubtitle,
   });
@@ -564,6 +564,7 @@ class _BottomControls extends StatelessWidget {
   final ValueChanged<double> onRateSelected;
   final ValueChanged<SubtitleTrack> onSubtitleSelected;
   final ValueChanged<AudioTrack> onAudioSelected;
+  final ValueChanged<Offset> onShowAdvancedSettings;
   final VoidCallback? onLoadExternalAudio;
   final VoidCallback? onLoadExternalSubtitle;
 
@@ -751,6 +752,24 @@ class _BottomControls extends StatelessWidget {
                             onPressed: ready ? onFrameForward : null,
                           ),
                         ],
+                        // Gelişmiş ayarlar menüsünün tek giriş noktası;
+                        // dar ekranlarda bile gizlenmez (mobil/TV erişimi).
+                        Builder(
+                          builder: (buttonContext) => _CompactIconButton(
+                            icon: Icons.tune_rounded,
+                            tooltip: 'Gelişmiş ayarlar',
+                            onPressed: () {
+                              final box = buttonContext.findRenderObject();
+                              if (box is RenderBox && box.hasSize) {
+                                onShowAdvancedSettings(
+                                  box.localToGlobal(
+                                    box.size.topRight(Offset.zero),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ),
                       ],
                     );
                   },

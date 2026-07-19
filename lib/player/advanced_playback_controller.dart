@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 
 abstract interface class PlaybackBackend {
@@ -153,6 +154,13 @@ class AdvancedPlaybackController {
     'cache-on-disk': 'no',
   };
 
+  /// Yalnız Android'de uygulanır. Zayıf TV box donanımlarında çözücü sese
+  /// yetişemediğinde görüntü geride birikmesin: kare düşürme çözücü
+  /// seviyesinde de devreye girer (varsayılan yalnız video çıkışında düşürür).
+  static const androidPerformanceProfile = <String, String>{
+    'framedrop': 'decoder+vo',
+  };
+
   static const _videoPresetProperties = <VideoPreset, Map<String, String>>{
     VideoPreset.natural: {
       'brightness': '0',
@@ -257,12 +265,18 @@ class AdvancedPlaybackController {
     }
   }
 
-  /// Donanım kod çözmeyi açar (`auto-safe`) veya kapatır (yazılım). mpv bu
-  /// özelliğin çalışma zamanında değişmesini destekler.
+  /// Donanım kod çözmeyi açar veya kapatır (yazılım). mpv bu özelliğin
+  /// çalışma zamanında değişmesini destekler. Açık değer Android'de `auto`
+  /// (auto-safe'in güvenli listesi bazı TV box çiplerinde donanım yolunu
+  /// kaçırıyor), diğer platformlarda `auto-safe`.
   Future<void> setHardwareDecoding(bool enabled) async {
-    await _backend.setProperty('hwdec', enabled ? 'auto-safe' : 'no');
+    await _backend.setProperty('hwdec', enabled ? hwdecEnabledValue : 'no');
     hardwareDecoding = enabled;
   }
+
+  /// Donanım kod çözme açıkken kullanılan libmpv `hwdec` değeri.
+  static String get hwdecEnabledValue =>
+      defaultTargetPlatform == TargetPlatform.android ? 'auto' : 'auto-safe';
 
   /// Geçerli içeriğin dinamik aralık yeteneklerini libmpv video
   /// parametrelerinden ve başlık üstverisinden okur. Başlık henüz
@@ -334,8 +348,12 @@ class AdvancedPlaybackController {
     return capabilities.hdrSignal || capabilities.dolbyVisionProfile != null;
   }
 
-  Future<void> applyStreamingTransportProfile() =>
-      _applyPropertiesWithReadback(streamingTransportProfile);
+  Future<void> applyStreamingTransportProfile() async {
+    await _applyPropertiesWithReadback(streamingTransportProfile);
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _applyPropertiesWithReadback(androidPerformanceProfile);
+    }
+  }
 
   Future<String> engineVersion() async {
     final value = (await _backend.getProperty('mpv-version')).trim();

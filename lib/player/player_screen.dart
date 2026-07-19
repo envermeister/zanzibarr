@@ -180,9 +180,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
     _videoController = VideoController(
       _player,
-      configuration: const VideoControllerConfiguration(
+      // Android'de (TV box'lar) auto-safe'in güvenli listesi bazı cihazlarda
+      // donanım çözücüyü devreye almıyor; 4K içerik yazılıma düşünce görüntü
+      // sesin gerisinde kalıyor. auto tüm donanım yollarını dener.
+      configuration: VideoControllerConfiguration(
         enableHardwareAcceleration: true,
-        hwdec: 'auto-safe',
+        hwdec: defaultTargetPlatform == TargetPlatform.android
+            ? 'auto'
+            : 'auto-safe',
       ),
     );
     _playback = AdvancedPlaybackController(MediaKitPlaybackBackend(_player));
@@ -1597,7 +1602,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
   }
 
-  Future<void> _showContextMenu(Offset globalPosition) async {
+  Future<void> _showAdvancedSettings(Offset globalPosition) async {
     _revealControls();
     final overlay = Overlay.of(context).context.findRenderObject();
     if (overlay is! RenderBox) return;
@@ -2346,8 +2351,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                 onLoadExternalAudio: () => unawaited(_loadExternalAudio()),
                 onLoadExternalSubtitle: () =>
                     unawaited(_loadExternalSubtitle()),
-                onShowContextMenu: (position) =>
-                    unawaited(_showContextMenu(position)),
+                onShowAdvancedSettings: (position) =>
+                    unawaited(_showAdvancedSettings(position)),
               ),
             ),
           ),

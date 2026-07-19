@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanzibarr/player/advanced_playback_controller.dart';
 
@@ -71,6 +72,10 @@ void main() {
   test(
     'Usenet HTTP profili uzun beklemeyi tolere edip disk cache kapatıyor',
     () async {
+      // Test ortamında defaultTargetPlatform Android döner; bu test taşıma
+      // profilini platform yan etkilerinden bağımsız doğrular.
+      debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+      addTearDown(() => debugDefaultTargetPlatformOverride = null);
       final backend = _FakeBackend();
       final controller = AdvancedPlaybackController(backend);
 
@@ -519,6 +524,10 @@ void main() {
   });
 
   test('donanım kod çözme anahtarı auto-safe ve yazılım arasında geçer', () async {
+    // Android dışı platform beklentisi: test ortamı Android sayıldığından
+    // açıkça masaüstü platformu sabitlenir.
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend);
 
@@ -528,6 +537,43 @@ void main() {
     expect(controller.hardwareDecoding, isTrue);
 
     expect(backend.calls, ['set:hwdec=no', 'set:hwdec=auto-safe']);
+  });
+
+  test('Android\'de donanım kod çözme auto değeriyle açılır', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setHardwareDecoding(true);
+
+    expect(backend.calls, ['set:hwdec=auto']);
+  });
+
+  test('Android\'de HTTP profili çözücü seviyesinde kare düşürmeyi açar', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.applyStreamingTransportProfile();
+
+    expect(backend.calls, contains('set:framedrop=decoder+vo'));
+    expect(backend.properties['framedrop'], 'decoder+vo');
+  });
+
+  test('Android dışında HTTP profili kare düşürmeye dokunmaz', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.applyStreamingTransportProfile();
+
+    expect(
+      backend.calls.where((call) => call.contains('framedrop')),
+      isEmpty,
+    );
   });
 
   test('HDR içerik tespiti primaries ve gamma üzerinden yapılır', () async {
