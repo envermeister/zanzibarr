@@ -1,0 +1,210 @@
+{
+  "@@locale": "en",
+  "appTitle": "Zanzibarr",
+  "settingsTitle": "Settings",
+  "appSectionTitle": "Application",
+  "appSectionSubtitle": "Language and appearance preferences are stored on this device.",
+  "languageLabel": "Language",
+  "themeLabel": "Appearance",
+  "themeDark": "Dark",
+  "themeLight": "Light",
+  "advancedSettings": "Advanced settings",
+  "play": "Play",
+  "pause": "Pause",
+  "selectNzbAndPlay": "Select NZB and play",
+  "selectNzbHint": "Open a .nzb from the file system",
+  "engineStarting": "Preparing the local playback engine…",
+  "engineStartFailed": "The local playback engine could not be started",
+  "engineStartFailedHint": "Check the engine files and the app installation, then try again.",
+  "retry": "Try again",
+  "errorOpenNzb": "Could not open the NZB file: {error}",
+  "@errorOpenNzb": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "providerSettingsTooltip": "Provider settings",
+  "backTooltip": "Back",
+  "providerTitle": "Provider",
+  "nntpSectionTitle": "NNTP connection",
+  "nntpSectionSubtitle": "Details are stored only in this device's secure keychain.",
+  "serverAddressLabel": "Server address",
+  "portLabel": "Port",
+  "connectionLimitLabel": "Connection limit",
+  "connectionLimitHint": "Plan limit",
+  "usernameLabel": "Username",
+  "passwordLabel": "Password",
+  "passwordShowTooltip": "Show password",
+  "passwordHideTooltip": "Hide password",
+  "saveSecurelyLabel": "Save securely",
+  "savingLabel": "Saving…",
+  "settingsSaved": "Settings saved to secure storage.",
+  "settingsSaveFailed": "Could not save: {error}",
+  "@settingsSaveFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "secureStorageUnavailable": "Secure storage could not be accessed",
+  "connectionLimitWarning": "Setting the connection limit above your provider's plan may cause a “too many connections” error.",
+  "validationRequired": "{field} is required",
+  "@validationRequired": {
+    "placeholders": {
+      "field": { "type": "String" }
+    }
+  },
+  "validationIntegerRange": "{field} must be between {min} and {max}",
+  "@validationIntegerRange": {
+    "placeholders": {
+      "field": { "type": "String" },
+      "min": { "type": "int" },
+      "max": { "type": "int" }
+    }
+  },
+  "validationHostNoProtocol": "Enter only the server name, without protocol or port",
+  "validationHostInvalid": "Enter a valid server name",
+  "closePlayer": "Close player",
+  "fullscreen": "Fullscreen",
+  "subtitleControlsTooltip": "On-screen subtitle controls",
+  "miniPlayer": "Mini player",
+  "exitMiniPlayer": "Exit mini player",
+  "previousFrame": "Previous frame",
+  "nextFrame": "Next frame",
+  "playbackSpeedTooltip": "Playback speed",
+  "audioTrack": "Audio track",
+  "subtitleTrack": "Subtitle track",
+  "muteTooltip": "Mute",
+  "unmuteTooltip": "Unmute",
+  "loadFromFile": "Load from file…",
+  "auto": "Auto",
+  "off": "Off",
+  "subtitleDecreaseTooltip": "Decrease subtitle size",
+  "subtitleIncreaseTooltip": "Increase subtitle size",
+  "subtitleMoveUpTooltip": "Move subtitle up",
+  "subtitleMoveDownTooltip": "Move subtitle down",
+  "subtitleEarlierTooltip": "Move subtitle 0.1 seconds earlier",
+  "subtitleLaterTooltip": "Delay subtitle by 0.1 seconds",
+  "closeSubtitleControlsTooltip": "Close subtitle controls",
+  "smartCanvasAreaLabel": "Smart Canvas crop area",
+  "smartCanvasSemanticsHint": "Double-tap to apply. Press Escape to cancel.",
+  "smartCanvasHintText": "Double-tap: apply · Esc: cancel",
+  "cropHandleTopLeft": "Top-left crop handle",
+  "cropHandleTopRight": "Top-right crop handle",
+  "cropHandleBottomLeft": "Bottom-left crop handle",
+  "cropHandleBottomRight": "Bottom-right crop handle",
+  "statusPreparing": "Preparing…",
+  "engineBadgePreparing": "Preparing native libmpv…",
+  "errorProviderSettingsMissing": "Provider settings are incomplete. Enter your details on the settings screen first.",
+  "statusConnecting": "Connecting and fetching the first segment (learning layout)…",
+  "statusReadingVideoStructure": "Reading video structure: {filename}",
+  "@statusReadingVideoStructure": {
+    "placeholders": {
+      "filename": { "type": "String" }
+    }
+  },
+  "statusBuffering": "Buffering: {filename}",
+  "@statusBuffering": {
+    "placeholders": {
+      "filename": { "type": "String" }
+    }
+  },
+  "statusPlaying": "Playing: {filename}",
+  "@statusPlaying": {
+    "placeholders": {
+      "filename": { "type": "String" }
+    }
+  },
+  "statusWaitingTracks": "Waiting for video tracks: {filename}",
+  "@statusWaitingTracks": {
+    "placeholders": {
+      "filename": { "type": "String" }
+    }
+  },
+  "bufferingPercent": " {percent}%",
+  "@bufferingPercent": {
+    "placeholders": {
+      "percent": { "type": "String" }
+    }
+  },
+  "statusStartingVideo": "Starting video{progress}: {filename}",
+  "@statusStartingVideo": {
+    "placeholders": {
+      "progress": { "type": "String" },
+      "filename": { "type": "String" }
+    }
+  },
+  "errorStreamStartTimeout": "The Usenet stream could not start within {seconds} seconds. The provider connection, the first segment, or the NZB content may not be responding.",
+  "@errorStreamStartTimeout": {
+    "placeholders": {
+      "seconds": { "type": "int" }
+    }
+  },
+  "errorVideoDetectTimeout": "The video could not be recognized within {seconds} seconds. The NZB may contain a multi-part archive/PAR2 instead of a direct video, a segment may be missing, or the stream may be unreadable.",
+  "@errorVideoDetectTimeout": {
+    "placeholders": {
+      "seconds": { "type": "int" }
+    }
+  },
+  "engineBadgeDiskCacheOff": "disk cache off",
+  "engineBadgeSdrSafePath": "SDR safe path",
+  "errorControlFailed": "Could not apply the control: {error}",
+  "@errorControlFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "errorZoomFailed": "Could not apply zoom: {error}",
+  "@errorZoomFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "errorPipUnavailable": "Picture-in-Picture is not available on this platform.",
+  "fileTypeSubtitles": "Subtitles",
+  "fileTypeAudioFiles": "Audio files",
+  "seekBackSeconds": "Back {seconds} seconds",
+  "@seekBackSeconds": {
+    "placeholders": {
+      "seconds": { "type": "int" }
+    }
+  },
+  "seekForwardSeconds": "Forward {seconds} seconds",
+  "@seekForwardSeconds": {
+    "placeholders": {
+      "seconds": { "type": "int" }
+    }
+  },
+  "cancelCanvasEditing": "Cancel canvas editing",
+  "resetCanvas": "Reset canvas",
+  "subtitleControls": "Subtitle controls",
+  "loopSetA": "Set point A",
+  "loopSetB": "Set point B",
+  "loopClear": "Clear A–B loop",
+  "tuningMenuItem": "Video and audio settings…",
+  "tuningDialogTitle": "Video and audio",
+  "closeTooltip": "Close",
+  "videoPresetLabel": "Video preset",
+  "presetNatural": "Natural",
+  "presetCinema": "Cinema",
+  "presetVivid": "Vivid",
+  "gpuScalingLabel": "GPU scaling",
+  "presetLowPower": "Low power",
+  "presetBalanced": "Balanced",
+  "presetQuality": "Quality",
+  "audioPresetLabel": "Audio preset",
+  "presetDialogue": "Dialogue",
+  "presetNight": "Night",
+  "seekStepLabel": "Seek step",
+  "periodicInfoLabel": "Periodic info",
+  "secondsUnitShort": "s",
+  "audioSyncLabel": "Audio sync",
+  "audioEarlierTooltip": "Move audio 0.1 s earlier",
+  "audioLaterTooltip": "Delay audio by 0.1 s",
+  "decodingLabel": "Decoding",
+  "decodingHardware": "Hardware",
+  "decodingSoftware": "Software",
+  "dynamicRangeLabel": "Dynamic range",
+  "hdrInfoText": "Only the formats carried by the content can be selected; the others are disabled. When SDR is selected, HDR content is tone-mapped to bt.709 (BT.2390 + peak detect). HDR10+ is disabled because libmpv cannot detect its dynamic metadata; Dolby Vision is supported on profiles that include an HDR10 base layer.",
+  "doneLabel": "Done",
+  "videoPreparing": "Preparing video…"
+}

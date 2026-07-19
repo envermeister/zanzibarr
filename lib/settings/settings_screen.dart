@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_localizations.dart';
 import 'provider_settings.dart';
+import 'ui_preferences.dart';
 
 /// Sağlayıcı (NNTP) kimlik bilgileri için ayar ekranı.
 ///
 /// Değerler OS secure storage'a yazılır; ekran açılışında oradan okunur.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, this.store});
+  const SettingsScreen({super.key, this.store, this.uiPreferences});
 
   /// Testlerde sahte depo enjekte edebilmek için; null ise gerçek depo kullanılır.
   final ProviderSettingsStore? store;
+
+  /// Dil/görünüm seçicileri için; null ise "Uygulama" bölümü gösterilmez.
+  final UiPreferencesController? uiPreferences;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -96,15 +101,17 @@ class _SettingsScreenState extends State<SettingsScreen>
       // Keychain yazımı başarısızsa (ör. entitlement eksik) uygulamayı
       // düşürmeden kullanıcıya bildir.
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Kaydedilemedi: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).settingsSaveFailed('$e')),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _saving = false);
     }
     if (!mounted || !saved) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ayarlar güvenli depoya kaydedildi.')),
+      SnackBar(content: Text(AppLocalizations.of(context).settingsSaved)),
     );
   }
 
@@ -116,49 +123,66 @@ class _SettingsScreenState extends State<SettingsScreen>
   ) {
     final parsed = int.tryParse(value?.trim() ?? '');
     if (parsed == null || parsed < minimum || parsed > maximum) {
-      return '$fieldName $minimum–$maximum arasında olmalı';
+      return AppLocalizations.of(
+        context,
+      ).validationIntegerRange(fieldName, minimum, maximum);
     }
     return null;
   }
 
   String? _required(String? value, String fieldName) =>
-      value == null || value.trim().isEmpty ? '$fieldName gerekli' : null;
+      value == null || value.trim().isEmpty
+          ? AppLocalizations.of(context).validationRequired(fieldName)
+          : null;
 
   String? _validateHost(String? value) {
+    final l10n = AppLocalizations.of(context);
     final host = value?.trim() ?? '';
-    if (host.isEmpty) return 'Sunucu adresi gerekli';
+    if (host.isEmpty) return l10n.validationRequired(l10n.serverAddressLabel);
     if (host.length > 253 ||
         host.contains(RegExp(r'\s')) ||
         host.contains('://') ||
         host.contains(RegExp(r'[/@?#:]'))) {
-      return 'Yalnız sunucu adını girin; protokol ve port eklemeyin';
+      return l10n.validationHostNoProtocol;
     }
     final hostname = RegExp(
       r'^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)'
       r'(?:\.(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?))*\.?$',
     );
-    if (!hostname.hasMatch(host)) return 'Geçerli bir sunucu adı girin';
+    if (!hostname.hasMatch(host)) return l10n.validationHostInvalid;
     return null;
   }
 
   Widget _portField() => TextFormField(
     controller: _portController,
-    decoration: const InputDecoration(labelText: 'Port', hintText: '563'),
+    decoration: InputDecoration(
+      labelText: AppLocalizations.of(context).portLabel,
+      hintText: '563',
+    ),
     textInputAction: TextInputAction.next,
     keyboardType: TextInputType.number,
-    validator: (value) => _validateIntegerRange(value, 'Port', 1, 65535),
+    validator: (value) => _validateIntegerRange(
+      value,
+      AppLocalizations.of(context).portLabel,
+      1,
+      65535,
+    ),
   );
 
   Widget _connectionField() => TextFormField(
     controller: _maxConnectionsController,
-    decoration: const InputDecoration(
-      labelText: 'Bağlantı limiti',
-      hintText: 'Plan limiti',
+    decoration: InputDecoration(
+      labelText: AppLocalizations.of(context).connectionLimitLabel,
+      hintText: AppLocalizations.of(context).connectionLimitHint,
     ),
     textInputAction: TextInputAction.next,
     keyboardType: TextInputType.number,
-    validator: (value) =>
-        _validateIntegerRange(value, 'Bağlantı limiti', 1, 60),
+    validator: (value) => _validateIntegerRange(
+      value,
+      AppLocalizations.of(context).connectionLimitLabel,
+      1,
+      60,
+    ),
   );
 
   @override
@@ -176,16 +200,17 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 17),
-          tooltip: 'Geri',
+          tooltip: l10n.backTooltip,
           onPressed: () => Navigator.maybePop(context),
         ),
-        title: const Text(
-          'Sağlayıcı',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        title: Text(
+          l10n.providerTitle,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
         ),
       ),
       body: _loading
@@ -205,20 +230,113 @@ class _SettingsScreenState extends State<SettingsScreen>
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(24, 18, 24, 32),
                     children: [
+                      if (widget.uiPreferences case final prefs?) ...[
+                        Text(
+                          l10n.appSectionTitle,
+                          style: Theme.of(context).textTheme.titleLarge
+                              ?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: -0.35,
+                              ),
+                        ),
+                        const SizedBox(height: 7),
+                        Text(
+                          l10n.appSectionSubtitle,
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context)
+                                    .colorScheme
+                                    .onSurface
+                                    .withValues(alpha: 0.45),
+                                height: 1.4,
+                              ),
+                        ),
+                        const SizedBox(height: 24),
+                        _SettingsCard(
+                          children: [
+                            DropdownButtonFormField<Locale>(
+                              initialValue: prefs.locale,
+                              decoration: InputDecoration(
+                                labelText: l10n.languageLabel,
+                                prefixIcon: const Icon(
+                                  Icons.language_rounded,
+                                  size: 19,
+                                ),
+                              ),
+                              items: [
+                                for (final (locale, name)
+                                    in supportedAppLocales)
+                                  DropdownMenuItem(
+                                    value: locale,
+                                    child: Text(name),
+                                  ),
+                              ],
+                              onChanged: (locale) {
+                                if (locale != null) {
+                                  prefs.setLocale(locale);
+                                }
+                              },
+                            ),
+                            const SizedBox(height: 16),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                l10n.themeLabel,
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onSurface
+                                          .withValues(alpha: 0.55),
+                                    ),
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            SizedBox(
+                              width: double.infinity,
+                              child: SegmentedButton<ThemeMode>(
+                                showSelectedIcon: false,
+                                segments: [
+                                  ButtonSegment(
+                                    value: ThemeMode.dark,
+                                    icon: const Icon(
+                                      Icons.dark_mode_rounded,
+                                      size: 17,
+                                    ),
+                                    label: Text(l10n.themeDark),
+                                  ),
+                                  ButtonSegment(
+                                    value: ThemeMode.light,
+                                    icon: const Icon(
+                                      Icons.light_mode_rounded,
+                                      size: 17,
+                                    ),
+                                    label: Text(l10n.themeLight),
+                                  ),
+                                ],
+                                selected: {prefs.themeMode},
+                                onSelectionChanged: (selection) =>
+                                    prefs.setThemeMode(selection.first),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                      ],
                       Text(
-                        'NNTP bağlantısı',
+                        l10n.nntpSectionTitle,
                         style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                          color: Colors.white,
                           fontWeight: FontWeight.w700,
                           letterSpacing: -0.35,
                         ),
                       ),
                       const SizedBox(height: 7),
                       Text(
-                        'Bilgiler yalnızca bu cihazın güvenli anahtar '
-                        'zincirinde saklanır.',
+                        l10n.nntpSectionSubtitle,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.white38,
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.45),
                           height: 1.4,
                         ),
                       ),
@@ -227,10 +345,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                         children: [
                           TextFormField(
                             controller: _hostController,
-                            decoration: const InputDecoration(
-                              labelText: 'Sunucu adresi',
+                            decoration: InputDecoration(
+                              labelText: l10n.serverAddressLabel,
                               hintText: 'news.example.com',
-                              prefixIcon: Icon(Icons.dns_rounded, size: 19),
+                              prefixIcon: const Icon(Icons.dns_rounded, size: 19),
                             ),
                             textInputAction: TextInputAction.next,
                             keyboardType: TextInputType.url,
@@ -266,9 +384,9 @@ class _SettingsScreenState extends State<SettingsScreen>
                         children: [
                           TextFormField(
                             controller: _usernameController,
-                            decoration: const InputDecoration(
-                              labelText: 'Kullanıcı adı',
-                              prefixIcon: Icon(
+                            decoration: InputDecoration(
+                              labelText: l10n.usernameLabel,
+                              prefixIcon: const Icon(
                                 Icons.person_outline_rounded,
                                 size: 19,
                               ),
@@ -277,7 +395,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                             textInputAction: TextInputAction.next,
                             autocorrect: false,
                             validator: (value) =>
-                                _required(value, 'Kullanıcı adı'),
+                                _required(value, l10n.usernameLabel),
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
@@ -287,17 +405,18 @@ class _SettingsScreenState extends State<SettingsScreen>
                             autocorrect: false,
                             autofillHints: const [AutofillHints.password],
                             onFieldSubmitted: (_) => _save(),
-                            validator: (value) => _required(value, 'Parola'),
+                            validator: (value) =>
+                                _required(value, l10n.passwordLabel),
                             decoration: InputDecoration(
-                              labelText: 'Parola',
+                              labelText: l10n.passwordLabel,
                               prefixIcon: const Icon(
                                 Icons.lock_outline_rounded,
                                 size: 19,
                               ),
                               suffixIcon: IconButton(
                                 tooltip: _obscurePassword
-                                    ? 'Parolayı göster'
-                                    : 'Parolayı gizle',
+                                    ? l10n.passwordShowTooltip
+                                    : l10n.passwordHideTooltip,
                                 icon: Icon(
                                   _obscurePassword
                                       ? Icons.visibility_rounded
@@ -328,7 +447,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 )
                               : const Icon(Icons.check_rounded, size: 18),
                           label: Text(
-                            _saving ? 'Kaydediliyor…' : 'Güvenle kaydet',
+                            _saving ? l10n.savingLabel : l10n.saveSecurelyLabel,
                           ),
                         ),
                       ),
@@ -347,17 +466,20 @@ class _SettingsCard extends StatelessWidget {
   final List<Widget> children;
 
   @override
-  Widget build(BuildContext context) => DecoratedBox(
-    decoration: BoxDecoration(
-      color: Colors.white.withValues(alpha: 0.035),
-      borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: Colors.white.withValues(alpha: 0.075)),
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(14),
-      child: Column(children: children),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final cardForeground = Theme.of(context).colorScheme.onSurface;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: cardForeground.withValues(alpha: 0.035),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: cardForeground.withValues(alpha: 0.075)),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(children: children),
+      ),
+    );
+  }
 }
 
 class _SettingsLoadError extends StatelessWidget {
@@ -367,74 +489,83 @@ class _SettingsLoadError extends StatelessWidget {
   final VoidCallback onRetry;
 
   @override
-  Widget build(BuildContext context) => Center(
-    child: ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 420),
-      child: Padding(
-        padding: const EdgeInsets.all(28),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(
-              Icons.lock_outline_rounded,
-              color: Colors.white54,
-              size: 32,
-            ),
-            const SizedBox(height: 14),
-            const Text(
-              'Güvenli depoya erişilemedi',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final foreground = Theme.of(context).colorScheme.onSurface;
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.lock_outline_rounded,
+                color: foreground.withValues(alpha: 0.54),
+                size: 32,
               ),
-            ),
-            const SizedBox(height: 7),
-            Text(
-              '$error',
-              maxLines: 3,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.white38, fontSize: 12),
-            ),
-            const SizedBox(height: 18),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Yeniden dene'),
-            ),
-          ],
+              const SizedBox(height: 14),
+              Text(
+                l10n.secureStorageUnavailable,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: foreground,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 7),
+              Text(
+                '$error',
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: foreground.withValues(alpha: 0.38),
+                  fontSize: 12,
+                ),
+              ),
+              const SizedBox(height: 18),
+              FilledButton.icon(
+                onPressed: onRetry,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: Text(l10n.retry),
+              ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _ConnectionHint extends StatelessWidget {
   const _ConnectionHint();
 
   @override
-  Widget build(BuildContext context) => Row(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      const Padding(
-        padding: EdgeInsets.only(top: 1),
-        child: Icon(
-          Icons.info_outline_rounded,
-          size: 16,
-          color: Colors.white30,
+  Widget build(BuildContext context) {
+    final hintColor = Theme.of(context).colorScheme.onSurfaceVariant;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(
+            Icons.info_outline_rounded,
+            size: 16,
+            color: hintColor.withValues(alpha: 0.6),
+          ),
         ),
-      ),
-      const SizedBox(width: 8),
-      Expanded(
-        child: Text(
-          'Bağlantı limitini sağlayıcınızın planından yüksek seçmek, “çok '
-          'fazla bağlantı” hatasına yol açabilir.',
-          style: Theme.of(
-            context,
-          ).textTheme.bodySmall?.copyWith(color: Colors.white38, height: 1.4),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            AppLocalizations.of(context).connectionLimitWarning,
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: hintColor, height: 1.4),
+          ),
         ),
-      ),
-    ],
-  );
+      ],
+    );
+  }
 }

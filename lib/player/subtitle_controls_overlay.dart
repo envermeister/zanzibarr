@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../l10n/app_localizations.dart';
+
 class SubtitleControlsOverlay extends StatefulWidget {
   const SubtitleControlsOverlay({
     super.key,
@@ -75,6 +77,7 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final vertical = ((_position.clamp(0, 100).toDouble() / 100) * 1.4 - 0.45)
         .clamp(-0.45, 0.95);
     return SafeArea(
@@ -127,7 +130,7 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       PopupMenuButton<SubtitleTrack>(
-                        tooltip: 'Altyazı izi',
+                        tooltip: l10n.subtitleTrack,
                         color: const Color(0xF2242427),
                         onSelected: widget.onTrackSelected,
                         itemBuilder: (context) => widget.tracks
@@ -142,7 +145,13 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                                           ? const Icon(Icons.check, size: 16)
                                           : null,
                                     ),
-                                    Text(_subtitleLabel(track)),
+                                    Text(
+                                      _subtitleLabel(
+                                        track,
+                                        auto: l10n.auto,
+                                        off: l10n.off,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
@@ -159,7 +168,7 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                       ),
                       _OverlayButton(
                         icon: Icons.text_decrease_rounded,
-                        tooltip: 'Altyazıyı küçült',
+                        tooltip: l10n.subtitleDecreaseTooltip,
                         onPressed: () => _changeScale(_scale - 0.1),
                       ),
                       SizedBox(
@@ -175,24 +184,24 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                       ),
                       _OverlayButton(
                         icon: Icons.text_increase_rounded,
-                        tooltip: 'Altyazıyı büyüt',
+                        tooltip: l10n.subtitleIncreaseTooltip,
                         onPressed: () => _changeScale(_scale + 0.1),
                       ),
                       const _Divider(),
                       _OverlayButton(
                         icon: Icons.keyboard_arrow_up_rounded,
-                        tooltip: 'Altyazıyı yukarı taşı',
+                        tooltip: l10n.subtitleMoveUpTooltip,
                         onPressed: () => _changePosition(_position - 2),
                       ),
                       _OverlayButton(
                         icon: Icons.keyboard_arrow_down_rounded,
-                        tooltip: 'Altyazıyı aşağı taşı',
+                        tooltip: l10n.subtitleMoveDownTooltip,
                         onPressed: () => _changePosition(_position + 2),
                       ),
                       const _Divider(),
                       _OverlayButton(
                         icon: Icons.chevron_left_rounded,
-                        tooltip: 'Altyazıyı 0,1 saniye erkene al',
+                        tooltip: l10n.subtitleEarlierTooltip,
                         onPressed: () => _changeDelay(
                           _delay - const Duration(milliseconds: 100),
                         ),
@@ -200,7 +209,7 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                       SizedBox(
                         width: 62,
                         child: Text(
-                          _formatDelay(_delay),
+                          _formatDelay(_delay, l10n.secondsUnitShort),
                           textAlign: TextAlign.center,
                           style: const TextStyle(
                             color: Colors.white70,
@@ -211,7 +220,7 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                       ),
                       _OverlayButton(
                         icon: Icons.chevron_right_rounded,
-                        tooltip: 'Altyazıyı 0,1 saniye geciktir',
+                        tooltip: l10n.subtitleLaterTooltip,
                         onPressed: () => _changeDelay(
                           _delay + const Duration(milliseconds: 100),
                         ),
@@ -219,7 +228,7 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                       const _Divider(),
                       _OverlayButton(
                         icon: Icons.close_rounded,
-                        tooltip: 'Altyazı kontrollerini kapat',
+                        tooltip: l10n.closeSubtitleControlsTooltip,
                         onPressed: widget.onClose,
                       ),
                     ],
@@ -268,9 +277,13 @@ class _Divider extends StatelessWidget {
   );
 }
 
-String _subtitleLabel(SubtitleTrack track) {
-  if (track.id == 'auto') return 'Otomatik';
-  if (track.id == 'no') return 'Kapalı';
+String _subtitleLabel(
+  SubtitleTrack track, {
+  required String auto,
+  required String off,
+}) {
+  if (track.id == 'auto') return auto;
+  if (track.id == 'no') return off;
   return [
     if (track.title?.isNotEmpty ?? false) track.title!,
     if (track.language?.isNotEmpty ?? false) track.language!.toUpperCase(),
@@ -278,8 +291,8 @@ String _subtitleLabel(SubtitleTrack track) {
   ].join(' · ');
 }
 
-String _formatDelay(Duration value) {
+String _formatDelay(Duration value, String unit) {
   final seconds = value.inMicroseconds / Duration.microsecondsPerSecond;
   final prefix = seconds > 0 ? '+' : '';
-  return '$prefix${seconds.toStringAsFixed(2)} sn';
+  return '$prefix${seconds.toStringAsFixed(2)} $unit';
 }

@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanzibarr/settings/provider_settings.dart';
 import 'package:zanzibarr/settings/settings_screen.dart';
 
+import 'l10n_test_helper.dart';
+
 /// Gerçek secure storage yerine bellek içi sahte depo.
 class _FakeStore extends ProviderSettingsStore {
   ProviderSettings saved = const ProviderSettings();
@@ -17,7 +19,7 @@ class _FakeStore extends ProviderSettingsStore {
 void main() {
   testWidgets('Ayarlar formu doldurulup depoya kaydediliyor', (tester) async {
     final store = _FakeStore();
-    await tester.pumpWidget(MaterialApp(home: SettingsScreen(store: store)));
+    await tester.pumpWithL10n(SettingsScreen(store: store));
     await tester.pumpAndSettle();
 
     await tester.enterText(
@@ -47,7 +49,7 @@ void main() {
 
   testWidgets('Boş sunucu adresi kaydı engelliyor', (tester) async {
     final store = _FakeStore();
-    await tester.pumpWidget(MaterialApp(home: SettingsScreen(store: store)));
+    await tester.pumpWithL10n(SettingsScreen(store: store));
     await tester.pumpAndSettle();
 
     await tester.tap(find.text('Güvenle kaydet'));

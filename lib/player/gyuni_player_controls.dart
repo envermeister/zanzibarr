@@ -3,6 +3,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../l10n/app_localizations.dart';
+
 const _accent = Color(0xFFFF453A);
 
 class GyuniPlayerChrome extends StatelessWidget {
@@ -414,6 +416,7 @@ class _TopToolbar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Positioned(
       left: 14,
       top: 12,
@@ -430,7 +433,7 @@ class _TopToolbar extends StatelessWidget {
                   children: [
                     _CompactIconButton(
                       icon: Icons.close_rounded,
-                      tooltip: 'Oynatıcıyı kapat',
+                      tooltip: l10n.closePlayer,
                       onPressed: onClose,
                     ),
                   ],
@@ -484,7 +487,7 @@ class _TopToolbar extends StatelessWidget {
                     ),
                     _CompactIconButton(
                       icon: Icons.subtitles_rounded,
-                      tooltip: 'Ekran üstü altyazı kontrolleri',
+                      tooltip: l10n.subtitleControlsTooltip,
                       selected: subtitleControlsActive,
                       onPressed: ready ? onToggleSubtitleControls : null,
                     ),
@@ -494,14 +497,14 @@ class _TopToolbar extends StatelessWidget {
                             ? Icons.picture_in_picture_alt_rounded
                             : Icons.picture_in_picture_rounded,
                         tooltip: isPictureInPicture
-                            ? 'Mini oynatıcıdan çık'
-                            : 'Mini oynatıcı',
+                            ? l10n.exitMiniPlayer
+                            : l10n.miniPlayer,
                         selected: isPictureInPicture,
                         onPressed: ready ? onTogglePictureInPicture : null,
                       ),
                     _CompactIconButton(
                       icon: Icons.fullscreen_rounded,
-                      tooltip: 'Tam ekran',
+                      tooltip: l10n.fullscreen,
                       onPressed: ready ? onToggleFullscreen : null,
                     ),
                   ],
@@ -570,6 +573,7 @@ class _BottomControls extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final maximum = duration.inMilliseconds <= 0
         ? 1.0
         : duration.inMilliseconds.toDouble();
@@ -657,51 +661,23 @@ class _BottomControls extends StatelessWidget {
                           icon: playing
                               ? Icons.pause_rounded
                               : Icons.play_arrow_rounded,
-                          tooltip: playing ? 'Duraklat' : 'Oynat',
+                          tooltip: playing ? l10n.pause : l10n.play,
                           onPressed: ready ? onTogglePlay : null,
                         ),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            '${formatPlayerDuration(position)} / '
-                            '${formatPlayerDuration(duration)}',
-                            maxLines: 1,
-                            overflow: TextOverflow.fade,
-                            softWrap: false,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 11,
-                              fontFeatures: [FontFeature.tabularFigures()],
-                            ),
+                        if (showFrameControls) ...[
+                          _CompactIconButton(
+                            icon: Icons.skip_previous_rounded,
+                            tooltip: l10n.previousFrame,
+                            onPressed: ready ? onFrameBackward : null,
                           ),
-                        ),
-                        if (showAudio) ...[
-                          _VolumeControl(
-                            volume: volume,
-                            onToggleMute: onToggleMute,
-                            onChanged: onVolumeChanged,
-                          ),
-                          _TrackMenu<AudioTrack>(
-                            tooltip: 'Ses izi',
-                            icon: Icons.graphic_eq_rounded,
-                            tracks: tracks.audio,
-                            selectedId: selectedTrack.audio.id,
-                            label: trackLabel,
-                            onSelected: onAudioSelected,
-                            onLoadExternal: onLoadExternalAudio,
+                          _CompactIconButton(
+                            icon: Icons.skip_next_rounded,
+                            tooltip: l10n.nextFrame,
+                            onPressed: ready ? onFrameForward : null,
                           ),
                         ],
-                        _TrackMenu<SubtitleTrack>(
-                          tooltip: 'Altyazı izi',
-                          icon: Icons.subtitles_rounded,
-                          tracks: tracks.subtitle,
-                          selectedId: selectedTrack.subtitle.id,
-                          label: trackLabel,
-                          onSelected: onSubtitleSelected,
-                          onLoadExternal: onLoadExternalSubtitle,
-                        ),
                         PopupMenuButton<double>(
-                          tooltip: 'Oynatma hızı',
+                          tooltip: l10n.playbackSpeedTooltip,
                           color: const Color(0xF2242427),
                           onSelected: onRateSelected,
                           itemBuilder: (context) =>
@@ -740,24 +716,59 @@ class _BottomControls extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (showFrameControls) ...[
-                          _CompactIconButton(
-                            icon: Icons.skip_previous_rounded,
-                            tooltip: 'Önceki kare',
-                            onPressed: ready ? onFrameBackward : null,
+                        Expanded(
+                          child: Text(
+                            '${formatPlayerDuration(position)} / '
+                            '${formatPlayerDuration(duration)}',
+                            maxLines: 1,
+                            overflow: TextOverflow.fade,
+                            softWrap: false,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 11,
+                              fontFeatures: [FontFeature.tabularFigures()],
+                            ),
                           ),
-                          _CompactIconButton(
-                            icon: Icons.skip_next_rounded,
-                            tooltip: 'Sonraki kare',
-                            onPressed: ready ? onFrameForward : null,
+                        ),
+                        if (showAudio) ...[
+                          _VolumeControl(
+                            volume: volume,
+                            onToggleMute: onToggleMute,
+                            onChanged: onVolumeChanged,
+                          ),
+                          _TrackMenu<AudioTrack>(
+                            tooltip: l10n.audioTrack,
+                            icon: Icons.graphic_eq_rounded,
+                            tracks: tracks.audio,
+                            selectedId: selectedTrack.audio.id,
+                            label: (track) => trackLabel(
+                              track,
+                              auto: l10n.auto,
+                              off: l10n.off,
+                            ),
+                            onSelected: onAudioSelected,
+                            onLoadExternal: onLoadExternalAudio,
                           ),
                         ],
+                        _TrackMenu<SubtitleTrack>(
+                          tooltip: l10n.subtitleTrack,
+                          icon: Icons.subtitles_rounded,
+                          tracks: tracks.subtitle,
+                          selectedId: selectedTrack.subtitle.id,
+                          label: (track) => trackLabel(
+                            track,
+                            auto: l10n.auto,
+                            off: l10n.off,
+                          ),
+                          onSelected: onSubtitleSelected,
+                          onLoadExternal: onLoadExternalSubtitle,
+                        ),
                         // Gelişmiş ayarlar menüsünün tek giriş noktası;
                         // dar ekranlarda bile gizlenmez (mobil/TV erişimi).
                         Builder(
                           builder: (buttonContext) => _CompactIconButton(
                             icon: Icons.tune_rounded,
-                            tooltip: 'Gelişmiş ayarlar',
+                            tooltip: l10n.advancedSettings,
                             onPressed: () {
                               final box = buttonContext.findRenderObject();
                               if (box is RenderBox && box.hasSize) {
@@ -807,7 +818,9 @@ class _VolumeControl extends StatelessWidget {
               : volume < 50
               ? Icons.volume_down_rounded
               : Icons.volume_up_rounded,
-          tooltip: muted ? 'Sesi aç' : 'Sesi kapat',
+          tooltip: muted
+              ? AppLocalizations.of(context).unmuteTooltip
+              : AppLocalizations.of(context).muteTooltip,
           onPressed: onToggleMute,
         ),
         SizedBox(
@@ -1080,14 +1093,16 @@ class _TrackMenu<T> extends StatelessWidget {
             onTap: () => WidgetsBinding.instance.addPostFrameCallback(
               (_) => loadExternal(),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                SizedBox(
+                const SizedBox(
                   width: 20,
                   child: Icon(Icons.upload_file_rounded, size: 16),
                 ),
-                SizedBox(width: 6),
-                Flexible(child: Text('Dosyadan yükle…')),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(AppLocalizations.of(context).loadFromFile),
+                ),
               ],
             ),
           ),
@@ -1125,14 +1140,18 @@ String _trackId(Object? track) => switch (track) {
   _ => '',
 };
 
-String trackLabel(Object track) {
+String trackLabel(
+  Object track, {
+  required String auto,
+  required String off,
+}) {
   final (id, title, language, codec) = switch (track) {
     AudioTrack value => (value.id, value.title, value.language, value.codec),
     SubtitleTrack value => (value.id, value.title, value.language, value.codec),
     _ => ('', null, null, null),
   };
-  if (id == 'auto') return 'Otomatik';
-  if (id == 'no') return 'Kapalı';
+  if (id == 'auto') return auto;
+  if (id == 'no') return off;
   return [
     if (title?.trim().isNotEmpty ?? false) title!.trim(),
     if (language?.trim().isNotEmpty ?? false) language!.toUpperCase(),

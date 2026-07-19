@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:zanzibarr/player/gyuni_player_controls.dart';
 
+import 'l10n_test_helper.dart';
+
 Widget _buildChrome({
   bool playing = true,
   bool buffering = false,
@@ -17,8 +19,8 @@ Widget _buildChrome({
   VoidCallback? onLoadExternalSubtitle,
   ValueChanged<Offset>? onShowAdvancedSettings,
 }) {
-  return MaterialApp(
-    home: Scaffold(
+  return l10nTestApp(
+    Scaffold(
       body: SizedBox(
         width: 780,
         height: 500,

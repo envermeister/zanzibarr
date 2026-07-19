@@ -1,27 +1,31 @@
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'l10n/app_localizations.dart';
 import 'player/player_screen.dart';
 import 'settings/settings_screen.dart';
+import 'settings/ui_preferences.dart';
 import 'src/rust/frb_generated.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const ZanzibarrBootstrap());
+  runApp(ZanzibarrBootstrap(uiPreferences: UiPreferencesController(UiPreferencesStore())));
 }
 
-Future<void> _initializeNativeEngine() async {
+Future<void> _initializeNativeEngine(UiPreferencesController uiPreferences) async {
   MediaKit.ensureInitialized();
-  await RustLib.init();
+  await Future.wait([RustLib.init(), uiPreferences.load()]);
 }
 
 /// İlk native çağrı hata verse veya takılsa bile boş pencere yerine anlaşılır
 /// bir durum ve güvenli yeniden-deneme yolu gösterir.
 class ZanzibarrBootstrap extends StatefulWidget {
-  const ZanzibarrBootstrap({super.key, this.initialize});
+  const ZanzibarrBootstrap({super.key, this.initialize, this.uiPreferences});
 
   final Future<void> Function()? initialize;
+  final UiPreferencesController? uiPreferences;
 
   @override
   State<ZanzibarrBootstrap> createState() => _ZanzibarrBootstrapState();
@@ -31,7 +35,10 @@ class _ZanzibarrBootstrapState extends State<ZanzibarrBootstrap> {
   late Future<void> _initialization = _startInitialization();
 
   Future<void> _startInitialization() => Future<void>.sync(
-    widget.initialize ?? _initializeNativeEngine,
+    widget.initialize ??
+        () => _initializeNativeEngine(
+          widget.uiPreferences ?? UiPreferencesController(UiPreferencesStore()),
+        ),
   ).timeout(const Duration(seconds: 25));
 
   void _retry() {
@@ -44,9 +51,10 @@ class _ZanzibarrBootstrapState extends State<ZanzibarrBootstrap> {
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.done &&
           !snapshot.hasError) {
-        return const ZanzibarrApp();
+        return ZanzibarrApp(uiPreferences: widget.uiPreferences);
       }
       return ZanzibarrApp(
+        uiPreferences: widget.uiPreferences,
         home: _EngineStartupView(
           failed: snapshot.hasError,
           onRetry: snapshot.hasError ? _retry : null,
@@ -57,85 +65,158 @@ class _ZanzibarrBootstrapState extends State<ZanzibarrBootstrap> {
 }
 
 class ZanzibarrApp extends StatelessWidget {
-  const ZanzibarrApp({super.key, this.home = const HomeScreen()});
+  const ZanzibarrApp({super.key, this.home, this.uiPreferences});
 
-  final Widget home;
+  final Widget? home;
+  final UiPreferencesController? uiPreferences;
+
+  static const _accent = Color(0xFFFF453A);
 
   @override
   Widget build(BuildContext context) {
-    const accent = Color(0xFFFF453A);
+    final controller = uiPreferences;
+    return ListenableBuilder(
+      listenable: controller ?? UiPreferencesController(UiPreferencesStore()),
+      builder: (context, _) => MaterialApp(
+        title: 'Zanzibarr',
+        debugShowCheckedModeBanner: false,
+        localizationsDelegates: const [
+          AppLocalizations.delegate,
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        supportedLocales: [
+          for (final (locale, _) in supportedAppLocales) locale,
+        ],
+        locale: controller?.locale,
+        themeMode: controller?.themeMode ?? ThemeMode.dark,
+        theme: _buildLightTheme(),
+        darkTheme: _buildDarkTheme(),
+        home: home ?? HomeScreen(uiPreferences: controller),
+      ),
+    );
+  }
+
+  ThemeData _buildDarkTheme() {
     final scheme = ColorScheme.fromSeed(
-      seedColor: accent,
+      seedColor: _accent,
       brightness: Brightness.dark,
       surface: const Color(0xFF141416),
     );
-    return MaterialApp(
-      title: 'Zanzibarr',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.dark,
-        colorScheme: scheme,
-        scaffoldBackgroundColor: const Color(0xFF09090B),
-        canvasColor: const Color(0xFF17171A),
-        dividerColor: Colors.white.withValues(alpha: 0.08),
-        appBarTheme: const AppBarTheme(
-          elevation: 0,
-          centerTitle: false,
-          backgroundColor: Colors.transparent,
-          foregroundColor: Colors.white,
-          surfaceTintColor: Colors.transparent,
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Colors.white.withValues(alpha: 0.055),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 15,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: accent, width: 1.2),
-          ),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            backgroundColor: Colors.white,
-            foregroundColor: Colors.black,
-            minimumSize: const Size(0, 44),
-            padding: const EdgeInsets.symmetric(horizontal: 18),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(11),
-            ),
-          ),
-        ),
-        snackBarTheme: SnackBarThemeData(
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: const Color(0xF228282C),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-        ),
-        tooltipTheme: TooltipThemeData(
-          decoration: BoxDecoration(
-            color: const Color(0xF22A2A2D),
-            borderRadius: BorderRadius.circular(7),
-          ),
-          textStyle: const TextStyle(color: Colors.white, fontSize: 11),
-          waitDuration: const Duration(milliseconds: 450),
-        ),
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: const Color(0xFF09090B),
+      canvasColor: const Color(0xFF17171A),
+      dividerColor: Colors.white.withValues(alpha: 0.08),
+      appBarTheme: const AppBarTheme(
+        elevation: 0,
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.white,
+        surfaceTintColor: Colors.transparent,
       ),
-      home: home,
+      inputDecorationTheme: _inputTheme(
+        fill: Colors.white.withValues(alpha: 0.055),
+        border: Colors.white.withValues(alpha: 0.1),
+      ),
+      filledButtonTheme: _filledButtonTheme(
+        background: Colors.white,
+        foreground: Colors.black,
+      ),
+      snackBarTheme: _snackBarTheme(const Color(0xF228282C)),
+      tooltipTheme: _tooltipTheme(const Color(0xF22A2A2D), Colors.white),
     );
   }
+
+  ThemeData _buildLightTheme() {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: _accent,
+      brightness: Brightness.light,
+      surface: const Color(0xFFFFFFFF),
+    );
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.light,
+      colorScheme: scheme,
+      scaffoldBackgroundColor: const Color(0xFFF5F5F7),
+      canvasColor: Colors.white,
+      dividerColor: Colors.black.withValues(alpha: 0.08),
+      appBarTheme: const AppBarTheme(
+        elevation: 0,
+        centerTitle: false,
+        backgroundColor: Colors.transparent,
+        foregroundColor: Colors.black,
+        surfaceTintColor: Colors.transparent,
+      ),
+      inputDecorationTheme: _inputTheme(
+        fill: Colors.black.withValues(alpha: 0.045),
+        border: Colors.black.withValues(alpha: 0.14),
+      ),
+      filledButtonTheme: _filledButtonTheme(
+        background: Colors.black,
+        foreground: Colors.white,
+      ),
+      snackBarTheme: _snackBarTheme(const Color(0xF2323236)),
+      tooltipTheme: _tooltipTheme(const Color(0xF2323236), Colors.white),
+    );
+  }
+
+  InputDecorationTheme _inputTheme({required Color fill, required Color border}) =>
+      InputDecorationTheme(
+        filled: true,
+        fillColor: fill,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 14,
+          vertical: 15,
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: border),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: border),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _accent, width: 1.2),
+        ),
+      );
+
+  FilledButtonThemeData _filledButtonTheme({
+    required Color background,
+    required Color foreground,
+  }) =>
+      FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          backgroundColor: background,
+          foregroundColor: foreground,
+          minimumSize: const Size(0, 44),
+          padding: const EdgeInsets.symmetric(horizontal: 18),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(11),
+          ),
+        ),
+      );
+
+  SnackBarThemeData _snackBarTheme(Color background) => SnackBarThemeData(
+    behavior: SnackBarBehavior.floating,
+    backgroundColor: background,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+  );
+
+  TooltipThemeData _tooltipTheme(Color background, Color foreground) =>
+      TooltipThemeData(
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(7),
+        ),
+        textStyle: TextStyle(color: foreground, fontSize: 11),
+        waitDuration: const Duration(milliseconds: 450),
+      );
 }
 
 class _EngineStartupView extends StatelessWidget {
@@ -145,72 +226,74 @@ class _EngineStartupView extends StatelessWidget {
   final VoidCallback? onRetry;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: RadialGradient(
-          center: Alignment(0, -0.2),
-          radius: 1.1,
-          colors: [Color(0xFF17191D), Color(0xFF09090B)],
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Scaffold(
+      body: DecoratedBox(
+        decoration: const BoxDecoration(
+          gradient: RadialGradient(
+            center: Alignment(0, -0.2),
+            radius: 1.1,
+            colors: [Color(0xFF17191D), Color(0xFF09090B)],
+          ),
         ),
-      ),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (failed)
-                const Icon(
-                  Icons.memory_rounded,
-                  size: 34,
-                  color: Colors.white54,
-                )
-              else
-                const SizedBox.square(
-                  dimension: 22,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white70,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (failed)
+                  const Icon(
+                    Icons.memory_rounded,
+                    size: 34,
+                    color: Colors.white54,
+                  )
+                else
+                  const SizedBox.square(
+                    dimension: 22,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white70,
+                    ),
+                  ),
+                const SizedBox(height: 16),
+                Text(
+                  failed ? l10n.engineStartFailed : l10n.engineStarting,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              const SizedBox(height: 16),
-              Text(
-                failed
-                    ? 'Yerel oynatma motoru başlatılamadı'
-                    : 'Yerel oynatma motoru hazırlanıyor…',
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              if (failed) ...[
-                const SizedBox(height: 8),
-                const Text(
-                  'Motor dosyalarını ve uygulama kurulumunu kontrol edip '
-                  'yeniden deneyin.',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white38, fontSize: 12),
-                ),
-                const SizedBox(height: 18),
-                FilledButton.icon(
-                  onPressed: onRetry,
-                  icon: const Icon(Icons.refresh_rounded, size: 18),
-                  label: const Text('Yeniden dene'),
-                ),
+                if (failed) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    l10n.engineStartFailedHint,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(color: Colors.white38, fontSize: 12),
+                  ),
+                  const SizedBox(height: 18),
+                  FilledButton.icon(
+                    onPressed: onRetry,
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: Text(l10n.retry),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+  const HomeScreen({super.key, this.uiPreferences});
+
+  final UiPreferencesController? uiPreferences;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -231,28 +314,37 @@ class _HomeScreenState extends State<HomeScreen> {
       ).push(_fadeRoute(PlayerScreen(nzbPath: file.path), opaque: true));
     } catch (error) {
       if (!context.mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('NZB dosyası açılamadı: $error')));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).errorOpenNzb('$error')),
+        ),
+      );
     } finally {
       if (mounted) setState(() => _pickingFile = false);
     }
   }
 
   void _openSettings(BuildContext context) {
-    Navigator.of(context).push(_fadeRoute(const SettingsScreen()));
+    Navigator.of(context).push(
+      _fadeRoute(SettingsScreen(uiPreferences: widget.uiPreferences)),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final foreground = isDark ? Colors.white : Colors.black;
     return Scaffold(
       body: DecoratedBox(
-        decoration: const BoxDecoration(
-          // Logo zeminiyle aynı koyu lacivert ailesi (logo: #0B0E17).
+        decoration: BoxDecoration(
+          // Koyu modda logo zeminiyle aynı lacivert aile (logo: #0B0E17);
+          // açık modda aynı ailenin aydınlık karşılığı.
           gradient: RadialGradient(
-            center: Alignment(0, -0.35),
+            center: const Alignment(0, -0.35),
             radius: 1.15,
-            colors: [Color(0xFF161D33), Color(0xFF05070D)],
+            colors: isDark
+                ? const [Color(0xFF161D33), Color(0xFF05070D)]
+                : const [Color(0xFFFFFFFF), Color(0xFFDDE3F2)],
           ),
         ),
         child: Stack(
@@ -265,7 +357,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.all(14),
                   child: _GlassIconButton(
                     icon: Icons.settings_rounded,
-                    tooltip: 'Sağlayıcı ayarları',
+                    tooltip: AppLocalizations.of(context).providerSettingsTooltip,
                     onPressed: () => _openSettings(context),
                   ),
                 ),
@@ -286,7 +378,9 @@ class _HomeScreenState extends State<HomeScreen> {
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.titleMedium
                             ?.copyWith(
-                              color: Colors.white.withValues(alpha: 0.9),
+                              color: foreground.withValues(
+                                alpha: isDark ? 0.9 : 0.75,
+                              ),
                               fontWeight: FontWeight.w600,
                               letterSpacing: 5.2,
                             ),
@@ -354,73 +448,81 @@ class _OpenMediaCard extends StatelessWidget {
   final bool busy;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.white.withValues(alpha: 0.055),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(16),
-      side: BorderSide(color: Colors.white.withValues(alpha: 0.1)),
-    ),
-    clipBehavior: Clip.antiAlias,
-    child: InkWell(
-      onTap: busy ? null : onPressed,
-      hoverColor: Colors.white.withValues(alpha: 0.045),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
-        child: Row(
-          children: [
-            Container(
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.08),
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: busy
-                  ? const Padding(
-                      padding: EdgeInsets.all(13),
-                      child: CircularProgressIndicator(
-                        strokeWidth: 1.8,
-                        color: Colors.white70,
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final foreground = isDark ? Colors.white : Colors.black;
+    return Material(
+      color: foreground.withValues(alpha: isDark ? 0.055 : 0.045),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: foreground.withValues(alpha: 0.1)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: busy ? null : onPressed,
+        hoverColor: foreground.withValues(alpha: 0.045),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+          child: Row(
+            children: [
+              Container(
+                width: 42,
+                height: 42,
+                decoration: BoxDecoration(
+                  color: foreground.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(11),
+                ),
+                child: busy
+                    ? Padding(
+                        padding: const EdgeInsets.all(13),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 1.8,
+                          color: foreground.withValues(alpha: 0.7),
+                        ),
+                      )
+                    : Icon(
+                        Icons.folder_open_rounded,
+                        size: 21,
+                        color: foreground.withValues(alpha: 0.7),
                       ),
-                    )
-                  : const Icon(
-                      Icons.folder_open_rounded,
-                      size: 21,
-                      color: Colors.white70,
-                    ),
-            ),
-            const SizedBox(width: 15),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'NZB seç ve oynat',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    'Dosya sisteminden bir .nzb aç',
-                    style: TextStyle(color: Colors.white38, fontSize: 11),
-                  ),
-                ],
               ),
-            ),
-            if (!busy)
-              const Icon(
-                Icons.chevron_right_rounded,
-                size: 20,
-                color: Colors.white30,
+              const SizedBox(width: 15),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.selectNzbAndPlay,
+                      style: TextStyle(
+                        color: foreground,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      l10n.selectNzbHint,
+                      style: TextStyle(
+                        color: foreground.withValues(alpha: 0.38),
+                        fontSize: 11,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-          ],
+              if (!busy)
+                Icon(
+                  Icons.chevron_right_rounded,
+                  size: 20,
+                  color: foreground.withValues(alpha: 0.3),
+                ),
+            ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _GlassIconButton extends StatelessWidget {
@@ -435,19 +537,24 @@ class _GlassIconButton extends StatelessWidget {
   final VoidCallback onPressed;
 
   @override
-  Widget build(BuildContext context) => Tooltip(
-    message: tooltip,
-    child: IconButton(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 19),
-      color: Colors.white60,
-      style: IconButton.styleFrom(
-        backgroundColor: Colors.white.withValues(alpha: 0.055),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(11),
-          side: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+  Widget build(BuildContext context) {
+    final foreground = Theme.of(context).brightness == Brightness.dark
+        ? Colors.white
+        : Colors.black;
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, size: 19),
+        color: foreground.withValues(alpha: 0.6),
+        style: IconButton.styleFrom(
+          backgroundColor: foreground.withValues(alpha: 0.055),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(11),
+            side: BorderSide(color: foreground.withValues(alpha: 0.08)),
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }

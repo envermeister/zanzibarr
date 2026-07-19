@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../l10n/app_localizations.dart';
 import 'smart_canvas.dart';
 
 /// Smart Canvas kırpmasını video yüzeyi üzerinde düzenleyen hafif katman.
@@ -119,6 +120,7 @@ class _SmartCanvasOverlayState extends State<SmartCanvasOverlay> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return IgnorePointer(
       ignoring: !widget.visible,
       child: AnimatedOpacity(
@@ -149,9 +151,9 @@ class _SmartCanvasOverlayState extends State<SmartCanvasOverlay> {
 
                 return Semantics(
                   container: true,
-                  label: 'Smart Canvas kırpma alanı',
+                  label: l10n.smartCanvasAreaLabel,
                   value: ratioLabel,
-                  hint: 'Çift tıklayarak uygula. Escape ile iptal et.',
+                  hint: l10n.smartCanvasSemanticsHint,
                   child: GestureDetector(
                     key: SmartCanvasOverlay.surfaceKey,
                     behavior: HitTestBehavior.opaque,
@@ -170,7 +172,7 @@ class _SmartCanvasOverlayState extends State<SmartCanvasOverlay> {
                         _buildHandle(
                           corner: CanvasCorner.topLeft,
                           key: SmartCanvasOverlay.topLeftHandleKey,
-                          label: 'Sol üst kırpma tutamacı',
+                          label: l10n.cropHandleTopLeft,
                           left: cropRect.left,
                           top: cropRect.top,
                           canvasSize: sourceRect.size,
@@ -178,7 +180,7 @@ class _SmartCanvasOverlayState extends State<SmartCanvasOverlay> {
                         _buildHandle(
                           corner: CanvasCorner.topRight,
                           key: SmartCanvasOverlay.topRightHandleKey,
-                          label: 'Sağ üst kırpma tutamacı',
+                          label: l10n.cropHandleTopRight,
                           left: cropRect.right - _handleExtent,
                           top: cropRect.top,
                           canvasSize: sourceRect.size,
@@ -186,7 +188,7 @@ class _SmartCanvasOverlayState extends State<SmartCanvasOverlay> {
                         _buildHandle(
                           corner: CanvasCorner.bottomLeft,
                           key: SmartCanvasOverlay.bottomLeftHandleKey,
-                          label: 'Sol alt kırpma tutamacı',
+                          label: l10n.cropHandleBottomLeft,
                           left: cropRect.left,
                           top: cropRect.bottom - _handleExtent,
                           canvasSize: sourceRect.size,
@@ -194,7 +196,7 @@ class _SmartCanvasOverlayState extends State<SmartCanvasOverlay> {
                         _buildHandle(
                           corner: CanvasCorner.bottomRight,
                           key: SmartCanvasOverlay.bottomRightHandleKey,
-                          label: 'Sağ alt kırpma tutamacı',
+                          label: l10n.cropHandleBottomRight,
                           left: cropRect.right - _handleExtent,
                           top: cropRect.bottom - _handleExtent,
                           canvasSize: sourceRect.size,
@@ -219,11 +221,11 @@ class _SmartCanvasOverlayState extends State<SmartCanvasOverlay> {
                           left: sourceRect.left,
                           right: viewport.width - sourceRect.right,
                           bottom: viewport.height - sourceRect.bottom + 12,
-                          child: const IgnorePointer(
+                          child: IgnorePointer(
                             child: Center(
                               child: _OverlayPill(
                                 key: SmartCanvasOverlay.hintKey,
-                                text: 'Çift tık: uygula · Esc: iptal',
+                                text: l10n.smartCanvasHintText,
                               ),
                             ),
                           ),

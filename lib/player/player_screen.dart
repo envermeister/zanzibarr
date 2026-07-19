@@ -10,6 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../l10n/app_localizations.dart';
 import '../settings/provider_settings.dart';
 import '../src/rust/api/streaming.dart';
 import 'advanced_playback_controller.dart';
@@ -84,8 +85,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   StreamSubscription<Track>? _trackSubscription;
   StreamSubscription<double>? _volumeSubscription;
 
-  String _status = 'Hazırlanıyor…';
-  String _engineStatus = 'Native libmpv hazırlanıyor…';
+  // Başlangıç değerleri didChangeDependencies'te yerelleştirilir; alan
+  // başlatıcılarında yerelleştirilmiş değere erişilemez.
+  String _status = '';
+  String _engineStatus = '';
   StreamInfo? _info;
   StreamInfo? _nativeStream;
   BigInt? _pendingSessionId;
@@ -231,6 +234,17 @@ class _PlayerScreenState extends State<PlayerScreen>
     unawaited(_start());
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Alan başlatıcılarında context yok; ilk yerelleştirilmiş durum metinleri
+    // burada, _start'ın ilk await'i tamamlanmadan önce yazılır.
+    if (_status.isEmpty) _status = AppLocalizations.of(context).statusPreparing;
+    if (_engineStatus.isEmpty) {
+      _engineStatus = AppLocalizations.of(context).engineBadgePreparing;
+    }
+  }
+
   Future<void> _start() async {
     try {
       await _configureNativeEngine();
@@ -241,8 +255,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (!settings.isComplete) {
         if (!mounted) return;
         setState(
-          () => _error =
-              'Sağlayıcı ayarları eksik. Önce ayar ekranından bilgileri girin.',
+          () => _error = AppLocalizations.of(
+            context,
+          ).errorProviderSettingsMissing,
         );
         return;
       }
@@ -250,8 +265,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       if (!mounted) return;
       setState(() {
         _startupActive = true;
-        _status =
-            'Bağlanılıyor ve ilk segment çekiliyor (yerleşim öğreniliyor)…';
+        _status = AppLocalizations.of(context).statusConnecting;
       });
       _startupGuard.arm(
         _onStartupTimeout,
@@ -291,7 +305,9 @@ class _PlayerScreenState extends State<PlayerScreen>
         _rate = _playback.rate;
         _zoom = _playback.zoom;
         _startupActive = true;
-        _status = 'Video yapısı okunuyor: ${info.filename}';
+        _status = AppLocalizations.of(
+          context,
+        ).statusReadingVideoStructure(info.filename);
       });
       _startupGuard.arm(_onStartupTimeout);
       await _player.open(Media(info.url));
@@ -330,10 +346,11 @@ class _PlayerScreenState extends State<PlayerScreen>
     _startupActive = false;
     _playbackReady = true;
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     setState(() {
       _status = _buffering
-          ? 'Arabelleğe alınıyor: ${_info?.filename ?? "video"}'
-          : 'Oynatılıyor: ${_info?.filename ?? "video"}';
+          ? l10n.statusBuffering(_info?.filename ?? 'video')
+          : l10n.statusPlaying(_info?.filename ?? 'video');
     });
     _configurePeriodicInfoTimer();
     _revealControls();
@@ -359,15 +376,16 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _onBuffering(bool buffering) {
     _buffering = buffering;
     if (!mounted || _startupFailed || _info == null) return;
+    final l10n = AppLocalizations.of(context);
     setState(() {
       if (_playbackReady) {
         _status = buffering
-            ? 'Arabelleğe alınıyor: ${_info!.filename}'
-            : 'Oynatılıyor: ${_info!.filename}';
+            ? l10n.statusBuffering(_info!.filename)
+            : l10n.statusPlaying(_info!.filename);
       } else if (_startupActive) {
         _status = buffering
             ? _startupBufferingMessage()
-            : 'Video izleri bekleniyor: ${_info!.filename}';
+            : l10n.statusWaitingTracks(_info!.filename);
       }
     });
   }
@@ -379,27 +397,27 @@ class _PlayerScreenState extends State<PlayerScreen>
   }
 
   String _startupBufferingMessage() {
+    final l10n = AppLocalizations.of(context);
     final progress = _bufferingPercentage > 0 && _bufferingPercentage < 100
-        ? ' %${_bufferingPercentage.toStringAsFixed(0)}'
+        ? l10n.bufferingPercent(_bufferingPercentage.toStringAsFixed(0))
         : '';
-    return 'Video başlatılıyor$progress: ${_info?.filename ?? "video"}';
+    return l10n.statusStartingVideo(progress, _info?.filename ?? 'video');
   }
 
   void _onStartupTimeout() {
     if (!_startupActive || _startupFailed || _playbackReady) return;
     if (_info == null) {
-      final seconds = widget.streamPreparationTimeout.inSeconds;
       _failStartup(
-        'Usenet akışı $seconds saniye içinde başlatılamadı. Sağlayıcı '
-        'bağlantısı, ilk segment veya NZB içeriği yanıt vermiyor olabilir.',
+        AppLocalizations.of(
+          context,
+        ).errorStreamStartTimeout(widget.streamPreparationTimeout.inSeconds),
       );
       return;
     }
-    final seconds = widget.startupTimeout.inSeconds;
     _failStartup(
-      'Video $seconds saniye içinde tanınamadı. NZB doğrudan video yerine '
-      'çok parçalı arşiv/PAR2 içeriyor, bir segment eksik veya akış '
-      'okunamıyor olabilir.',
+      AppLocalizations.of(
+        context,
+      ).errorVideoDetectTimeout(widget.startupTimeout.inSeconds),
     );
   }
 
@@ -463,14 +481,15 @@ class _PlayerScreenState extends State<PlayerScreen>
       // Bundled GPU backend scaler readback sunmuyorsa kendi güvenli varsayılanı.
     }
     if (!mounted) return;
+    final l10n = AppLocalizations.of(context);
     setState(() {
       _hdrMode = HdrMode.sdr;
       _engineStatus = [
         engineVersion,
         'GPU render',
         'HW decode auto-safe',
-        if (streamingReady) 'disk cache kapalı',
-        if (hdrReady) 'BT.2390 + peak detect' else 'SDR güvenli yol',
+        if (streamingReady) l10n.engineBadgeDiskCacheOff,
+        if (hdrReady) 'BT.2390 + peak detect' else l10n.engineBadgeSdrSafePath,
         if (scalerReady) 'Spline36 upscale',
       ].join(' · ');
     });
@@ -841,9 +860,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// (srt/ass/vtt…) yükler. libmpv izi mevcut oynatmaya ekler.
   Future<void> _loadExternalSubtitle() async {
     try {
-      const typeGroup = XTypeGroup(
-        label: 'Altyazılar',
-        extensions: ['srt', 'ass', 'ssa', 'vtt', 'sub'],
+      final typeGroup = XTypeGroup(
+        label: AppLocalizations.of(context).fileTypeSubtitles,
+        extensions: const ['srt', 'ass', 'ssa', 'vtt', 'sub'],
       );
       final file = await openFile(acceptedTypeGroups: [typeGroup]);
       final path = file?.path;
@@ -860,9 +879,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// ses dosyası (ac3/dts/mka…) yükler.
   Future<void> _loadExternalAudio() async {
     try {
-      const typeGroup = XTypeGroup(
-        label: 'Ses dosyaları',
-        extensions: [
+      final typeGroup = XTypeGroup(
+        label: AppLocalizations.of(context).fileTypeAudioFiles,
+        extensions: const [
           'mp3',
           'aac',
           'ac3',
@@ -1461,9 +1480,11 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void _showControlError(Object error) {
     if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text('Kontrol uygulanamadı: $error')));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AppLocalizations.of(context).errorControlFailed('$error')),
+      ),
+    );
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -1596,8 +1617,8 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _showPictureInPictureUnavailable() {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Picture-in-Picture bu platformda kullanılamıyor.'),
+      SnackBar(
+        content: Text(AppLocalizations.of(context).errorPipUnavailable),
       ),
     );
   }
@@ -1606,6 +1627,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _revealControls();
     final overlay = Overlay.of(context).context.findRenderObject();
     if (overlay is! RenderBox) return;
+    final l10n = AppLocalizations.of(context);
     final local = overlay.globalToLocal(globalPosition);
     final selected = await showMenu<_PlayerContextAction>(
       context: context,
@@ -1619,63 +1641,63 @@ class _PlayerScreenState extends State<PlayerScreen>
       items: [
         _contextItem(
           _PlayerContextAction.togglePlay,
-          _playing ? 'Duraklat' : 'Oynat',
+          _playing ? l10n.pause : l10n.play,
           _playing ? Icons.pause_rounded : Icons.play_arrow_rounded,
           'Space',
         ),
         _contextItem(
           _PlayerContextAction.seekBack,
-          '${_seekStep.inSeconds} saniye geri',
+          l10n.seekBackSeconds(_seekStep.inSeconds),
           Icons.replay_rounded,
           '←',
         ),
         _contextItem(
           _PlayerContextAction.seekForward,
-          '${_seekStep.inSeconds} saniye ileri',
+          l10n.seekForwardSeconds(_seekStep.inSeconds),
           Icons.forward_rounded,
           '→',
         ),
         const PopupMenuDivider(),
         _contextItem(
           _PlayerContextAction.frameBack,
-          'Önceki kare',
+          l10n.previousFrame,
           Icons.skip_previous_rounded,
           ',',
         ),
         _contextItem(
           _PlayerContextAction.frameForward,
-          'Sonraki kare',
+          l10n.nextFrame,
           Icons.skip_next_rounded,
           '.',
         ),
         const PopupMenuDivider(),
         _contextItem(
           _PlayerContextAction.canvas,
-          _canvasEditing ? 'Canvas düzenlemeyi iptal et' : 'Smart Canvas',
+          _canvasEditing ? l10n.cancelCanvasEditing : 'Smart Canvas',
           Icons.crop_rounded,
           'C',
         ),
         _contextItem(
           _PlayerContextAction.resetCanvas,
-          'Canvas ayarını sıfırla',
+          l10n.resetCanvas,
           Icons.crop_original_rounded,
           '',
         ),
         _contextItem(
           _PlayerContextAction.subtitles,
-          'Altyazı kontrolleri',
+          l10n.subtitleControls,
           Icons.subtitles_rounded,
           'S',
         ),
         _contextItem(
           _PlayerContextAction.loopA,
-          'A noktasını seç',
+          l10n.loopSetA,
           Icons.looks_one_outlined,
           '',
         ),
         _contextItem(
           _PlayerContextAction.loopB,
-          'B noktasını seç',
+          l10n.loopSetB,
           Icons.looks_two_outlined,
           '',
           enabled: _playback.loopStart != null,
@@ -1683,27 +1705,27 @@ class _PlayerScreenState extends State<PlayerScreen>
         if (_playback.loopStart != null)
           _contextItem(
             _PlayerContextAction.clearLoop,
-            'A–B döngüsünü temizle',
+            l10n.loopClear,
             Icons.clear_all_rounded,
             '',
           ),
         const PopupMenuDivider(),
         _contextItem(
           _PlayerContextAction.tuning,
-          'Görüntü ve ses ayarları…',
+          l10n.tuningMenuItem,
           Icons.tune_rounded,
           '',
         ),
         if (_pictureInPictureWindow.isSupported)
           _contextItem(
             _PlayerContextAction.pictureInPicture,
-            _isPictureInPicture ? 'Mini oynatıcıdan çık' : 'Mini oynatıcı',
+            _isPictureInPicture ? l10n.exitMiniPlayer : l10n.miniPlayer,
             Icons.picture_in_picture_alt_rounded,
             'P',
           ),
         _contextItem(
           _PlayerContextAction.fullscreen,
-          'Tam ekran',
+          l10n.fullscreen,
           Icons.fullscreen_rounded,
           'F',
         ),
@@ -1795,6 +1817,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) {
+          final l10n = AppLocalizations.of(context);
           final seekStepSeconds = _seekStep.inSeconds;
           final seekStepOptions = <int>{1, 5, 10, 30, seekStepSeconds}.toList()
             ..sort();
@@ -1872,12 +1895,12 @@ class _PlayerScreenState extends State<PlayerScreen>
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Görüntü ve ses',
+                          l10n.tuningDialogTitle,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                       ),
                       IconButton(
-                        tooltip: 'Kapat',
+                        tooltip: l10n.closeTooltip,
                         visualDensity: VisualDensity.compact,
                         onPressed: () => Navigator.pop(dialogContext),
                         icon: const Icon(Icons.close_rounded, size: 18),
@@ -1894,22 +1917,22 @@ class _PlayerScreenState extends State<PlayerScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _TuningRow(
-                        label: 'Video teması',
+                        label: l10n.videoPresetLabel,
                         child: SegmentedButton<VideoPreset>(
                           style: compactSegmentStyle,
                           showSelectedIcon: false,
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: VideoPreset.natural,
-                              label: Text('Doğal'),
+                              label: Text(l10n.presetNatural),
                             ),
                             ButtonSegment(
                               value: VideoPreset.cinema,
-                              label: Text('Sinema'),
+                              label: Text(l10n.presetCinema),
                             ),
                             ButtonSegment(
                               value: VideoPreset.vivid,
-                              label: Text('Canlı'),
+                              label: Text(l10n.presetVivid),
                             ),
                           ],
                           selected: {_playback.videoPreset},
@@ -1918,22 +1941,22 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       _TuningRow(
-                        label: 'GPU ölçekleme',
+                        label: l10n.gpuScalingLabel,
                         child: SegmentedButton<UpscalingPreset>(
                           style: compactSegmentStyle,
                           showSelectedIcon: false,
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: UpscalingPreset.lowPower,
-                              label: Text('Düşük güç'),
+                              label: Text(l10n.presetLowPower),
                             ),
                             ButtonSegment(
                               value: UpscalingPreset.balanced,
-                              label: Text('Dengeli'),
+                              label: Text(l10n.presetBalanced),
                             ),
                             ButtonSegment(
                               value: UpscalingPreset.quality,
-                              label: Text('Kalite'),
+                              label: Text(l10n.presetQuality),
                             ),
                           ],
                           selected: {_playback.upscalingPreset},
@@ -1943,22 +1966,22 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       _TuningRow(
-                        label: 'Ses teması',
+                        label: l10n.audioPresetLabel,
                         child: SegmentedButton<AudioPreset>(
                           style: compactSegmentStyle,
                           showSelectedIcon: false,
-                          segments: const [
+                          segments: [
                             ButtonSegment(
                               value: AudioPreset.balanced,
-                              label: Text('Dengeli'),
+                              label: Text(l10n.presetBalanced),
                             ),
                             ButtonSegment(
                               value: AudioPreset.dialogue,
-                              label: Text('Diyalog'),
+                              label: Text(l10n.presetDialogue),
                             ),
                             ButtonSegment(
                               value: AudioPreset.night,
-                              label: Text('Gece'),
+                              label: Text(l10n.presetNight),
                             ),
                           ],
                           selected: {_playback.audioPreset},
@@ -1967,7 +1990,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       _TuningRow(
-                        label: 'Seek adımı',
+                        label: l10n.seekStepLabel,
                         child: SegmentedButton<int>(
                           style: compactSegmentStyle,
                           showSelectedIcon: false,
@@ -1975,7 +1998,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                             for (final seconds in seekStepOptions)
                               ButtonSegment(
                                 value: seconds,
-                                label: Text('$seconds sn'),
+                                label: Text(
+                                  '$seconds ${l10n.secondsUnitShort}',
+                                ),
                               ),
                           ],
                           selected: {seekStepSeconds},
@@ -1984,7 +2009,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       _TuningRow(
-                        label: 'Periyodik bilgi',
+                        label: l10n.periodicInfoLabel,
                         child: SegmentedButton<int>(
                           style: compactSegmentStyle,
                           showSelectedIcon: false,
@@ -1994,9 +2019,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                                 value: milliseconds,
                                 label: Text(
                                   milliseconds == 0
-                                      ? 'Kapalı'
+                                      ? l10n.off
                                       : _formatIntervalMilliseconds(
                                           milliseconds,
+                                          l10n,
                                         ),
                                 ),
                               ),
@@ -2014,12 +2040,12 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       _TuningRow(
-                        label: 'Ses senkronu',
+                        label: l10n.audioSyncLabel,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             IconButton(
-                              tooltip: 'Sesi 0,1 sn erkene al',
+                              tooltip: l10n.audioEarlierTooltip,
                               visualDensity: VisualDensity.compact,
                               onPressed: () => unawaited(
                                 refresh(
@@ -2034,13 +2060,16 @@ class _PlayerScreenState extends State<PlayerScreen>
                             SizedBox(
                               width: 64,
                               child: Text(
-                                _formatSignedDuration(_audioDelay),
+                                _formatSignedDuration(
+                                  _audioDelay,
+                                  l10n.secondsUnitShort,
+                                ),
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(fontSize: 12),
                               ),
                             ),
                             IconButton(
-                              tooltip: 'Sesi 0,1 sn geciktir',
+                              tooltip: l10n.audioLaterTooltip,
                               visualDensity: VisualDensity.compact,
                               onPressed: () => unawaited(
                                 refresh(
@@ -2056,12 +2085,14 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       _TuningRow(
-                        label: 'Kod çözme',
+                        label: l10n.decodingLabel,
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              _hardwareDecoding ? 'Donanım' : 'Yazılım',
+                              _hardwareDecoding
+                                  ? l10n.decodingHardware
+                                  : l10n.decodingSoftware,
                               style: const TextStyle(
                                 color: Colors.white54,
                                 fontSize: 12,
@@ -2080,7 +2111,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       _TuningRow(
-                        label: 'Dinamik aralık',
+                        label: l10n.dynamicRangeLabel,
                         child: FutureBuilder<HdrCapabilities>(
                           future: hdrCapsFuture,
                           builder: (context, snapshot) {
@@ -2116,12 +2147,7 @@ class _PlayerScreenState extends State<PlayerScreen>
                         ),
                       ),
                       Text(
-                        'İçeriğin taşıdığı formatlar seçilebilir, diğerleri '
-                        'pasiftir. SDR seçiliyken HDR içerik bt.709\'a ton '
-                        'eşlenir (BT.2390 + peak detect). HDR10+ dinamik '
-                        'üstverisi libmpv tarafından algılanamadığı için '
-                        'pasiftir; Dolby Vision, HDR10 taban katmanı bulunan '
-                        'profillerde desteklenir.',
+                        l10n.hdrInfoText,
                         style: Theme.of(
                           context,
                         ).textTheme.bodySmall?.copyWith(color: Colors.white54),
@@ -2133,7 +2159,7 @@ class _PlayerScreenState extends State<PlayerScreen>
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext),
-                  child: const Text('Bitti'),
+                  child: Text(l10n.doneLabel),
                 ),
               ],
             ),
@@ -2246,9 +2272,13 @@ class _PlayerScreenState extends State<PlayerScreen>
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Zoom uygulanamadı: $error')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              AppLocalizations.of(context).errorZoomFailed('$error'),
+            ),
+          ),
+        );
       }
     } finally {
       _zoomUpdateRunning = false;
@@ -2309,7 +2339,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                 buffering: _buffering,
                 volume: _volume,
                 periodicInfoVisible: _periodicInfoVisible,
-                filename: _info?.filename ?? 'Video hazırlanıyor…',
+                filename:
+                    _info?.filename ??
+                    AppLocalizations.of(context).videoPreparing,
                 status: _status,
                 engineBadge: _engineStatus,
                 position: _position,
@@ -2440,21 +2472,24 @@ Duration _clampDuration(Duration value, Duration maximum) => Duration(
 Duration _negateDuration(Duration value) =>
     Duration(microseconds: -value.inMicroseconds);
 
-String _formatSignedDuration(Duration value) {
+String _formatSignedDuration(Duration value, String unit) {
   final seconds = value.inMicroseconds / Duration.microsecondsPerSecond;
-  return '${seconds > 0 ? '+' : ''}${seconds.toStringAsFixed(2)} sn';
+  return '${seconds > 0 ? '+' : ''}${seconds.toStringAsFixed(2)} $unit';
 }
 
-String _formatIntervalMilliseconds(int milliseconds) {
+String _formatIntervalMilliseconds(int milliseconds, AppLocalizations l10n) {
+  final unit = l10n.secondsUnitShort;
   if (milliseconds % 1000 == 0) {
-    return '${milliseconds ~/ 1000} sn';
+    return '${milliseconds ~/ 1000} $unit';
   }
+  // Ondalık ayracı dile göre: tr'de virgül, diğerlerinde nokta.
+  final decimalSeparator = l10n.localeName == 'tr' ? ',' : '.';
   final seconds = (milliseconds / 1000)
       .toStringAsFixed(2)
       .replaceFirst(RegExp(r'0+$'), '')
       .replaceFirst(RegExp(r'\.$'), '')
-      .replaceFirst('.', ',');
-  return '$seconds sn';
+      .replaceFirst('.', decimalSeparator);
+  return '$seconds $unit';
 }
 
 class _TuningRow extends StatelessWidget {
@@ -2510,7 +2545,7 @@ class _ErrorView extends StatelessWidget {
             FilledButton.tonalIcon(
               onPressed: onClose,
               icon: const Icon(Icons.close_rounded),
-              label: const Text('Oynatıcıyı kapat'),
+              label: Text(AppLocalizations.of(context).closePlayer),
             ),
           ],
         ),

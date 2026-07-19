@@ -6,6 +6,8 @@ import 'package:zanzibarr/main.dart';
 import 'package:zanzibarr/src/rust/api/simple.dart';
 import 'package:zanzibarr/src/rust/frb_generated.dart';
 
+import 'l10n_test_helper.dart';
+
 /// Faz 0 köprü kanıtı: Rust dylib'i host'ta derlenmiş olmalı
 /// (`cargo build --manifest-path rust/Cargo.toml`).
 String _dylibPath() {
@@ -32,7 +34,9 @@ void main() {
   });
 
   testWidgets('Ana ekran medya açma akışını sunuyor', (tester) async {
-    await tester.pumpWidget(const ZanzibarrApp());
+    await tester.pumpWidget(
+      ZanzibarrApp(uiPreferences: turkishUiPreferences()),
+    );
     expect(find.text('NZB seç ve oynat'), findsOneWidget);
   });
 }

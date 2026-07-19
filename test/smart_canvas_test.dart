@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:zanzibarr/player/smart_canvas.dart';
 import 'package:zanzibarr/player/smart_canvas_overlay.dart';
 
+import 'l10n_test_helper.dart';
+
 void main() {
   group('Smart Canvas geometry', () {
     test('crop sınırlar içinde kalır ve minimum boyuta büyütülür', () {
@@ -209,8 +211,8 @@ void main() {
   });
 }
 
-Widget _testApp(Widget child) => MaterialApp(
-  home: Scaffold(
+Widget _testApp(Widget child) => l10nTestApp(
+  Scaffold(
     backgroundColor: Colors.black,
     body: Center(child: SizedBox(width: 400, height: 300, child: child)),
   ),
