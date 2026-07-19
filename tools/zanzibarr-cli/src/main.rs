@@ -154,8 +154,18 @@ fn entry(key: &str) -> Result<keyring::Entry, String> {
 
 fn read_secret(key: &str) -> Result<Option<String>, String> {
     match entry(key)?.get_password() {
-        Ok(value) => Ok(Some(value)),
-        Err(keyring::Error::NoEntry) => Ok(None),
+        Ok(value) => return Ok(Some(value)),
+        Err(keyring::Error::NoEntry) => {}
+        Err(err) => return Err(err.to_string()),
+    }
+    // Eski kurulumlar (yeniden adlandırma öncesi) kimliği "usenews"
+    // servisinde sakladı; bulunamazsa oraya da bak.
+    match keyring::Entry::new("usenews", key) {
+        Ok(legacy) => match legacy.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(err) => Err(err.to_string()),
+        },
         Err(err) => Err(err.to_string()),
     }
 }

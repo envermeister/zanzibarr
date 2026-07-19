@@ -211,6 +211,7 @@ enum StreamSelection {
     },
     Rar {
         volumes: Vec<NzbFile>,
+        password: Option<String>,
     },
 }
 
@@ -238,8 +239,8 @@ async fn prepare_stream_source(
                 .await
                 .map_err(|error| error.to_string())?,
         )),
-        StreamSelection::Rar { volumes } => Ok(StreamSource::Rar(
-            RarEntrySource::new_cancellable(pool, volumes, cancellation)
+        StreamSelection::Rar { volumes, password } => Ok(StreamSource::Rar(
+            RarEntrySource::new_cancellable(pool, volumes, password, cancellation)
                 .await
                 .map_err(|error| error.to_string())?,
         )),
@@ -462,6 +463,7 @@ fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
                     .into_iter()
                     .map(|volume| volume.file.clone())
                     .collect(),
+                password: parsed.meta_value("password").map(str::to_owned),
             })
         }
         Err(error) => Err(error.to_string()),
@@ -725,18 +727,20 @@ mod tests {
     #[test]
     fn split_rar_ciltleri_sayisal_sirayla_secilir() {
         let parsed = nzb::Nzb {
-            meta: vec![],
+            meta: vec![("password".into(), "nzb-parolasi".into())],
             files: vec![
                 file("\"movie.part02.rar\" yEnc (1/1)", 1, 1000),
                 file("\"movie.part01.rar\" yEnc (1/1)", 1, 1000),
             ],
         };
         let selection = select_stream(&parsed).unwrap();
-        let StreamSelection::Rar { volumes } = selection else {
+        let StreamSelection::Rar { volumes, password } = selection else {
             panic!("RAR seçimi bekleniyordu");
         };
         assert_eq!(volumes[0].filename(), Some("movie.part01.rar"));
         assert_eq!(volumes[1].filename(), Some("movie.part02.rar"));
+        // NZB password metası RAR yoluna da taşınır (7z ile aynı kural).
+        assert_eq!(password.as_deref(), Some("nzb-parolasi"));
     }
 
     #[test]
@@ -749,11 +753,12 @@ mod tests {
                 file("\"large.part02.rar\" yEnc (1/1)", 1, 9000),
             ],
         };
-        let StreamSelection::Rar { volumes } = select_stream(&parsed).unwrap() else {
+        let StreamSelection::Rar { volumes, password } = select_stream(&parsed).unwrap() else {
             panic!("RAR seçimi bekleniyordu");
         };
         assert_eq!(volumes.len(), 2);
         assert_eq!(volumes[0].filename(), Some("large.part01.rar"));
+        assert!(password.is_none());
     }
 
     #[test]
