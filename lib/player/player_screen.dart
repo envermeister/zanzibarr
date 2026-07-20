@@ -339,7 +339,25 @@ class _PlayerScreenState extends State<PlayerScreen>
     final hasRealVideo = tracks.video.any(
       (track) => track.id != 'auto' && track.id != 'no',
     );
-    if (hasRealVideo) _markPlaybackReady();
+    if (hasRealVideo) {
+      _markPlaybackReady();
+      unawaited(_applyDolbyVisionReshapingIfNeeded());
+    }
+  }
+
+  /// Dolby Vision Profile 5 (HDR10 baz katmansız) içerikte pembe/yeşil
+  /// bozuk renkleri düzeltmek için paketli FFmpeg'in libplacebo filtresini
+  /// devreye alır. HDR10 baz katmanı taşıyan profillerde (P8 gibi) mevcut
+  /// render yolu doğru çalıştığından filtre kapalı kalır.
+  Future<void> _applyDolbyVisionReshapingIfNeeded() async {
+    try {
+      final capabilities = await _playback.detectHdrCapabilities();
+      await _playback.setDolbyVisionReshaping(
+        capabilities.dolbyVisionProfile == 5,
+      );
+    } catch (_) {
+      // Algılama başarısızsa oynatma mevcut davranışla sürer.
+    }
   }
 
   void _markPlaybackReady() {
@@ -357,6 +375,22 @@ class _PlayerScreenState extends State<PlayerScreen>
     _configurePeriodicInfoTimer();
     _revealControls();
   }
+
+  /// Yalnız entegrasyon testleri içindir: oynatma hazır mı, açılış hatası
+  /// neydi ve motor denetçisinin (DV reshape bayrağı, vf okuması) durumu.
+  @visibleForTesting
+  bool get playbackReadyForTest => _playbackReady;
+
+  @visibleForTesting
+  Object? get startupErrorForTest => _error;
+
+  @visibleForTesting
+  AdvancedPlaybackController get playbackControllerForTest => _playback;
+
+  /// Entegrasyon testlerinin libmpv günlük akışına (lavfi/Vulkan hataları
+  /// gibi çalışma zamanı tanıları) abone olabilmesi için oynatıcıyı verir.
+  @visibleForTesting
+  Player get playerForTest => _player;
 
   void _onPlayerError(String message) {
     if (!_startupActive && !_playbackReady) return;

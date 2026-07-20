@@ -707,6 +707,81 @@ void main() {
     expect(backend.properties['target-trc'], 'bt.1886');
     expect(backend.calls, contains('set:target-colorspace-hint=no'));
   });
+
+  test('DV reshaping macOS\'ta libplacebo filtresini HDR moduna göre uygular',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    // Varsayılan HDR modu SDR: filtre bt.709 hedefiyle kurulur.
+    await controller.setDolbyVisionReshaping(true);
+
+    expect(controller.dolbyVisionReshaping, isTrue);
+    expect(backend.properties['vf'], contains('libplacebo=colorspace=bt709'));
+    expect(backend.properties['vf'], contains('color_trc=bt709'));
+    // VideoToolbox donanım kareleri libplacebo'ya doğrudan giremez; önek
+    // eksikse lavfi grafı sessizce devre dışı kalır (C harness kanıtı).
+    expect(backend.properties['vf'], startsWith('lavfi=[hwdownload,'));
+
+    // HDR moduna geçince filtre bt.2020/PQ hedefiyle yeniden uygulanır.
+    await controller.setHdrMode(HdrMode.dolbyVision);
+    expect(backend.properties['vf'], contains('color_trc=smpte2084'));
+
+    // SDR'e dönünce filtre bt.709 hedefine geri döner.
+    await controller.setHdrMode(HdrMode.sdr);
+    expect(backend.properties['vf'], contains('color_trc=bt709'));
+
+    // Yazılım kod çözmeye geçince hwdownload öneki kaldırılır; önek yazılım
+    // karesinde grafiği bozar (CLI kanıtı: "Impossible to convert").
+    await controller.setHardwareDecoding(false);
+    expect(backend.properties['vf'], startsWith('lavfi=[libplacebo='));
+
+    // Donanıma dönünce önek geri gelir.
+    await controller.setHardwareDecoding(true);
+    expect(backend.properties['vf'], startsWith('lavfi=[hwdownload,'));
+
+    await controller.setDolbyVisionReshaping(false);
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(backend.properties['vf'], '');
+  });
+
+  test('DV reshaping macOS dışında vf özelliğine dokunmaz', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setDolbyVisionReshaping(true);
+
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(backend.calls.where((call) => call.contains('vf')), isEmpty);
+  });
+
+  test('DV reshaping filtresi reddedilirse eski davranışa düşer', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend()..unsupportedProperties.add('vf');
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setDolbyVisionReshaping(true);
+
+    expect(controller.dolbyVisionReshaping, isFalse);
+  });
+
+  test('yeni medya için sıfırlama DV filtresini de temizler', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setDolbyVisionReshaping(true);
+    await controller.resetForNewMedia();
+
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(backend.properties['vf'], '');
+  });
 }
 
 /// DV gibi varlığı içerikle değişen özelliklerde gerçek libmpv davranışını

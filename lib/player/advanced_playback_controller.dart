@@ -161,6 +161,41 @@ class AdvancedPlaybackController {
     'framedrop': 'decoder+vo',
   };
 
+  /// Dolby Vision Profile 5 (HDR10 baz katmansız, yalnız RPU üstverili)
+  /// içerikte renk düzeltmesi yapan libavfilter grafı. Paketli mpv'nin
+  /// render yolu (legacy libmpv render API) DV reshape yapmadığından
+  /// düzeltme render yolundan bağımsız biçimde FFmpeg 8.1'in
+  /// `vf_libplacebo` filtresiyle yapılır: filtre RPU üstverisini uygulayıp
+  /// kareyi hedef renk uzayına dönüştürür. Filtre Vulkan zorunludur;
+  /// macOS çerçevesine MoltenVK gömülüdür.
+  ///
+  /// `hwdownload,format=p010` öneki yalnız donanım çözmede zorunludur:
+  /// donanım çözme açıkken vf zincirine VideoToolbox donanım kareleri
+  /// (`videotoolbox_vld`) girer ve libplacebo bunları doğrudan işleyemez;
+  /// mpv'nin lavfi köprüsü ffmpeg CLI'nın aksine hwdownload'ı otomatik
+  /// eklemez (graf yapılandırması "Impossible to convert" hatasıyla sessizce
+  /// devre dışı kalır). Yazılım çözmede ise önek grafiği BOZAR (yazılım
+  /// karesi donanım kare bağlamı taşımaz), bu yüzden öneksiz varyantlar
+  /// ayrı tutulur ve seçim [hardwareDecoding] bayrağına göre yapılır.
+  ///
+  /// SDR hedefi bt.709'a ton eşler. HDR hedefi bt.2020/PQ sinyal üretir ki
+  /// filtre çıkışı sonraki render yoluna HDR10 içerikle aynı biçimde
+  /// girsin (ton eşleme/`target-colorspace-hint` davranışı değişmez).
+  static const dvReshapeFilterSdr =
+      'lavfi=[hwdownload,format=p010,libplacebo=colorspace=bt709:'
+      'color_primaries=bt709:color_trc=bt709]';
+  static const dvReshapeFilterHdr =
+      'lavfi=[hwdownload,format=p010,libplacebo=colorspace=bt2020nc:'
+      'color_primaries=bt2020:color_trc=smpte2084]';
+
+  /// Yazılım kod çözme varyantları (öneksiz); ayrıntı yukarıda.
+  static const dvReshapeFilterSdrSoftware =
+      'lavfi=[libplacebo=colorspace=bt709:color_primaries=bt709:'
+      'color_trc=bt709]';
+  static const dvReshapeFilterHdrSoftware =
+      'lavfi=[libplacebo=colorspace=bt2020nc:color_primaries=bt2020:'
+      'color_trc=smpte2084]';
+
   static const _videoPresetProperties = <VideoPreset, Map<String, String>>{
     VideoPreset.natural: {
       'brightness': '0',
@@ -232,6 +267,10 @@ class AdvancedPlaybackController {
   HdrMode hdrMode = HdrMode.sdr;
   bool hardwareDecoding = true;
 
+  /// Dolby Vision Profile 5 renk düzeltmesi (libplacebo reshape filtresi)
+  /// etkin mi. Yalnız [setDolbyVisionReshaping] ile değişir.
+  bool dolbyVisionReshaping = false;
+
   /// HDR modu seçer: SDR dışındaki modlarda doğal HDR/Dolby Vision sinyali
   /// ekrana işlenmeden verilir, SDR'de içerik bt.709'a ton eşlenir. Her ayarın
   /// libmpv tarafından kabul edildiği geri okunarak doğrulanır.
@@ -248,6 +287,52 @@ class AdvancedPlaybackController {
       mode == HdrMode.sdr ? 'no' : 'yes',
     );
     hdrMode = mode;
+    // DV reshape filtresi çıkış renk uzayını kendisi sabitler; HDR modu
+    // değişince filtre yeni hedefle yeniden uygulanır.
+    if (dolbyVisionReshaping) {
+      await setDolbyVisionReshaping(true);
+    }
+  }
+
+  /// Dolby Vision Profile 5 içerikte pembe/yeşil bozuk renkleri düzelten
+  /// reshape filtresini açar/kapatır.
+  ///
+  /// Yalnız macOS'ta uygulanır: paketli Mpv çerçevesi libplacebo'lu FFmpeg
+  /// ve MoltenVK ile derlenmiştir; diğer platformlarda bayrak kapalı kalır
+  /// ve `vf`'ye dokunulmaz. Filtre libmpv tarafından reddedilirse (ör.
+  /// Vulkan başlatılamazsa) eski davranışa sessizce dönülür.
+  ///
+  /// Açıkken çıkış renk uzayı geçerli [hdrMode]'a göre seçilir; HDR modu
+  /// sonradan değişirse [setHdrMode], kod çözme kipi değişirse
+  /// [setHardwareDecoding] filtreyi uygun varyantla yeniden uygular.
+  Future<void> setDolbyVisionReshaping(bool enabled) async {
+    if (defaultTargetPlatform != TargetPlatform.macOS) {
+      dolbyVisionReshaping = false;
+      return;
+    }
+    if (!enabled) {
+      dolbyVisionReshaping = false;
+      await _trySetProperty('vf', '');
+      return;
+    }
+    try {
+      await _backend.setProperty('vf', _dvReshapeFilterFor(hdrMode));
+      dolbyVisionReshaping = true;
+    } catch (_) {
+      // Filtre bu derlemede yoksa/başarısızsa eski davranışla sürdürülür.
+      dolbyVisionReshaping = false;
+      await _trySetProperty('vf', '');
+    }
+  }
+
+  /// HDR hedefini ve kare biçimine göre zorunlu `hwdownload` önekini
+  /// seçer; önek kuralları [dvReshapeFilterSdr] belgesinde.
+  String _dvReshapeFilterFor(HdrMode mode) {
+    final sdr = mode == HdrMode.sdr;
+    if (hardwareDecoding) {
+      return sdr ? dvReshapeFilterSdr : dvReshapeFilterHdr;
+    }
+    return sdr ? dvReshapeFilterSdrSoftware : dvReshapeFilterHdrSoftware;
   }
 
   /// Eski aç/kapa arayüzünün karşılığı: açık = [HdrMode.hdr].
@@ -269,9 +354,16 @@ class AdvancedPlaybackController {
   /// çalışma zamanında değişmesini destekler. Açık değer Android'de `auto`
   /// (auto-safe'in güvenli listesi bazı TV box çiplerinde donanım yolunu
   /// kaçırıyor), diğer platformlarda `auto-safe`.
+  ///
+  /// DV reshape filtresi etkinken kip değişimi kare biçimini değiştirir
+  /// (donanım↔yazılım); filtre doğru `hwdownload` varyantıyla yeniden
+  /// uygulanır, yoksa lavfi grafı yeni biçimde yapılandırılamaz.
   Future<void> setHardwareDecoding(bool enabled) async {
     await _backend.setProperty('hwdec', enabled ? hwdecEnabledValue : 'no');
     hardwareDecoding = enabled;
+    if (dolbyVisionReshaping) {
+      await setDolbyVisionReshaping(true);
+    }
   }
 
   /// Donanım kod çözme açıkken kullanılan libmpv `hwdec` değeri.
@@ -359,6 +451,10 @@ class AdvancedPlaybackController {
     final value = (await _backend.getProperty('mpv-version')).trim();
     return value.isEmpty ? 'libmpv' : value;
   }
+
+  /// Yalnız entegrasyon testleri içindir: ham libmpv özellik okuması.
+  @visibleForTesting
+  Future<String> debugGetProperty(String name) => _backend.getProperty(name);
 
   Future<void> setRate(double value) async {
     _requireFiniteRange(value, minimumRate, maximumRate, 'Oynatma hızı');
@@ -538,6 +634,8 @@ class AdvancedPlaybackController {
   Future<void> resetCanvasTransform() => applyCanvasTransform();
 
   Future<void> resetForNewMedia() async {
+    // Önceki içerikten kalan DV filtresi yeni içeriğe taşmasın.
+    await setDolbyVisionReshaping(false);
     await clearLoop();
     await setRate(1.0);
     await resetCanvasTransform();
