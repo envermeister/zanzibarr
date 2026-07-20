@@ -275,7 +275,7 @@ Widget _playerComposition({
           periodicInfoVisible: false,
           filename: 'Dune.Part.Two.2024.2160p.WEB-DL.DDP5.1.Atmos.mkv',
           status: 'Ready',
-          engineBadge: 'libmpv 0.40 · FFmpeg 7.1',
+          engineBadge: 'libmpv 0.41 · FFmpeg 8.1',
           position: const Duration(minutes: 42, seconds: 37),
           duration: const Duration(hours: 2, minutes: 46, seconds: 4),
           rate: 1.0,

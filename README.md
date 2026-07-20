@@ -12,7 +12,7 @@
   <a href="https://github.com/envermeister/zanzibarr/actions/workflows/windows-build.yml"><img src="https://github.com/envermeister/zanzibarr/actions/workflows/windows-build.yml/badge.svg" alt="Windows build"></a>
   <a href="https://github.com/envermeister/zanzibarr/actions/workflows/android-build.yml"><img src="https://github.com/envermeister/zanzibarr/actions/workflows/android-build.yml/badge.svg" alt="Android build"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Android%20%C2%B7%20Android%20TV-blue" alt="platforms">
-  <img src="https://img.shields.io/badge/tests-94%20Rust%20%2B%2079%20Flutter-brightgreen" alt="tests">
+  <img src="https://img.shields.io/badge/tests-157%20Rust%20%2B%2097%20Flutter-brightgreen" alt="tests">
 </p>
 
 ---
@@ -20,6 +20,10 @@
 zanzibarr turns Usenet into your personal streaming library. Point it at any `.nzb` and the video starts playing in seconds — **no download queue, no waiting for the full file, no disk space sacrificed**. Scrub to the final scene of a 4K remux before the first act would have finished downloading. It feels like magic; it's really just a very disciplined engine.
 
 ## Screenshots
+
+<p align="center">
+  <img src="docs/screenshots/demo.gif" alt="zanzibarr demo" width="720">
+</p>
 
 <p align="center">
   <img src="docs/screenshots/home_dark.png" alt="Home — dark" width="720">
@@ -50,8 +54,9 @@ Straight video NZBs, multi-volume **RAR5** sets and split **7z** releases — in
 
 **A picture pipeline that respects your content**
 - Dynamic range selector that adapts to the file: **SDR · HDR · HDR10 · Dolby Vision** — modes the content doesn't carry stay visibly disabled, so you always know exactly what you're watching.
+- Dolby Vision handled honestly: **Profile 5** is reshaped on the GPU via libplacebo (Vulkan → Metal), HDR10-based profiles ride the natural decoder path — no pink-and-green fakeouts.
 - BT.2390 tone mapping with per-frame peak detection for clean SDR conversion.
-- Custom libmpv + full-FFmpeg build: **TrueHD / Atmos, DTS-HD MA**, AV1 and everything else your releases actually use.
+- Custom libmpv 0.41 + full FFmpeg 8.1 build: **TrueHD / Atmos, DTS-HD MA**, AV1 and everything else your releases actually use.
 - Video presets (Natural / Cinema / Vivid), GPU scaling quality, and audio presets (Balanced / Dialogue / Night) — one tap, no filter graphs.
 - Hardware or software decoding, your call.
 
