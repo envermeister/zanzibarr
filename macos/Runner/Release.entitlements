@@ -4,6 +4,12 @@
 <dict>
 	<key>com.apple.security.app-sandbox</key>
 	<true/>
+	<!-- Gömülü mpv'nin LuaJIT'i Apple Silicon'da legacy JIT (imzasız
+	     çalıştırılabilir anonim sayfa) kullanır; hardened runtime / sandbox
+	     denetimi bu sayfaları SIGKILL ile öldürür. Bu anahtar olmadan
+	     oynatıcı oluşturulurken uygulama ölür. -->
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
 	<key>com.apple.security.network.client</key>
 	<true/>
 	<key>com.apple.security.network.server</key>
