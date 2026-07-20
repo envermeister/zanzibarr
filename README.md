@@ -13,6 +13,7 @@
   <a href="https://github.com/envermeister/zanzibarr/actions/workflows/android-build.yml"><img src="https://github.com/envermeister/zanzibarr/actions/workflows/android-build.yml/badge.svg" alt="Android build"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Android%20%C2%B7%20Android%20TV-blue" alt="platforms">
   <img src="https://img.shields.io/badge/tests-157%20Rust%20%2B%2097%20Flutter-brightgreen" alt="tests">
+  <a href="https://www.patreon.com/cw/envermeister"><img src="https://img.shields.io/badge/Patreon-support%20zanzibarr-F96854?logo=patreon&logoColor=white" alt="Support on Patreon"></a>
 </p>
 
 ---
@@ -133,6 +134,10 @@ CI produces the Windows `.exe` and Android `.apk` artifacts on demand (see `.git
 - [ ] Compressed RAR/7z stream-seek, in-stream AES for RAR
 - [ ] PAR2 health check & repair
 - [ ] iOS & Linux builds
+
+## Support the project
+
+zanzibarr is free and open source, built in spare time. If it saved you a download queue, you can buy the next coffee that funds the engine on [Patreon](https://www.patreon.com/cw/envermeister). One-off or monthly — both keep the commits coming.
 
 ## A note on responsibility
 
