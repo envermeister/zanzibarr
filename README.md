@@ -137,21 +137,3 @@ CI produces the Windows `.exe` and Android `.apk` artifacts on demand (see `.git
 ## A note on responsibility
 
 zanzibarr is a neutral playback engine. You are responsible for the content you access and for complying with the laws of your jurisdiction and the terms of your Usenet provider.
-
----
-
-<details>
-<summary><strong>Türkçe</strong></summary>
-
-**zanzibarr**, Usenet'teki içeriği indirmeden, anında ve seek edilebilir şekilde oynatan açık kaynak bir video oynatıcıdır.
-
-- **İndirme yok:** Yalnızca izlediğiniz dilimler ağdan çekilir; diske hiçbir şey yazılmaz.
-- **Gerçek seek:** Her byte ofseti yEnc segment haritasından çözülür; 100+ GB'lık sürümlerde bile kare hassasiyetinde sarma.
-- **Arşiv desteği:** Çok ciltli RAR5 ve bölünmüş 7z (STORE, AES-256) yayınları bellekte tek sanal dosyaya dönüşür.
-- **HDR boru hattı:** SDR/HDR/HDR10/Dolby Vision seçici, BT.2390 ton eşleme, TrueHD/Atmos ve DTS-HD destekli özel libmpv/FFmpeg derlemesi.
-- **14 dil, koyu/açık tema, Android TV desteği.**
-- **Gizlilik:** NNTP kimlik bilgileri yalnızca işletim sisteminin güvenli anahtarlığında saklanır; telemetri yok, sunucu yok.
-
-Kurulum: Releases sayfasından Windows `.exe` veya Android `.apk` indirin, ayarlardan NNTP sağlayıcı bilgilerinizi girin ve bir `.nzb` açın.
-
-</details>
