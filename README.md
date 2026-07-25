@@ -130,9 +130,11 @@ CI produces the Windows `.exe` and Android `.apk` artifacts on demand (see `.git
 - [x] Multi-volume RAR5 & split 7z (STORE, AES-256) as virtual files
 - [x] HDR / HDR10 / Dolby Vision mode selection & tone mapping
 - [x] Android TV, 14 languages, dark & light themes
-- [ ] Newznab indexer search (browse & play without leaving the app)
-- [ ] Compressed RAR/7z stream-seek, in-stream AES for RAR
-- [ ] PAR2 health check & repair
+- [x] Newznab indexer search (browse & play without leaving the app)
+- [x] Compressed 7z (LZMA/LZMA2, solid) stream-seek & RAR4 STORE sets
+- [x] PAR2 engine: packet parsing, slice health check, Reed-Solomon repair (verified byte-exact against par2cmdline)
+- [ ] PAR2 repair wired into playback (auto-heal missing/corrupt segments)
+- [ ] Compressed RAR stream-seek (needs a RAR decompressor — no pure-Rust one exists; C++ unrar FFI is the open question)
 - [ ] iOS & Linux builds
 
 ## Support the project
