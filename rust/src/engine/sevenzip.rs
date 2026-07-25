@@ -1,12 +1,15 @@
-//! Çok ciltli 7z STORE/AES yayınlarını sanal, seek edilebilir medya dosyasına
+//! Çok ciltli 7z yayınlarını sanal, seek edilebilir medya dosyasına
 //! dönüştürür.
 //!
 //! 7z ciltleri diske indirilmez. Her `.7z.NNN` dosyası mevcut NNTP+yEnc
 //! kaynağıyla açılır, tek bir sanal byte uzayında birleştirilir ve yalnız 7z
 //! başlığının istediği aralıklar çekilir. İçerideki medya girdisi COPY/STORE
 //! ise pack aralığı doğrudan sunulur; AES-256-CBC varsa istenen bloklar yerinde
-//! çözülür. LZMA/LZMA2/solid arşivler, rastgele seek'i bozmamak için açıkça
-//! reddedilir.
+//! çözülür. LZMA/LZMA2 (ve solid folder) girdileri ise
+//! [`SeekableDecodeSource`] cephesiyle sunulur: decoder pack akışını baştan
+//! sırayla çözer, pencere önbelleği yakın geriye okumaları karşılar, uzak
+//! geriye sıçramalarda zincir baştan kurulur. BCJ/PPMd gibi codec'ler ve
+//! çok-pack'li folder'lar açıkça reddedilir.
 
 use std::io::{self, Cursor, Read, Seek, SeekFrom};
 use std::ops::Range;
@@ -33,6 +36,7 @@ use super::archive::{
 };
 use super::nntp::{NntpPool, TlsNntpConnector};
 use super::nzb::{is_playable_media_filename, NzbFile};
+use super::seekable_decode::SeekableDecodeSource;
 use super::server::{content_type_for, RangeSource};
 
 const AES_STREAM_CHUNK: u64 = 1024 * 1024;
@@ -48,10 +52,8 @@ pub enum SevenZipError {
     Header(String),
     #[error("7z arşivinde oynatılabilir medya dosyası yok")]
     NoPlayableMedia,
-    #[error("7z arşivi sıkıştırılmış; yalnız COPY/STORE arşivleri seek edilerek oynatılabilir")]
+    #[error("7z arşivi desteklenmeyen codec/yerleşim içeriyor (BCJ, PPMd, çok-pack folder vb.); COPY, AES, LZMA ve LZMA2 desteklenir")]
     UnsupportedCompression,
-    #[error("7z arşivi solid; rastgele seek için non-solid STORE arşivi gerekli")]
-    SolidArchive,
     #[error("parola korumalı 7z arşivinde NZB password metası yok")]
     MissingPassword,
     #[error("geçersiz 7z yerleşimi: {0}")]
@@ -114,6 +116,33 @@ struct EntryPlan {
     decoded_size: u64,
     packed_range: Range<u64>,
     aes: Option<AesPlan>,
+    packing: PackingPlan,
+}
+
+/// Medya verisinin sunuluş biçimi.
+enum PackingPlan {
+    /// COPY veya AES-STORE: pack aralığı doğrudan (veya blok-blok çözülerek)
+    /// seek edilebilir — mevcut hızlı yol.
+    Direct,
+    /// LZMA/LZMA2 (+ isteğe bağlı AES) zinciri: ardışıl çözüm gerekir,
+    /// [`SeekableDecodeSource`] cephesiyle sunulur.
+    Compressed(CompressedPlan),
+}
+
+struct CompressedPlan {
+    /// [`simple_coder_order`] sırasıyla coder adımları.
+    steps: Vec<CoderStep>,
+    /// Solid folder'da seçilen dosyadan önce çözülüp atılacak bayt sayısı.
+    prefix_skip: u64,
+    /// Zincirde AES adımı varsa gerekli (doğrulama [`plan_from_header`]).
+    password: Option<Password>,
+}
+
+#[derive(Clone)]
+struct CoderStep {
+    method_id: Vec<u8>,
+    properties: Vec<u8>,
+    unpack_size: u64,
 }
 
 /// Oynatıcıya doğrudan medya dosyası gibi görünen 7z içeriği.
@@ -121,6 +150,8 @@ pub struct SevenZipEntrySource {
     archive: Arc<NntpVolumeSet>,
     plan: EntryPlan,
     content_type: &'static str,
+    /// Sıkıştırılmış zincirlerde ardışıl çözüm cephesi; STORE yollarında None.
+    facade: Option<SeekableDecodeSource>,
 }
 
 impl SevenZipEntrySource {
@@ -148,7 +179,7 @@ impl SevenZipEntrySource {
         let archive_len = archive.total_len();
         let runtime = tokio::runtime::Handle::current();
 
-        let plan = run_blocking_cancellable(cancellation, move |reader_cancellation| {
+        let plan = run_blocking_cancellable(cancellation.clone(), move |reader_cancellation| {
             let mut reader =
                 BlockingArchiveReader::new(archive_for_parser, runtime, reader_cancellation);
             parse_entry_plan(&mut reader, archive_len, password)
@@ -156,10 +187,20 @@ impl SevenZipEntrySource {
         .await?;
 
         let content_type = content_type_for(&plan.filename);
+        let facade = match &plan.packing {
+            PackingPlan::Direct => None,
+            PackingPlan::Compressed(compressed) => Some(build_decode_facade(
+                &archive,
+                &plan,
+                compressed,
+                cancellation,
+            )),
+        };
         Ok(Self {
             archive,
             plan,
             content_type,
+            facade,
         })
     }
 
@@ -169,6 +210,11 @@ impl SevenZipEntrySource {
 
     pub fn segment_count(&self) -> usize {
         self.archive.segment_count()
+    }
+
+    /// Medya LZMA/LZMA2 zinciriyle ardışıl çözülüyorsa true (yavaş seek uyarısı).
+    pub fn is_compressed(&self) -> bool {
+        self.facade.is_some()
     }
 
     async fn write_aes_range<W>(&self, range: Range<u64>, out: &mut W) -> io::Result<()>
@@ -227,6 +273,9 @@ impl RangeSource for SevenZipEntrySource {
         W: AsyncWrite + Unpin + Send,
     {
         validate_range(range.clone(), self.plan.decoded_size)?;
+        if let Some(facade) = &self.facade {
+            return facade.write_range(range, out).await;
+        }
         if self.plan.aes.is_some() {
             self.write_aes_range(range, out).await
         } else {
@@ -691,14 +740,18 @@ fn plan_from_header(
     }
 
     // FilesInfo'daki stream sırasını folder sırasına bağla ve en büyük medya
-    // girdisini seç. Dizinler/boş dosyalar stream tüketmez.
+    // girdisini seç. Dizinler/boş dosyalar stream tüketmez. `folder_prefix`,
+    // solid folder içinde seçilen girdiden ÖNCE gelen dosyaların toplam
+    // çözülmüş boyutudur; çözüm cephesi bu kadar baytı atlayarak başlar.
     let mut folder_index = 0usize;
     let mut remaining_in_folder = streams_per_folder.first().copied().unwrap_or(0);
-    let mut selected: Option<(&zesven::format::files::ArchiveEntry, usize)> = None;
+    let mut folder_prefix = 0u64;
+    let mut selected: Option<(&zesven::format::files::ArchiveEntry, usize, u64)> = None;
     for entry in entries.iter().filter(|entry| entry.has_stream) {
         while folder_index < folders.len() && remaining_in_folder == 0 {
             folder_index += 1;
             remaining_in_folder = streams_per_folder.get(folder_index).copied().unwrap_or(0);
+            folder_prefix = 0;
         }
         if folder_index >= folders.len() {
             return Err(SevenZipError::InvalidLayout(
@@ -707,17 +760,17 @@ fn plan_from_header(
         }
 
         if is_playable_media_filename(&entry.name)
-            && selected.is_none_or(|(current, _)| entry.size > current.size)
+            && selected.is_none_or(|(current, _, _)| entry.size > current.size)
         {
-            selected = Some((entry, folder_index));
+            selected = Some((entry, folder_index, folder_prefix));
         }
+        folder_prefix = folder_prefix
+            .checked_add(entry.size)
+            .ok_or_else(|| SevenZipError::InvalidLayout("folder içi ofset taştı".into()))?;
         remaining_in_folder -= 1;
     }
 
-    let (entry, folder_index) = selected.ok_or(SevenZipError::NoPlayableMedia)?;
-    if streams_per_folder[folder_index] != 1 {
-        return Err(SevenZipError::SolidArchive);
-    }
+    let (entry, folder_index, prefix_skip) = selected.ok_or(SevenZipError::NoPlayableMedia)?;
 
     let folder = &folders[folder_index];
     if folder.packed_streams.len() != 1 {
@@ -726,20 +779,36 @@ fn plan_from_header(
     // Medya verisinde de yalnız tek giriş/çıkışlı, bağlantılı bir coder zinciri
     // kabul edilir. Yalnız method adına bakmak; bozuk bind graph'ı veya iki kez
     // AES uygulayan bir arşivi yanlışlıkla tek decrypt ile sunabilirdi.
-    simple_coder_order(folder)?;
+    let coder_order = simple_coder_order(folder)?;
     let aes_count = folder
         .coders
         .iter()
         .filter(|coder| coder.method_id.as_slice() == method::AES)
         .count();
+    let coder_supported = |method_id: &[u8]| {
+        matches!(
+            method_id,
+            m if m == method::COPY
+                || m == method::AES
+                || m == method::LZMA
+                || m == method::LZMA2
+        )
+    };
     if folder.coders.is_empty()
         || aes_count > 1
-        || folder.coders.iter().any(|coder| {
-            coder.method_id.as_slice() != method::COPY && coder.method_id.as_slice() != method::AES
-        })
+        || folder
+            .coders
+            .iter()
+            .any(|coder| !coder_supported(coder.method_id.as_slice()))
     {
         return Err(SevenZipError::UnsupportedCompression);
     }
+    let compressed = folder.coders.iter().any(|coder| {
+        matches!(
+            coder.method_id.as_slice(),
+            m if m == method::LZMA || m == method::LZMA2
+        )
+    });
 
     let pack_index = folders[..folder_index]
         .iter()
@@ -769,43 +838,72 @@ fn plan_from_header(
         ));
     }
 
-    let aes = if aes_count == 1 {
-        let password = password.ok_or(SevenZipError::MissingPassword)?;
-        let coder = folder
-            .coders
+    let (aes, packing) = if compressed {
+        // Sıkıştırılmış zincir: pack boyutu ile medya boyutu doğal olarak
+        // farklıdır; STORE denetimleri uygulanmaz. AES varsa zincirin bir
+        // adımı olarak çözüm fabrikasında ele alınır.
+        if aes_count == 1 && password.is_none() {
+            return Err(SevenZipError::MissingPassword);
+        }
+        let steps = coder_order
             .iter()
-            .find(|coder| coder.method_id.as_slice() == method::AES)
-            .expect("AES coder bulundu");
-        let properties = coder
-            .properties
-            .as_deref()
-            .ok_or_else(|| SevenZipError::InvalidLayout("AES coder özellikleri yok".into()))?;
-        let properties = AesProperties::parse(properties)
-            .map_err(|error| SevenZipError::Header(error.to_string()))?;
-        let expected_packed = aes_packed_size(entry.size)?;
-        if packed_size != expected_packed {
-            return Err(SevenZipError::InvalidLayout(format!(
-                "AES pack boyutu {packed_size}, beklenen STORE boyutu {expected_packed}"
-            )));
-        }
-        let key = derive_key(password, &properties.salt, properties.num_cycles_power)
-            .map_err(|error| SevenZipError::Header(error.to_string()))?;
-        let iv: [u8; 16] = properties
-            .iv
-            .try_into()
-            .map_err(|_| SevenZipError::InvalidLayout("AES IV boyutu 16 değil".into()))?;
-        Some(AesPlan {
-            key: Zeroizing::new(key),
-            iv,
-        })
+            .map(|&index| {
+                let coder = &folder.coders[index];
+                CoderStep {
+                    method_id: coder.method_id.clone(),
+                    properties: coder.properties.clone().unwrap_or_default(),
+                    unpack_size: folder.unpack_sizes[index],
+                }
+            })
+            .collect();
+        (
+            None,
+            PackingPlan::Compressed(CompressedPlan {
+                steps,
+                prefix_skip,
+                password: password.cloned(),
+            }),
+        )
     } else {
-        if packed_size != entry.size {
-            return Err(SevenZipError::InvalidLayout(format!(
-                "COPY pack boyutu {packed_size}, medya boyutu {}",
-                entry.size
-            )));
-        }
-        None
+        let aes = if aes_count == 1 {
+            let password = password.ok_or(SevenZipError::MissingPassword)?;
+            let coder = folder
+                .coders
+                .iter()
+                .find(|coder| coder.method_id.as_slice() == method::AES)
+                .expect("AES coder bulundu");
+            let properties = coder
+                .properties
+                .as_deref()
+                .ok_or_else(|| SevenZipError::InvalidLayout("AES coder özellikleri yok".into()))?;
+            let properties = AesProperties::parse(properties)
+                .map_err(|error| SevenZipError::Header(error.to_string()))?;
+            let expected_packed = aes_packed_size(entry.size)?;
+            if packed_size != expected_packed {
+                return Err(SevenZipError::InvalidLayout(format!(
+                    "AES pack boyutu {packed_size}, beklenen STORE boyutu {expected_packed}"
+                )));
+            }
+            let key = derive_key(password, &properties.salt, properties.num_cycles_power)
+                .map_err(|error| SevenZipError::Header(error.to_string()))?;
+            let iv: [u8; 16] = properties
+                .iv
+                .try_into()
+                .map_err(|_| SevenZipError::InvalidLayout("AES IV boyutu 16 değil".into()))?;
+            Some(AesPlan {
+                key: Zeroizing::new(key),
+                iv,
+            })
+        } else {
+            if packed_size != entry.size {
+                return Err(SevenZipError::InvalidLayout(format!(
+                    "COPY pack boyutu {packed_size}, medya boyutu {}",
+                    entry.size
+                )));
+            }
+            None
+        };
+        (aes, PackingPlan::Direct)
     };
 
     Ok(EntryPlan {
@@ -813,11 +911,81 @@ fn plan_from_header(
         decoded_size: entry.size,
         packed_range: packed_start..packed_end,
         aes,
+        packing,
     })
 }
 
-fn decrypt_blocks(key: &[u8; 32], iv: &[u8; 16], ciphertext: &mut [u8]) -> io::Result<()> {
-    if !ciphertext.len().is_multiple_of(AES_BLOCK_SIZE as usize) {
+/// Coder zincirini pack akışı üzerine kurar. [`plan_from_header`] method
+/// kümeyi doğruladığından burada yalnız COPY/AES/LZMA/LZMA2 görülür; zincir
+/// kurulumu birim testlerde de çağrılabilir.
+fn build_chain_decoder(
+    base: Box<dyn Read + Send>,
+    steps: &[CoderStep],
+    password: Option<&Password>,
+) -> io::Result<Box<dyn Read + Send>> {
+    let mut decoder = base;
+    for step in steps {
+        decoder = match step.method_id.as_slice() {
+            m if m == method::COPY => Box::new(CopyDecoder::new(decoder, step.unpack_size)),
+            m if m == method::AES => {
+                let password = password
+                    .ok_or_else(|| io::Error::other("AES zinciri için parola yok"))?;
+                let aes = Aes256Decoder::new(decoder, &step.properties, password)
+                    .map_err(|error| io::Error::other(error.to_string()))?;
+                Box::new(aes.take(step.unpack_size))
+            }
+            m if m == method::LZMA => Box::new(
+                LzmaDecoder::new(decoder, &step.properties, step.unpack_size)
+                    .map_err(|error| io::Error::other(error.to_string()))?,
+            ),
+            m if m == method::LZMA2 => Box::new(
+                Lzma2Decoder::new(decoder, &step.properties)
+                    .map_err(|error| io::Error::other(error.to_string()))?
+                    .take(step.unpack_size),
+            ),
+            other => {
+                return Err(io::Error::other(format!(
+                    "desteklenmeyen coder: {}",
+                    method::name(other)
+                )))
+            }
+        };
+    }
+    Ok(decoder)
+}
+
+/// Sıkıştırılmış plan için [`SeekableDecodeSource`] kurar. Fabrika her
+/// çağrıda cilt kümesinin pack aralığından başlayan taze bir zincir açar;
+/// solid öneki (varsa) her açılışta çözülüp atılır.
+fn build_decode_facade(
+    archive: &Arc<NntpVolumeSet>,
+    plan: &EntryPlan,
+    compressed: &CompressedPlan,
+    cancellation: watch::Receiver<bool>,
+) -> SeekableDecodeSource {
+    let volume_set = Arc::clone(archive);
+    let packed_range = plan.packed_range.clone();
+    let packed_size = packed_range.end - packed_range.start;
+    let steps = compressed.steps.clone();
+    let prefix_skip = compressed.prefix_skip;
+    let decoded_size = plan.decoded_size;
+    let password = compressed.password.clone();
+
+    SeekableDecodeSource::new(decoded_size, Box::new(move || {
+        let runtime = tokio::runtime::Handle::current();
+        let mut reader =
+            BlockingArchiveReader::new(Arc::clone(&volume_set), runtime, cancellation.clone());
+        reader.seek(SeekFrom::Start(packed_range.start))?;
+        let base: Box<dyn Read + Send> = Box::new(reader.take(packed_size));
+        let mut decoder = build_chain_decoder(base, &steps, password.as_ref())?;
+        if prefix_skip > 0 {
+            io::copy(&mut decoder.by_ref().take(prefix_skip), &mut io::sink())?;
+        }
+        Ok(Box::new(decoder.take(decoded_size)) as Box<dyn Read + Send>)
+    }))
+}
+
+fn decrypt_blocks(key: &[u8; 32], iv: &[u8; 16], ciphertext: &mut [u8]) -> io::Result<()> {    if !ciphertext.len().is_multiple_of(AES_BLOCK_SIZE as usize) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
             "AES ciphertext 16 bayt hizalı değil",
@@ -834,7 +1002,8 @@ fn decrypt_blocks(key: &[u8; 32], iv: &[u8; 16], ciphertext: &mut [u8]) -> io::R
 mod tests {
     use super::*;
     use cbc::cipher::{BlockEncryptMut, KeyIvInit};
-    use std::io::Cursor;
+    use std::io::{Cursor, Write};
+    use zesven::codec::{Lzma2Encoder, Lzma2EncoderOptions};
     use zesven::format::files::{ArchiveEntry, FilesInfo};
     use zesven::format::streams::{BindPair, Coder, Folder, PackInfo, SubStreamsInfo, UnpackInfo};
     use zesven::format::SIGNATURE;
@@ -897,12 +1066,148 @@ mod tests {
     }
 
     #[test]
-    fn sikistirilmis_7z_reddedilir() {
+    fn sikistirilmis_7z_cozum_planina_eslenir() {
         let header = header_with(method::LZMA2, Some(vec![0]), 32);
+        let plan = plan_from_header(&header, 200, None).unwrap();
+        assert_eq!(plan.packed_range, 132..164);
+        let PackingPlan::Compressed(compressed) = &plan.packing else {
+            panic!("LZMA2 zinciri Compressed plan üretmeli");
+        };
+        assert_eq!(compressed.prefix_skip, 0);
+        assert_eq!(compressed.steps.len(), 1);
+        assert_eq!(compressed.steps[0].method_id, method::LZMA2);
+        assert_eq!(compressed.steps[0].unpack_size, 32);
+    }
+
+    #[test]
+    fn solid_folder_on_eki_hesaplanir() {
+        // Tek folder, iki dosya: büyük olan (ikinci) seçilir, önek = ilkinin boyutu.
+        let mut header = header_with(method::LZMA2, Some(vec![0]), 300);
+        header
+            .substreams_info
+            .as_mut()
+            .unwrap()
+            .num_unpack_streams_in_folders = vec![2];
+        let entries = &mut header.files_info.as_mut().unwrap().entries;
+        entries[0].size = 100;
+        entries.push(ArchiveEntry {
+            name: "movie2.mkv".into(),
+            is_directory: false,
+            is_anti: false,
+            has_stream: true,
+            size: 200,
+            crc: None,
+            ctime: None,
+            atime: None,
+            mtime: None,
+            attributes: None,
+        });
+
+        let plan = plan_from_header(&header, 500, None).unwrap();
+        assert_eq!(plan.filename, "movie2.mkv");
+        assert_eq!(plan.decoded_size, 200);
+        let PackingPlan::Compressed(compressed) = &plan.packing else {
+            panic!("solid folder Compressed plan üretmeli");
+        };
+        assert_eq!(compressed.prefix_skip, 100);
+    }
+
+    #[test]
+    fn desteklenmeyen_codec_reddedilir() {
+        // BCJ x86 filtresi (0x04) bilinçli olarak destek dışı.
+        let header = header_with(&[0x04], Some(vec![0]), 32);
         assert!(matches!(
             plan_from_header(&header, 200, None),
             Err(SevenZipError::UnsupportedCompression)
         ));
+    }
+
+    /// Test yardımcısı: LZMA2 ile sıkıştırır (preset 1).
+    fn lzma2_compress(data: &[u8]) -> Vec<u8> {
+        let mut packed = Vec::new();
+        let mut encoder = Lzma2Encoder::new(&mut packed, &Lzma2EncoderOptions::with_preset(1));
+        encoder.write_all(data).unwrap();
+        encoder.try_finish().unwrap();
+        packed
+    }
+
+    fn lzma2_properties() -> Vec<u8> {
+        Lzma2EncoderOptions::with_preset(1).properties()
+    }
+
+    fn lzma2_step(unpack_size: u64) -> CoderStep {
+        CoderStep {
+            method_id: method::LZMA2.to_vec(),
+            properties: lzma2_properties(),
+            unpack_size,
+        }
+    }
+
+    #[test]
+    fn lzma2_zinciri_gercek_veriyle_cozulur() {
+        let original: Vec<u8> = (0..=251u8).cycle().take(200_000).collect();
+        let packed = lzma2_compress(&original);
+        assert!(
+            packed.len() < original.len() / 2,
+            "desen gerçekten sıkışmalı"
+        );
+
+        let steps = vec![lzma2_step(original.len() as u64)];
+        let base: Box<dyn Read + Send> = Box::new(Cursor::new(packed));
+        let mut decoder = build_chain_decoder(base, &steps, None).unwrap();
+        let mut decoded = Vec::new();
+        decoder.read_to_end(&mut decoded).unwrap();
+        assert_eq!(decoded, original);
+    }
+
+    #[test]
+    fn solid_on_eki_gercek_veriyle_atlanir() {
+        // Solid folder simülasyonu: A+B tek pack akışında; hedef B.
+        let a: Vec<u8> = (0..=199u8).cycle().take(150_000).collect();
+        let b: Vec<u8> = (200..=255u8).cycle().take(90_000).collect();
+        let mut combined = a.clone();
+        combined.extend_from_slice(&b);
+        let packed = lzma2_compress(&combined);
+
+        let steps = vec![lzma2_step(combined.len() as u64)];
+        let base: Box<dyn Read + Send> = Box::new(Cursor::new(packed));
+        let mut decoder = build_chain_decoder(base, &steps, None).unwrap();
+        io::copy(&mut decoder.by_ref().take(a.len() as u64), &mut io::sink()).unwrap();
+        let mut decoded = Vec::new();
+        decoder
+            .take(b.len() as u64)
+            .read_to_end(&mut decoded)
+            .unwrap();
+        assert_eq!(decoded, b);
+    }
+
+    #[tokio::test]
+    async fn cephe_gercek_lzma2_ile_seek_eder() {
+        let original: Vec<u8> = (0..=255u8).cycle().take(600_000).collect();
+        let packed = lzma2_compress(&original);
+        let decoded_size = original.len() as u64;
+        let facade = SeekableDecodeSource::with_window(
+            decoded_size,
+            64 * 1024,
+            Box::new(move || {
+                let base: Box<dyn Read + Send> = Box::new(Cursor::new(packed.clone()));
+                build_chain_decoder(base, &[lzma2_step(decoded_size)], None)
+            }),
+        );
+
+        let mut head = Vec::new();
+        facade.write_range(0..4096, &mut head).await.unwrap();
+        assert_eq!(head, original[..4096]);
+
+        // İleri sıçrama (decoder ileri sarılır).
+        let mut middle = Vec::new();
+        facade.write_range(500_000..503_000, &mut middle).await.unwrap();
+        assert_eq!(middle, original[500_000..503_000]);
+
+        // Pencere öncesi geriye sıçrama (zincir baştan kurulur).
+        let mut back = Vec::new();
+        facade.write_range(1024..2048, &mut back).await.unwrap();
+        assert_eq!(back, original[1024..2048]);
     }
 
     #[test]

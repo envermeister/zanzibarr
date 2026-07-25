@@ -96,6 +96,7 @@
   "errorProviderSettingsMissing": "Sağlayıcı ayarları eksik. Önce ayar ekranından bilgileri girin.",
   "statusConnecting": "Bağlanılıyor ve ilk segment çekiliyor (yerleşim öğreniliyor)…",
   "statusReadingVideoStructure": "Video yapısı okunuyor: {filename}",
+  "statusPreparingCompressed": "Sıkıştırılmış arşiv — sırayla çözülüyor, ilk açılış uzun sürebilir…",
   "statusBuffering": "Arabelleğe alınıyor: {filename}",
   "statusPlaying": "Oynatılıyor: {filename}",
   "statusWaitingTracks": "Video izleri bekleniyor: {filename}",

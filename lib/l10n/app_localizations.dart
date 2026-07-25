@@ -698,6 +698,12 @@ abstract class AppLocalizations {
   /// **'Reading video structure: {filename}'**
   String statusReadingVideoStructure(String filename);
 
+  /// No description provided for @statusPreparingCompressed.
+  ///
+  /// In en, this message translates to:
+  /// **'Compressed archive — decoding sequentially, the first open may take a while…'**
+  String get statusPreparingCompressed;
+
   /// No description provided for @statusBuffering.
   ///
   /// In en, this message translates to:

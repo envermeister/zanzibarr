@@ -67,6 +67,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   static const _minimumCanvasExtent =
       1 / AdvancedPlaybackController.maximumZoom;
 
+  /// Sıkıştırılmış arşivlerde video tanıma üst sınırı: kuyruk sondası için
+  /// neredeyse tam çözüm turu gereken devasa içerikleri de kapsar.
+  static const _compressedOpenTimeout = Duration(minutes: 10);
+
   late final Player _player;
   late final VideoController _videoController;
   late final AdvancedPlaybackController _playback;
@@ -302,16 +306,23 @@ class _PlayerScreenState extends State<PlayerScreen>
       await _playback.resetForNewMedia();
       await _applyPreferencesToPlayer();
       if (!mounted || _startupFailed) return;
+      final l10n = AppLocalizations.of(context);
       setState(() {
         _info = info;
         _rate = _playback.rate;
         _zoom = _playback.zoom;
         _startupActive = true;
-        _status = AppLocalizations.of(
-          context,
-        ).statusReadingVideoStructure(info.filename);
+        _status = info.compressed
+            ? l10n.statusPreparingCompressed
+            : l10n.statusReadingVideoStructure(info.filename);
       });
-      _startupGuard.arm(_onStartupTimeout);
+      // Sıkıştırılmış arşivlerde mpv'nin kuyruk sondası tam çözüm turu
+      // gerektirebilir; standart 45 sn'lik demux koruması onları erken
+      // öldürür. Bu içeriklerde guard uzatılır.
+      _startupGuard.arm(
+        _onStartupTimeout,
+        after: info.compressed ? _compressedOpenTimeout : null,
+      );
       await _player.open(Media(info.url));
 
       if (!mounted || _startupFailed) return;

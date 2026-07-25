@@ -601,14 +601,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   StreamInfo dco_decode_stream_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 5)
-      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    if (arr.length != 6)
+      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
     return StreamInfo(
       sessionId: dco_decode_u_64(arr[0]),
       url: dco_decode_String(arr[1]),
       size: dco_decode_u_64(arr[2]),
       filename: dco_decode_String(arr[3]),
       segmentCount: dco_decode_u_32(arr[4]),
+      compressed: dco_decode_bool(arr[5]),
     );
   }
 
@@ -859,12 +860,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     var var_size = sse_decode_u_64(deserializer);
     var var_filename = sse_decode_String(deserializer);
     var var_segmentCount = sse_decode_u_32(deserializer);
+    var var_compressed = sse_decode_bool(deserializer);
     return StreamInfo(
       sessionId: var_sessionId,
       url: var_url,
       size: var_size,
       filename: var_filename,
       segmentCount: var_segmentCount,
+      compressed: var_compressed,
     );
   }
 
@@ -1106,6 +1109,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_u_64(self.size, serializer);
     sse_encode_String(self.filename, serializer);
     sse_encode_u_32(self.segmentCount, serializer);
+    sse_encode_bool(self.compressed, serializer);
   }
 
   @protected

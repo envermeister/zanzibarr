@@ -327,6 +327,10 @@ class AppLocalizationsTr extends AppLocalizations {
   }
 
   @override
+  String get statusPreparingCompressed =>
+      'Sıkıştırılmış arşiv — sırayla çözülüyor, ilk açılış uzun sürebilir…';
+
+  @override
   String statusBuffering(String filename) {
     return 'Arabelleğe alınıyor: $filename';
   }

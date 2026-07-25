@@ -76,6 +76,9 @@ pub struct StreamInfo {
     pub size: u64,
     pub filename: String,
     pub segment_count: u32,
+    /// Sıkıştırılmış arşiv (LZMA/LZMA2) ardışıl çözümle sunuluyorsa true;
+    /// açılış ve uzak seek'ler STORE'a göre belirgin yavaştır.
+    pub compressed: bool,
 }
 
 #[cfg(test)]
@@ -170,6 +173,15 @@ impl StreamSource {
             Self::Direct(source) => source.segment_count(),
             Self::SevenZip(source) => source.segment_count(),
             Self::Rar(source) => source.segment_count(),
+        }
+    }
+
+    /// Kaynak ardışıl çözüm (sıkıştırılmış arşiv) gerektiriyorsa true.
+    fn is_compressed(&self) -> bool {
+        match self {
+            Self::Direct(_) => false,
+            Self::SevenZip(source) => source.is_compressed(),
+            Self::Rar(_) => false,
         }
     }
 }
@@ -396,6 +408,7 @@ async fn run_stream_session(
     let size = source.total_len();
     let filename = source.filename().to_string();
     let segment_count = source.segment_count().min(u32::MAX as usize) as u32;
+    let compressed = source.is_compressed();
     let listener = match server::bind_local(0).await {
         Ok(listener) => listener,
         Err(error) => {
@@ -417,6 +430,7 @@ async fn run_stream_session(
         size,
         filename,
         segment_count,
+        compressed,
     };
 
     if ready.send(Ok(info)).is_err() {
@@ -657,6 +671,7 @@ mod tests {
                 size: 1,
                 filename: "movie.mkv".into(),
                 segment_count: 1,
+                compressed: false,
             }))
             .is_ok());
         assert!(cancel.send(true).is_ok());

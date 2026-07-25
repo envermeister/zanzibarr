@@ -143,6 +143,7 @@
       "filename": { "type": "String" }
     }
   },
+  "statusPreparingCompressed": "Compressed archive — decoding sequentially, the first open may take a while…",
   "statusBuffering": "Buffering: {filename}",
   "@statusBuffering": {
     "placeholders": {

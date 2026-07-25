@@ -328,6 +328,10 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
+  String get statusPreparingCompressed =>
+      'Compressed archive — decoding sequentially, the first open may take a while…';
+
+  @override
   String statusBuffering(String filename) {
     return 'Armazenando em buffer: $filename';
   }

@@ -592,12 +592,14 @@ impl SseDecode for crate::api::streaming::StreamInfo {
         let mut var_size = <u64>::sse_decode(deserializer);
         let mut var_filename = <String>::sse_decode(deserializer);
         let mut var_segmentCount = <u32>::sse_decode(deserializer);
+        let mut var_compressed = <bool>::sse_decode(deserializer);
         return crate::api::streaming::StreamInfo {
             session_id: var_sessionId,
             url: var_url,
             size: var_size,
             filename: var_filename,
             segment_count: var_segmentCount,
+            compressed: var_compressed,
         };
     }
 }
@@ -807,6 +809,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::streaming::StreamInfo {
             self.size.into_into_dart().into_dart(),
             self.filename.into_into_dart().into_dart(),
             self.segment_count.into_into_dart().into_dart(),
+            self.compressed.into_into_dart().into_dart(),
         ]
         .into_dart()
     }
@@ -976,6 +979,7 @@ impl SseEncode for crate::api::streaming::StreamInfo {
         <u64>::sse_encode(self.size, serializer);
         <String>::sse_encode(self.filename, serializer);
         <u32>::sse_encode(self.segment_count, serializer);
+        <bool>::sse_encode(self.compressed, serializer);
     }
 }
 
