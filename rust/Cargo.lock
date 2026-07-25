@@ -552,6 +552,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "md5"
+version = "0.8.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7ebb8d8732c6a6df3d8f032a82911cfc747e00efb95cc46e8d0acd5b5b88570c"
+
+[[package]]
 name = "memchr"
 version = "2.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -732,6 +738,7 @@ dependencies = [
  "crc32fast",
  "flutter_rust_bridge",
  "hmac",
+ "md5",
  "once_cell",
  "quick-xml",
  "sha2",

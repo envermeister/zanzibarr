@@ -21,6 +21,7 @@ tokio-rustls = { version = "0.26.4", default-features = false, features = ["ring
 webpki-roots = "1.0.8"
 zesven = { version = "1.1.0", default-features = false, features = ["aes", "lzma"] }
 zeroize = "1.8.2"
+md5 = "0.8"
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
