@@ -50,6 +50,47 @@ class AppLocalizationsFr extends AppLocalizations {
       'Ouvrir un fichier .nzb depuis le système de fichiers';
 
   @override
+  String get searchIndexerCard => 'Search the indexer';
+
+  @override
+  String get searchIndexerCardHint => 'Find releases on a Newznab indexer';
+
+  @override
+  String get searchTitle => 'Search';
+
+  @override
+  String get searchHint => 'Release name…';
+
+  @override
+  String get searchTooltip => 'Search';
+
+  @override
+  String get searchClearTooltip => 'Clear';
+
+  @override
+  String get searchNoResults => 'No results found';
+
+  @override
+  String get searchEmptyHint => 'Type a release name to search your indexer.';
+
+  @override
+  String searchResultsTotal(int count) {
+    return '$count results';
+  }
+
+  @override
+  String searchDownloadFailed(String error) {
+    return 'Could not download the NZB: $error';
+  }
+
+  @override
+  String get indexerMissingHint =>
+      'Set up the indexer URL and API key in settings first.';
+
+  @override
+  String get goToIndexerSettings => 'Open settings';
+
+  @override
   String get engineStarting => 'Préparation du moteur de lecture local…';
 
   @override
@@ -130,6 +171,39 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get connectionLimitWarning =>
       'Définir une limite de connexions supérieure à celle du forfait de votre fournisseur peut provoquer une erreur « trop de connexions ».';
+
+  @override
+  String get indexerSectionTitle => 'Indexer (Newznab)';
+
+  @override
+  String get indexerSectionSubtitle =>
+      'Search a Newznab-compatible indexer; the API key is stored in this device\'s secure keychain. Leave the URL empty to disable the indexer.';
+
+  @override
+  String get indexerUrlLabel => 'Indexer URL';
+
+  @override
+  String get indexerUrlInvalid =>
+      'Enter a valid URL starting with http:// or https://';
+
+  @override
+  String get indexerApiKeyLabel => 'API key';
+
+  @override
+  String get indexerSaveLabel => 'Save indexer';
+
+  @override
+  String get indexerTestButton => 'Test connection';
+
+  @override
+  String indexerTestSuccess(String name) {
+    return 'Connected: $name';
+  }
+
+  @override
+  String indexerTestFailed(String error) {
+    return 'Connection failed: $error';
+  }
 
   @override
   String validationRequired(String field) {

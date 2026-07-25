@@ -26,7 +26,8 @@ use crate::engine::sevenzip::SevenZipEntrySource;
 
 /// Tüm ağ/stream işleri bu global çok-iş-parçacıklı runtime'da yürür.
 /// Server görevleri, başlatan çağrı bitse de burada yaşamaya devam eder.
-static RUNTIME: Lazy<Runtime> = Lazy::new(|| Runtime::new().expect("tokio runtime kurulamadı"));
+pub(crate) static RUNTIME: Lazy<Runtime> =
+    Lazy::new(|| Runtime::new().expect("tokio runtime kurulamadı"));
 
 /// Uygulama şu anda tek oynatıcı oturumu çalıştırır. Önceki localhost server
 /// kaydedilmeden bırakılırsa taşıdığı NNTP havuzu ve boşta TLS bağlantıları

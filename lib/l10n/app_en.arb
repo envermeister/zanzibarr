@@ -13,6 +13,28 @@
   "pause": "Pause",
   "selectNzbAndPlay": "Select NZB and play",
   "selectNzbHint": "Open a .nzb from the file system",
+  "searchIndexerCard": "Search the indexer",
+  "searchIndexerCardHint": "Find releases on a Newznab indexer",
+  "searchTitle": "Search",
+  "searchHint": "Release name…",
+  "searchTooltip": "Search",
+  "searchClearTooltip": "Clear",
+  "searchNoResults": "No results found",
+  "searchEmptyHint": "Type a release name to search your indexer.",
+  "searchResultsTotal": "{count} results",
+  "@searchResultsTotal": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "searchDownloadFailed": "Could not download the NZB: {error}",
+  "@searchDownloadFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
+  "indexerMissingHint": "Set up the indexer URL and API key in settings first.",
+  "goToIndexerSettings": "Open settings",
   "engineStarting": "Preparing the local playback engine…",
   "engineStartFailed": "The local playback engine could not be started",
   "engineStartFailedHint": "Check the engine files and the app installation, then try again.",
@@ -47,6 +69,25 @@
   },
   "secureStorageUnavailable": "Secure storage could not be accessed",
   "connectionLimitWarning": "Setting the connection limit above your provider's plan may cause a “too many connections” error.",
+  "indexerSectionTitle": "Indexer (Newznab)",
+  "indexerSectionSubtitle": "Search a Newznab-compatible indexer; the API key is stored in this device's secure keychain. Leave the URL empty to disable the indexer.",
+  "indexerUrlLabel": "Indexer URL",
+  "indexerUrlInvalid": "Enter a valid URL starting with http:// or https://",
+  "indexerApiKeyLabel": "API key",
+  "indexerSaveLabel": "Save indexer",
+  "indexerTestButton": "Test connection",
+  "indexerTestSuccess": "Connected: {name}",
+  "@indexerTestSuccess": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "indexerTestFailed": "Connection failed: {error}",
+  "@indexerTestFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "validationRequired": "{field} is required",
   "@validationRequired": {
     "placeholders": {

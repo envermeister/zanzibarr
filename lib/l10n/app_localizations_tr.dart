@@ -49,6 +49,48 @@ class AppLocalizationsTr extends AppLocalizations {
   String get selectNzbHint => 'Dosya sisteminden bir .nzb aç';
 
   @override
+  String get searchIndexerCard => 'Indexer\'da ara';
+
+  @override
+  String get searchIndexerCardHint => 'Newznab indexer\'ında sürüm bul';
+
+  @override
+  String get searchTitle => 'Ara';
+
+  @override
+  String get searchHint => 'Sürüm adı…';
+
+  @override
+  String get searchTooltip => 'Ara';
+
+  @override
+  String get searchClearTooltip => 'Temizle';
+
+  @override
+  String get searchNoResults => 'Sonuç bulunamadı';
+
+  @override
+  String get searchEmptyHint =>
+      'Indexer\'ınızda aramak için bir sürüm adı yazın.';
+
+  @override
+  String searchResultsTotal(int count) {
+    return '$count sonuç';
+  }
+
+  @override
+  String searchDownloadFailed(String error) {
+    return 'NZB indirilemedi: $error';
+  }
+
+  @override
+  String get indexerMissingHint =>
+      'Önce ayarlardan indexer URL\'sini ve API anahtarını girin.';
+
+  @override
+  String get goToIndexerSettings => 'Ayarlara git';
+
+  @override
   String get engineStarting => 'Yerel oynatma motoru hazırlanıyor…';
 
   @override
@@ -126,6 +168,39 @@ class AppLocalizationsTr extends AppLocalizations {
   @override
   String get connectionLimitWarning =>
       'Bağlantı limitini sağlayıcınızın planından yüksek seçmek, “çok fazla bağlantı” hatasına yol açabilir.';
+
+  @override
+  String get indexerSectionTitle => 'Indexer (Newznab)';
+
+  @override
+  String get indexerSectionSubtitle =>
+      'Newznab uyumlu indexer\'da arama yapın; API anahtarı bu cihazın güvenli anahtar zincirinde saklanır. Indexer\'ı kapatmak için URL\'yi boş bırakın.';
+
+  @override
+  String get indexerUrlLabel => 'Indexer URL\'si';
+
+  @override
+  String get indexerUrlInvalid =>
+      'http:// veya https:// ile başlayan geçerli bir URL girin';
+
+  @override
+  String get indexerApiKeyLabel => 'API anahtarı';
+
+  @override
+  String get indexerSaveLabel => 'Indexer\'ı kaydet';
+
+  @override
+  String get indexerTestButton => 'Bağlantıyı sına';
+
+  @override
+  String indexerTestSuccess(String name) {
+    return 'Bağlandı: $name';
+  }
+
+  @override
+  String indexerTestFailed(String error) {
+    return 'Bağlantı kurulamadı: $error';
+  }
 
   @override
   String validationRequired(String field) {

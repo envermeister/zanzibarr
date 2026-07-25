@@ -5,6 +5,8 @@ import 'package:media_kit/media_kit.dart';
 
 import 'l10n/app_localizations.dart';
 import 'player/player_screen.dart';
+import 'search/search_screen.dart';
+import 'settings/indexer_settings.dart';
 import 'settings/settings_screen.dart';
 import 'settings/ui_preferences.dart';
 import 'src/rust/frb_generated.dart';
@@ -301,6 +303,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _pickingFile = false;
+  bool _openingIndexer = false;
 
   Future<void> _pickAndPlay(BuildContext context) async {
     if (_pickingFile) return;
@@ -324,6 +327,37 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
+  /// Indexer ayarları tamamsa arama ekranını açar; eksikse önce bilgilendirip
+  /// ayarlar ekranına götürür.
+  Future<void> _openIndexerSearch(BuildContext context) async {
+    if (_openingIndexer) return;
+    setState(() => _openingIndexer = true);
+    try {
+      IndexerSettings settings;
+      try {
+        settings = await IndexerSettingsStore().load();
+      } catch (_) {
+        // Secure storage okunamazsa ayarları yeniden girmeye yönlendir.
+        settings = const IndexerSettings();
+      }
+      if (!context.mounted) return;
+      if (settings.isComplete) {
+        await Navigator.of(context).push(_fadeRoute(const SearchScreen()));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(AppLocalizations.of(context).indexerMissingHint),
+          ),
+        );
+        await Navigator.of(context).push(
+          _fadeRoute(SettingsScreen(uiPreferences: widget.uiPreferences)),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingIndexer = false);
+    }
+  }
+
   void _openSettings(BuildContext context) {
     Navigator.of(context).push(
       _fadeRoute(SettingsScreen(uiPreferences: widget.uiPreferences)),
@@ -332,6 +366,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final foreground = isDark ? Colors.white : Colors.black;
     return Scaffold(
@@ -388,7 +423,21 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 34),
                       _OpenMediaCard(
                         busy: _pickingFile,
+                        icon: Icons.folder_open_rounded,
+                        title: l10n.selectNzbAndPlay,
+                        subtitle: l10n.selectNzbHint,
+                        // TV kumandasında D-pad gezintisinin başlayabilmesi
+                        // için ilk odak bu kartta kalır.
+                        autofocus: true,
                         onPressed: () => _pickAndPlay(context),
+                      ),
+                      const SizedBox(height: 12),
+                      _OpenMediaCard(
+                        busy: _openingIndexer,
+                        icon: Icons.travel_explore_rounded,
+                        title: l10n.searchIndexerCard,
+                        subtitle: l10n.searchIndexerCardHint,
+                        onPressed: () => _openIndexerSearch(context),
                       ),
                     ],
                   ),
@@ -442,14 +491,27 @@ class _AppLogoMark extends StatelessWidget {
 }
 
 class _OpenMediaCard extends StatelessWidget {
-  const _OpenMediaCard({required this.onPressed, required this.busy});
+  const _OpenMediaCard({
+    required this.onPressed,
+    required this.busy,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.autofocus = false,
+  });
 
   final VoidCallback onPressed;
   final bool busy;
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  /// TV kumandasında D-pad gezintisinin başlayabilmesi için ilk odağın bir
+  /// kartta olması gerekir; yalnızca ilk kartta true olmalı.
+  final bool autofocus;
 
   @override
   Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final foreground = isDark ? Colors.white : Colors.black;
     return Material(
@@ -462,9 +524,7 @@ class _OpenMediaCard extends StatelessWidget {
       child: InkWell(
         onTap: busy ? null : onPressed,
         hoverColor: foreground.withValues(alpha: 0.045),
-        // TV kumandasında D-pad gezintisinin başlayabilmesi için ilk odağın
-        // bu kartta olması gerekir; yoksa hiçbir widget odaklanamaz.
-        autofocus: true,
+        autofocus: autofocus,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Row(
@@ -485,7 +545,7 @@ class _OpenMediaCard extends StatelessWidget {
                         ),
                       )
                     : Icon(
-                        Icons.folder_open_rounded,
+                        icon,
                         size: 21,
                         color: foreground.withValues(alpha: 0.7),
                       ),
@@ -496,7 +556,7 @@ class _OpenMediaCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      l10n.selectNzbAndPlay,
+                      title,
                       style: TextStyle(
                         color: foreground,
                         fontSize: 14,
@@ -505,7 +565,7 @@ class _OpenMediaCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      l10n.selectNzbHint,
+                      subtitle,
                       style: TextStyle(
                         color: foreground.withValues(alpha: 0.38),
                         fontSize: 11,

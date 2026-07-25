@@ -49,6 +49,47 @@ class AppLocalizationsFa extends AppLocalizations {
   String get selectNzbHint => 'باز کردن یک فایل .nzb از سیستم فایل';
 
   @override
+  String get searchIndexerCard => 'Search the indexer';
+
+  @override
+  String get searchIndexerCardHint => 'Find releases on a Newznab indexer';
+
+  @override
+  String get searchTitle => 'Search';
+
+  @override
+  String get searchHint => 'Release name…';
+
+  @override
+  String get searchTooltip => 'Search';
+
+  @override
+  String get searchClearTooltip => 'Clear';
+
+  @override
+  String get searchNoResults => 'No results found';
+
+  @override
+  String get searchEmptyHint => 'Type a release name to search your indexer.';
+
+  @override
+  String searchResultsTotal(int count) {
+    return '$count results';
+  }
+
+  @override
+  String searchDownloadFailed(String error) {
+    return 'Could not download the NZB: $error';
+  }
+
+  @override
+  String get indexerMissingHint =>
+      'Set up the indexer URL and API key in settings first.';
+
+  @override
+  String get goToIndexerSettings => 'Open settings';
+
+  @override
   String get engineStarting => 'در حال آماده‌سازی موتور پخش محلی…';
 
   @override
@@ -126,6 +167,39 @@ class AppLocalizationsFa extends AppLocalizations {
   @override
   String get connectionLimitWarning =>
       'تنظیم محدودیت اتصال بالاتر از طرح ارائه‌دهنده شما ممکن است خطای «اتصالات بیش از حد» ایجاد کند.';
+
+  @override
+  String get indexerSectionTitle => 'Indexer (Newznab)';
+
+  @override
+  String get indexerSectionSubtitle =>
+      'Search a Newznab-compatible indexer; the API key is stored in this device\'s secure keychain. Leave the URL empty to disable the indexer.';
+
+  @override
+  String get indexerUrlLabel => 'Indexer URL';
+
+  @override
+  String get indexerUrlInvalid =>
+      'Enter a valid URL starting with http:// or https://';
+
+  @override
+  String get indexerApiKeyLabel => 'API key';
+
+  @override
+  String get indexerSaveLabel => 'Save indexer';
+
+  @override
+  String get indexerTestButton => 'Test connection';
+
+  @override
+  String indexerTestSuccess(String name) {
+    return 'Connected: $name';
+  }
+
+  @override
+  String indexerTestFailed(String error) {
+    return 'Connection failed: $error';
+  }
 
   @override
   String validationRequired(String field) {

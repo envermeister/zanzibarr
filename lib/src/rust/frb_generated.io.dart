@@ -3,6 +3,7 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/search.dart';
 import 'api/simple.dart';
 import 'api/streaming.dart';
 import 'dart:async';
@@ -26,13 +27,58 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool dco_decode_bool(dynamic raw);
 
   @protected
+  PlatformInt64 dco_decode_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  IndexerConfigDto dco_decode_box_autoadd_indexer_config_dto(dynamic raw);
+
+  @protected
   ProviderConfigDto dco_decode_box_autoadd_provider_config_dto(dynamic raw);
+
+  @protected
+  int dco_decode_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt dco_decode_box_autoadd_u_64(dynamic raw);
+
+  @protected
+  PlatformInt64 dco_decode_i_64(dynamic raw);
+
+  @protected
+  IndexerCapsDto dco_decode_indexer_caps_dto(dynamic raw);
+
+  @protected
+  IndexerConfigDto dco_decode_indexer_config_dto(dynamic raw);
+
+  @protected
+  List<String> dco_decode_list_String(dynamic raw);
 
   @protected
   Uint8List dco_decode_list_prim_u_8_strict(dynamic raw);
 
   @protected
+  List<SearchItemDto> dco_decode_list_search_item_dto(dynamic raw);
+
+  @protected
+  String? dco_decode_opt_String(dynamic raw);
+
+  @protected
+  PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
+
+  @protected
+  int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
+
+  @protected
+  BigInt? dco_decode_opt_box_autoadd_u_64(dynamic raw);
+
+  @protected
   ProviderConfigDto dco_decode_provider_config_dto(dynamic raw);
+
+  @protected
+  SearchItemDto dco_decode_search_item_dto(dynamic raw);
+
+  @protected
+  SearchPageDto dco_decode_search_page_dto(dynamic raw);
 
   @protected
   StreamInfo dco_decode_stream_info(dynamic raw);
@@ -59,17 +105,66 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   bool sse_decode_bool(SseDeserializer deserializer);
 
   @protected
+  PlatformInt64 sse_decode_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  IndexerConfigDto sse_decode_box_autoadd_indexer_config_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   ProviderConfigDto sse_decode_box_autoadd_provider_config_dto(
     SseDeserializer deserializer,
   );
 
   @protected
+  int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt sse_decode_box_autoadd_u_64(SseDeserializer deserializer);
+
+  @protected
+  PlatformInt64 sse_decode_i_64(SseDeserializer deserializer);
+
+  @protected
+  IndexerCapsDto sse_decode_indexer_caps_dto(SseDeserializer deserializer);
+
+  @protected
+  IndexerConfigDto sse_decode_indexer_config_dto(SseDeserializer deserializer);
+
+  @protected
+  List<String> sse_decode_list_String(SseDeserializer deserializer);
+
+  @protected
   Uint8List sse_decode_list_prim_u_8_strict(SseDeserializer deserializer);
+
+  @protected
+  List<SearchItemDto> sse_decode_list_search_item_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  String? sse_decode_opt_String(SseDeserializer deserializer);
+
+  @protected
+  PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
+
+  @protected
+  int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
+
+  @protected
+  BigInt? sse_decode_opt_box_autoadd_u_64(SseDeserializer deserializer);
 
   @protected
   ProviderConfigDto sse_decode_provider_config_dto(
     SseDeserializer deserializer,
   );
+
+  @protected
+  SearchItemDto sse_decode_search_item_dto(SseDeserializer deserializer);
+
+  @protected
+  SearchPageDto sse_decode_search_page_dto(SseDeserializer deserializer);
 
   @protected
   StreamInfo sse_decode_stream_info(SseDeserializer deserializer);
@@ -99,10 +194,46 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   void sse_encode_bool(bool self, SseSerializer serializer);
 
   @protected
+  void sse_encode_box_autoadd_i_64(
+    PlatformInt64 self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_box_autoadd_indexer_config_dto(
+    IndexerConfigDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_provider_config_dto(
     ProviderConfigDto self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_box_autoadd_u_64(BigInt self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_i_64(PlatformInt64 self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_indexer_caps_dto(
+    IndexerCapsDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_indexer_config_dto(
+    IndexerConfigDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_list_String(List<String> self, SseSerializer serializer);
 
   @protected
   void sse_encode_list_prim_u_8_strict(
@@ -111,10 +242,37 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_list_search_item_dto(
+    List<SearchItemDto> self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_String(String? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_i_64(
+    PlatformInt64? self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_opt_box_autoadd_u_64(BigInt? self, SseSerializer serializer);
+
+  @protected
   void sse_encode_provider_config_dto(
     ProviderConfigDto self,
     SseSerializer serializer,
   );
+
+  @protected
+  void sse_encode_search_item_dto(SearchItemDto self, SseSerializer serializer);
+
+  @protected
+  void sse_encode_search_page_dto(SearchPageDto self, SseSerializer serializer);
 
   @protected
   void sse_encode_stream_info(StreamInfo self, SseSerializer serializer);

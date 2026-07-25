@@ -200,6 +200,78 @@ abstract class AppLocalizations {
   /// **'Open a .nzb from the file system'**
   String get selectNzbHint;
 
+  /// No description provided for @searchIndexerCard.
+  ///
+  /// In en, this message translates to:
+  /// **'Search the indexer'**
+  String get searchIndexerCard;
+
+  /// No description provided for @searchIndexerCardHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Find releases on a Newznab indexer'**
+  String get searchIndexerCardHint;
+
+  /// No description provided for @searchTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get searchTitle;
+
+  /// No description provided for @searchHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Release name…'**
+  String get searchHint;
+
+  /// No description provided for @searchTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Search'**
+  String get searchTooltip;
+
+  /// No description provided for @searchClearTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Clear'**
+  String get searchClearTooltip;
+
+  /// No description provided for @searchNoResults.
+  ///
+  /// In en, this message translates to:
+  /// **'No results found'**
+  String get searchNoResults;
+
+  /// No description provided for @searchEmptyHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Type a release name to search your indexer.'**
+  String get searchEmptyHint;
+
+  /// No description provided for @searchResultsTotal.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} results'**
+  String searchResultsTotal(int count);
+
+  /// No description provided for @searchDownloadFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not download the NZB: {error}'**
+  String searchDownloadFailed(String error);
+
+  /// No description provided for @indexerMissingHint.
+  ///
+  /// In en, this message translates to:
+  /// **'Set up the indexer URL and API key in settings first.'**
+  String get indexerMissingHint;
+
+  /// No description provided for @goToIndexerSettings.
+  ///
+  /// In en, this message translates to:
+  /// **'Open settings'**
+  String get goToIndexerSettings;
+
   /// No description provided for @engineStarting.
   ///
   /// In en, this message translates to:
@@ -343,6 +415,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Setting the connection limit above your provider\'s plan may cause a “too many connections” error.'**
   String get connectionLimitWarning;
+
+  /// No description provided for @indexerSectionTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Indexer (Newznab)'**
+  String get indexerSectionTitle;
+
+  /// No description provided for @indexerSectionSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Search a Newznab-compatible indexer; the API key is stored in this device\'s secure keychain. Leave the URL empty to disable the indexer.'**
+  String get indexerSectionSubtitle;
+
+  /// No description provided for @indexerUrlLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Indexer URL'**
+  String get indexerUrlLabel;
+
+  /// No description provided for @indexerUrlInvalid.
+  ///
+  /// In en, this message translates to:
+  /// **'Enter a valid URL starting with http:// or https://'**
+  String get indexerUrlInvalid;
+
+  /// No description provided for @indexerApiKeyLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'API key'**
+  String get indexerApiKeyLabel;
+
+  /// No description provided for @indexerSaveLabel.
+  ///
+  /// In en, this message translates to:
+  /// **'Save indexer'**
+  String get indexerSaveLabel;
+
+  /// No description provided for @indexerTestButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Test connection'**
+  String get indexerTestButton;
+
+  /// No description provided for @indexerTestSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Connected: {name}'**
+  String indexerTestSuccess(String name);
+
+  /// No description provided for @indexerTestFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Connection failed: {error}'**
+  String indexerTestFailed(String error);
 
   /// No description provided for @validationRequired.
   ///

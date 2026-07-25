@@ -1,20 +1,39 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../src/rust/api/search.dart';
+import 'indexer_settings.dart';
 import 'provider_settings.dart';
 import 'ui_preferences.dart';
+
+/// FRB `newznabCheckCaps` imzası; testlerde sahte enjekte edilebilir.
+typedef NewznabCapsFn =
+    Future<IndexerCapsDto> Function(IndexerConfigDto config);
 
 /// Sağlayıcı (NNTP) kimlik bilgileri için ayar ekranı.
 ///
 /// Değerler OS secure storage'a yazılır; ekran açılışında oradan okunur.
 class SettingsScreen extends StatefulWidget {
-  const SettingsScreen({super.key, this.store, this.uiPreferences});
+  const SettingsScreen({
+    super.key,
+    this.store,
+    this.uiPreferences,
+    this.indexerStore,
+    this.capsFn,
+  });
 
   /// Testlerde sahte depo enjekte edebilmek için; null ise gerçek depo kullanılır.
   final ProviderSettingsStore? store;
 
   /// Dil/görünüm seçicileri için; null ise "Uygulama" bölümü gösterilmez.
   final UiPreferencesController? uiPreferences;
+
+  /// Indexer (Newznab) ayarları için; null ise gerçek depo kullanılır.
+  final IndexerSettingsStore? indexerStore;
+
+  /// "Bağlantıyı sına" düğmesinin çağırdığı caps sorgusu; null ise FRB
+  /// `newznabCheckCaps` kullanılır.
+  final NewznabCapsFn? capsFn;
 
   @override
   State<SettingsScreen> createState() => _SettingsScreenState();
@@ -24,6 +43,10 @@ class _SettingsScreenState extends State<SettingsScreen>
     with WidgetsBindingObserver {
   late final ProviderSettingsStore _store =
       widget.store ?? ProviderSettingsStore();
+  late final IndexerSettingsStore _indexerStore =
+      widget.indexerStore ?? IndexerSettingsStore();
+  late final NewznabCapsFn _capsFn =
+      widget.capsFn ?? (config) => newznabCheckCaps(config: config);
 
   final _formKey = GlobalKey<FormState>();
   final _hostController = TextEditingController();
@@ -32,9 +55,17 @@ class _SettingsScreenState extends State<SettingsScreen>
   final _passwordController = TextEditingController();
   final _maxConnectionsController = TextEditingController();
 
+  // Indexer bölümü NNTP formundan bağımsızdır: ayrı Form, ayrı kaydet düğmesi.
+  final _indexerFormKey = GlobalKey<FormState>();
+  final _indexerUrlController = TextEditingController();
+  final _indexerApiKeyController = TextEditingController();
+
   bool _loading = true;
   bool _saving = false;
   bool _obscurePassword = true;
+  bool _savingIndexer = false;
+  bool _testingIndexer = false;
+  bool _obscureApiKey = true;
   Object? _loadError;
 
   @override
@@ -42,12 +73,18 @@ class _SettingsScreenState extends State<SettingsScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    _loadIndexer();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed && !_obscurePassword && mounted) {
-      setState(() => _obscurePassword = true);
+    if (state != AppLifecycleState.resumed && mounted) {
+      if (!_obscurePassword || !_obscureApiKey) {
+        setState(() {
+          _obscurePassword = true;
+          _obscureApiKey = true;
+        });
+      }
     }
   }
 
@@ -76,6 +113,19 @@ class _SettingsScreenState extends State<SettingsScreen>
         _loading = false;
       });
     }
+  }
+
+  /// Indexer okuması NNTP'den bağımsızdır: depo okunamazsa (veya hiç
+  /// tamamlanamazsa) NNTP formu kilitlenmesin, indexer alanları boş kalsın.
+  Future<void> _loadIndexer() async {
+    try {
+      final indexer = await _indexerStore.load();
+      if (!mounted) return;
+      setState(() {
+        _indexerUrlController.text = indexer.baseUrl;
+        _indexerApiKeyController.text = indexer.apiKey;
+      });
+    } catch (_) {}
   }
 
   Future<void> _save() async {
@@ -113,6 +163,98 @@ class _SettingsScreenState extends State<SettingsScreen>
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(AppLocalizations.of(context).settingsSaved)),
     );
+  }
+
+  Future<void> _saveIndexer() async {
+    if (_savingIndexer) return;
+    if (!_indexerFormKey.currentState!.validate()) return;
+    setState(() {
+      _savingIndexer = true;
+      _obscureApiKey = true;
+    });
+    var saved = false;
+    try {
+      await _indexerStore.save(
+        IndexerSettings(
+          baseUrl: _indexerUrlController.text.trim(),
+          apiKey: _indexerApiKeyController.text.trim(),
+        ),
+      );
+      saved = true;
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(AppLocalizations.of(context).settingsSaveFailed('$e')),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _savingIndexer = false);
+    }
+    if (!mounted || !saved) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(AppLocalizations.of(context).settingsSaved)),
+    );
+  }
+
+  /// Formdaki güncel değerlerle `?t=caps` sorgusu atar; sonucu SnackBar'da
+  /// gösterir. API anahtarı hiçbir yere yazılmaz/loglanmaz.
+  Future<void> _testIndexer() async {
+    if (_testingIndexer) return;
+    if (!_indexerFormKey.currentState!.validate()) return;
+    final l10n = AppLocalizations.of(context);
+    final baseUrl = _indexerUrlController.text.trim();
+    final apiKey = _indexerApiKeyController.text.trim();
+    if (baseUrl.isEmpty || apiKey.isEmpty) {
+      // Boş URL indexer kapalı demektir; sınanacak bir bağlantı yok.
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.indexerMissingHint)),
+      );
+      return;
+    }
+    setState(() => _testingIndexer = true);
+    try {
+      final caps = await _capsFn(
+        IndexerConfigDto(baseUrl: baseUrl, apiKey: apiKey),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(l10n.indexerTestSuccess(caps.serverTitle ?? baseUrl)),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(l10n.indexerTestFailed('$error'))),
+      );
+    } finally {
+      if (mounted) setState(() => _testingIndexer = false);
+    }
+  }
+
+  /// Boş URL geçerlidir (indexer kapalı); doluysa http(s) URL'si olmalı.
+  String? _validateIndexerUrl(String? value) {
+    final l10n = AppLocalizations.of(context);
+    final url = value?.trim() ?? '';
+    if (url.isEmpty) return null;
+    if (url.contains(RegExp(r'\s'))) return l10n.indexerUrlInvalid;
+    final uri = Uri.tryParse(url);
+    if (uri == null ||
+        !(uri.isScheme('http') || uri.isScheme('https')) ||
+        uri.host.isEmpty) {
+      return l10n.indexerUrlInvalid;
+    }
+    return null;
+  }
+
+  /// URL doluyken API anahtarı zorunludur.
+  String? _validateIndexerApiKey(String? value) {
+    final url = _indexerUrlController.text.trim();
+    if (url.isNotEmpty) {
+      return _required(value, AppLocalizations.of(context).indexerApiKeyLabel);
+    }
+    return null;
   }
 
   String? _validateIntegerRange(
@@ -195,6 +337,10 @@ class _SettingsScreenState extends State<SettingsScreen>
       ..clear()
       ..dispose();
     _maxConnectionsController.dispose();
+    _indexerUrlController.dispose();
+    _indexerApiKeyController
+      ..clear()
+      ..dispose();
     super.dispose();
   }
 
@@ -449,6 +595,125 @@ class _SettingsScreenState extends State<SettingsScreen>
                           label: Text(
                             _saving ? l10n.savingLabel : l10n.saveSecurelyLabel,
                           ),
+                        ),
+                      ),
+                      const SizedBox(height: 30),
+                      Text(
+                        l10n.indexerSectionTitle,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.35,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Text(
+                        l10n.indexerSectionSubtitle,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.onSurface.withValues(alpha: 0.45),
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
+                      // Indexer ayarları NNTP formundan bağımsız kaydedilir;
+                      // iç içe Form'lar alanları ayrı ayrı doğrular.
+                      Form(
+                        key: _indexerFormKey,
+                        child: Column(
+                          children: [
+                            _SettingsCard(
+                              children: [
+                                TextFormField(
+                                  controller: _indexerUrlController,
+                                  decoration: InputDecoration(
+                                    labelText: l10n.indexerUrlLabel,
+                                    hintText: 'https://indexer.example',
+                                    prefixIcon: const Icon(
+                                      Icons.travel_explore_rounded,
+                                      size: 19,
+                                    ),
+                                  ),
+                                  textInputAction: TextInputAction.next,
+                                  keyboardType: TextInputType.url,
+                                  autocorrect: false,
+                                  validator: _validateIndexerUrl,
+                                ),
+                                const SizedBox(height: 12),
+                                TextFormField(
+                                  controller: _indexerApiKeyController,
+                                  obscureText: _obscureApiKey,
+                                  enableSuggestions: false,
+                                  autocorrect: false,
+                                  onFieldSubmitted: (_) => _saveIndexer(),
+                                  validator: _validateIndexerApiKey,
+                                  decoration: InputDecoration(
+                                    labelText: l10n.indexerApiKeyLabel,
+                                    prefixIcon: const Icon(
+                                      Icons.key_rounded,
+                                      size: 19,
+                                    ),
+                                    suffixIcon: IconButton(
+                                      tooltip: _obscureApiKey
+                                          ? l10n.passwordShowTooltip
+                                          : l10n.passwordHideTooltip,
+                                      icon: Icon(
+                                        _obscureApiKey
+                                            ? Icons.visibility_rounded
+                                            : Icons.visibility_off_rounded,
+                                        size: 18,
+                                      ),
+                                      onPressed: () => setState(
+                                        () =>
+                                            _obscureApiKey = !_obscureApiKey,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 22),
+                            Wrap(
+                              alignment: WrapAlignment.end,
+                              spacing: 10,
+                              runSpacing: 8,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed:
+                                      _testingIndexer ? null : _testIndexer,
+                                  icon: _testingIndexer
+                                      ? const SizedBox.square(
+                                          dimension: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 1.8,
+                                          ),
+                                        )
+                                      : const Icon(
+                                          Icons.cable_rounded,
+                                          size: 18,
+                                        ),
+                                  label: Text(l10n.indexerTestButton),
+                                ),
+                                FilledButton.icon(
+                                  onPressed:
+                                      _savingIndexer ? null : _saveIndexer,
+                                  icon: _savingIndexer
+                                      ? const SizedBox.square(
+                                          dimension: 16,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 1.8,
+                                          ),
+                                        )
+                                      : const Icon(Icons.check_rounded, size: 18),
+                                  label: Text(
+                                    _savingIndexer
+                                        ? l10n.savingLabel
+                                        : l10n.indexerSaveLabel,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                     ],
