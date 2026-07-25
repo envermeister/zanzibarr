@@ -1,5 +1,5 @@
-//! Çok ciltli RAR5 STORE yayınlarını sanal, seek edilebilir medya dosyasına
-//! dönüştürür.
+//! Çok ciltli RAR STORE yayınlarını sanal, seek edilebilir medya dosyasına
+//! dönüştürür (RAR5 + RAR4/RAR3).
 //!
 //! RAR ciltleri diske indirilmez. Her `.partNN.rar` (veya eski usul
 //! `.rar`/`.rNN`) dosyası mevcut NNTP+yEnc kaynağıyla açılır, tek bir sanal
@@ -7,9 +7,8 @@
 //! olarak okunur. İçerideki medya STORE ise her parçanın veri aralığı doğrudan
 //! sunulur; şifreliyse ve NZB parolası biliniyorsa istenen bloklar yerinde
 //! çözülür. Sıkıştırılmış (method != STORE) ve solid arşivler, rastgele
-//! seek'i bozmamak için açıkça reddedilir. RAR4 ve eski biçim desteklenmez:
-//! blok düzeni farklıdır ve gerçek bir örnek olmadan parser'ı doğrulamak
-//! mümkün değildir.
+//! seek'i bozmamak için açıkça reddedilir. RAR4 STORE desteklenir; RAR4
+//! parola koruması (RAR5 -hp'den farklı KDF/AES-128 düzeni) reddedilir.
 //!
 //! Başlık düzeni (RAR5, libarchive rar5 okuyucusuyla çapraz doğrulandı):
 //! imza `52 61 72 21 1A 07 01 00`; ardından bloklar. Her blok:
@@ -54,6 +53,20 @@ use super::server::{content_type_for, RangeSource};
 const RAR5_SIGNATURE: &[u8; 8] = b"Rar!\x1A\x07\x01\x00";
 const RAR4_SIGNATURE: &[u8; 7] = b"Rar!\x1A\x07\x00";
 
+// RAR4 blok düzeni sabitleri.
+const RAR4_HEAD_TYPE_MAIN: u8 = 0x72;
+const RAR4_HEAD_TYPE_FILE: u8 = 0x73;
+const RAR4_HEAD_TYPE_ENDARC: u8 = 0x7B;
+const RAR4_FLAG_LONG_BLOCK: u16 = 0x8000;
+const RAR4_MAIN_FLAG_PASSWORD: u16 = 0x0080;
+const RAR4_LHD_SPLIT_BEFORE: u16 = 0x0001;
+const RAR4_LHD_SPLIT_AFTER: u16 = 0x0002;
+const RAR4_LHD_PASSWORD: u16 = 0x0004;
+const RAR4_LHD_SOLID: u16 = 0x0010;
+const RAR4_LHD_LARGE: u16 = 0x0100;
+const RAR4_LHD_UNICODE: u16 = 0x0200;
+const RAR4_METHOD_STORE: u8 = 0x30;
+
 const HEAD_TYPE_MAIN: u64 = 1;
 const HEAD_TYPE_FILE: u64 = 2;
 const HEAD_TYPE_SERVICE: u64 = 3;
@@ -92,8 +105,8 @@ pub enum RarError {
     NoPlayableMedia,
     #[error("RAR arşivi sıkıştırılmış; yalnız STORE arşivleri seek edilerek oynatılabilir")]
     UnsupportedCompression,
-    #[error("RAR4 ve daha eski arşivler desteklenmiyor; RAR5 STORE seti gerekli")]
-    UnsupportedVersion,
+    #[error("RAR4 parola koruması desteklenmiyor (RAR5 -hp kapsamı dışında); şifresiz veya RAR5 set gerekli")]
+    UnsupportedRar4Encryption,
     #[error("RAR arşivi parola korumalı ve NZB parola içermiyor")]
     Encrypted,
     #[error("NZB'deki parola RAR arşivine uymuyor")]
@@ -631,12 +644,14 @@ fn parse_volume<R: Read + Seek>(
         end: volume_end,
     };
 
-    let mut signature = [0u8; 8];
+    let mut signature = [0u8; 7];
     parser.read_exact(&mut signature)?;
-    if signature[..7] == RAR4_SIGNATURE[..] {
-        return Err(RarError::UnsupportedVersion);
+    if signature == *RAR4_SIGNATURE {
+        return parse_volume_rar4(&mut parser, volume_start);
     }
-    if &signature != RAR5_SIGNATURE {
+    let mut version_byte = [0u8; 1];
+    parser.read_exact(&mut version_byte)?;
+    if signature.as_slice() != &RAR5_SIGNATURE[..7] || version_byte[0] != RAR5_SIGNATURE[7] {
         return Err(RarError::Header("RAR imzası bulunamadı".into()));
     }
 
@@ -730,10 +745,164 @@ fn parse_volume<R: Read + Seek>(
     Ok(entries)
 }
 
+/// RAR4/RAR3 cildini blok blok okuyup STORE parça adaylarını toplar.
+///
+/// Blok düzeni: HEAD_CRC(2, HEAD_TYPE..başlık sonu CRC32'sinin alt 16 bit'i),
+/// HEAD_TYPE(1), HEAD_FLAGS(2), HEAD_SIZE(2), [ADD_SIZE(4) — bayrak 0x8000].
+/// Veri şifrelemesi (LHD_PASSWORD) ve başlık şifrelemesi (MHD_PASSWORD/-hp)
+/// RAR5'ten farklı bir KDF/AES-128 düzeni gerektirdiğinden açıkça reddedilir;
+/// sıkıştırılmış girdiler (method != 0x30) RAR5'te olduğu gibi kurulum
+/// aşamasında elenir.
+fn parse_volume_rar4<R: Read + Seek>(
+    parser: &mut VolumeParser<'_, R>,
+    volume_start: u64,
+) -> Result<Vec<FileEntry>, RarError> {
+    let mut entries = Vec::new();
+    loop {
+        // En küçük blok 7 bayt; kalan artık cilt sonu dolgusu sayılır.
+        if parser.remaining() < 7 {
+            break;
+        }
+        let mut head = [0u8; 7];
+        parser.read_exact(&mut head)?;
+        let expected_crc = u16::from_le_bytes([head[0], head[1]]);
+        let head_type = head[2];
+        let head_flags = u16::from_le_bytes([head[3], head[4]]);
+        let head_size = u64::from(u16::from_le_bytes([head[5], head[6]]));
+        if head_size < 7 {
+            return Err(RarError::InvalidLayout(format!(
+                "RAR4 blok boyutu {head_size} geçersiz"
+            )));
+        }
+        if head_size - 7 > parser.remaining() {
+            return Err(parser.unexpected_eof());
+        }
+
+        let long_block = head_flags & RAR4_FLAG_LONG_BLOCK != 0;
+        // CRC, HEAD_TYPE baytından başlık sonuna kadar hesaplanır.
+        let mut crc_input = head[2..].to_vec();
+        let add_size = if long_block {
+            let mut add = [0u8; 4];
+            parser.read_exact(&mut add)?;
+            crc_input.extend_from_slice(&add);
+            u64::from(u32::from_le_bytes(add))
+        } else {
+            0
+        };
+        let body_len = head_size - 7 - if long_block { 4 } else { 0 };
+        let mut body = vec![0u8; body_len as usize];
+        parser.read_exact(&mut body)?;
+        crc_input.extend_from_slice(&body);
+        if crc32fast::hash(&crc_input) as u16 != expected_crc {
+            return Err(RarError::Header("RAR4 blok CRC'si uyuşmuyor".into()));
+        }
+
+        match head_type {
+            RAR4_HEAD_TYPE_MAIN => {
+                if head_flags & RAR4_MAIN_FLAG_PASSWORD != 0 {
+                    return Err(RarError::UnsupportedRar4Encryption);
+                }
+                parser.skip(add_size)?;
+            }
+            RAR4_HEAD_TYPE_FILE => {
+                let mut entry = parse_rar4_file_body(&body, head_flags)?;
+                if entry.data_size != add_size {
+                    return Err(RarError::InvalidLayout(format!(
+                        "RAR4 FILE başlığındaki pack boyutu {}, ADD_SIZE {add_size} ile uyuşmuyor",
+                        entry.data_size
+                    )));
+                }
+                entry.data_offset = parser.position - volume_start;
+                parser.skip(add_size)?;
+                entries.push(entry);
+            }
+            RAR4_HEAD_TYPE_ENDARC => break,
+            // COMM/AV/NEWSUB vb. veri alanıyla birlikte atlanır.
+            _ => parser.skip(add_size)?,
+        }
+    }
+    Ok(entries)
+}
+
+/// RAR4 FILE_HEAD gövdesini (ADD_SIZE sonrası alanlar) [`FileEntry`]'ye çevirir.
+/// `data_offset` çağıran tarafından doldurulur.
+fn parse_rar4_file_body(body: &[u8], head_flags: u16) -> Result<FileEntry, RarError> {
+    // pack(4) unp(4) host_os(1) file_crc(4) ftime(4) unp_ver(1) method(1)
+    // name_size(2) attr(4) = 25 bayt sabit bölüm.
+    if body.len() < 25 {
+        return Err(RarError::Header("RAR4 FILE başlığı kısa".into()));
+    }
+    if head_flags & RAR4_LHD_PASSWORD != 0 {
+        return Err(RarError::UnsupportedRar4Encryption);
+    }
+    let pack_low = u64::from(u32::from_le_bytes(body[0..4].try_into().expect("4 bayt")));
+    let unp_low = u64::from(u32::from_le_bytes(body[4..8].try_into().expect("4 bayt")));
+    let host_os = body[8];
+    let method = body[18];
+    let name_size = usize::from(u16::from_le_bytes([body[19], body[20]]));
+    let attr = u32::from_le_bytes(body[21..25].try_into().expect("4 bayt"));
+
+    let mut position = 25;
+    let (pack_size, unpacked_size) = if head_flags & RAR4_LHD_LARGE != 0 {
+        if body.len() < position + 8 {
+            return Err(RarError::Header("RAR4 LARGE alanları kısa".into()));
+        }
+        let high_pack = u64::from(u32::from_le_bytes(
+            body[position..position + 4].try_into().expect("4 bayt"),
+        ));
+        let high_unp = u64::from(u32::from_le_bytes(
+            body[position + 4..position + 8].try_into().expect("4 bayt"),
+        ));
+        position += 8;
+        (pack_low | (high_pack << 32), unp_low | (high_unp << 32))
+    } else {
+        (pack_low, unp_low)
+    };
+
+    if body.len() < position + name_size {
+        return Err(RarError::Header("RAR4 dosya adı başlığı taşıyor".into()));
+    }
+    let name = decode_rar4_name(&body[position..position + name_size], head_flags);
+    if name.is_empty() {
+        return Err(RarError::Header("RAR4 dosya adı çözülemedi".into()));
+    }
+    // RAR4'te dizin bayrağı yok; host özniteliği veya ad sondan anlaşılır.
+    let is_dir = (host_os == 3 && attr & 0x10 != 0)
+        || name.ends_with('/')
+        || name.ends_with('\\');
+
+    Ok(FileEntry {
+        name,
+        unpacked_size,
+        data_size: pack_size,
+        data_offset: 0,
+        split_before: head_flags & RAR4_LHD_SPLIT_BEFORE != 0,
+        split_after: head_flags & RAR4_LHD_SPLIT_AFTER != 0,
+        store: method == RAR4_METHOD_STORE,
+        solid: head_flags & RAR4_LHD_SOLID != 0,
+        crypt: None,
+        is_dir,
+    })
+}
+
+/// RAR4 ad alanını çözer. LHD_UNICODE'da tam Unicode rekonstrüksiyonu
+/// yapılmaz; ilk NUL'a kadar olan düz kısım kullanılır (sahne adlandırması
+/// pratikte ASCII düz kısımla eşleşir).
+fn decode_rar4_name(name_bytes: &[u8], head_flags: u16) -> String {
+    let plain = if head_flags & RAR4_LHD_UNICODE != 0 {
+        name_bytes
+            .split(|byte| *byte == 0)
+            .next()
+            .unwrap_or_default()
+    } else {
+        name_bytes
+    };
+    String::from_utf8_lossy(plain).into_owned()
+}
+
 enum Block {
     Main,
-    Service,
-    Encryption(EncryptionHead),
+    Service,    Encryption(EncryptionHead),
     EndArchive,
     File(FileEntry),
     Unknown { head_type: u64, skippable: bool },
@@ -1466,13 +1635,166 @@ mod tests {
     }
 
     #[test]
-    fn rar4_imzasi_reddedilir() {
+    fn rar4_bozuk_blok_reddedilir() {
         let mut bytes = RAR4_SIGNATURE.to_vec();
         bytes.extend_from_slice(&[0u8; 64]);
         let len = bytes.len() as u64;
         assert!(matches!(
             build_fragment_map(&mut Cursor::new(bytes), &[(0, len)], None),
-            Err(RarError::UnsupportedVersion)
+            Err(RarError::InvalidLayout(_))
+        ));
+    }
+
+    // -- RAR4 fixture yardımcıları -------------------------------------------
+
+    /// CRC'si doğru hesaplanmış RAR4 bloğu üretir.
+    fn rar4_block(head_type: u8, head_flags: u16, body: &[u8], data: &[u8]) -> Vec<u8> {
+        let mut flags = head_flags;
+        if !data.is_empty() {
+            flags |= RAR4_FLAG_LONG_BLOCK;
+        }
+        let long = flags & RAR4_FLAG_LONG_BLOCK != 0;
+        let head_size = (7 + if long { 4 } else { 0 } + body.len()) as u16;
+
+        let mut crc_input = vec![head_type];
+        crc_input.extend_from_slice(&flags.to_le_bytes());
+        crc_input.extend_from_slice(&head_size.to_le_bytes());
+        if long {
+            crc_input.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        }
+        crc_input.extend_from_slice(body);
+
+        let mut out = (crc32fast::hash(&crc_input) as u16).to_le_bytes().to_vec();
+        out.extend_from_slice(&crc_input);
+        out.extend_from_slice(data);
+        out
+    }
+
+    fn rar4_main_block() -> Vec<u8> {
+        rar4_block(RAR4_HEAD_TYPE_MAIN, 0, &[0u8; 6], &[])
+    }
+
+    fn rar4_endarc_block() -> Vec<u8> {
+        rar4_block(RAR4_HEAD_TYPE_ENDARC, 0, &[0u8; 6], &[])
+    }
+
+    fn rar4_file_block(name: &str, data: &[u8], unp_total: u64, method: u8, flags: u16) -> Vec<u8> {
+        let mut body = Vec::new();
+        body.extend_from_slice(&(data.len() as u32).to_le_bytes());
+        body.extend_from_slice(&(unp_total as u32).to_le_bytes());
+        body.push(3); // host_os: win32
+        body.extend_from_slice(&crc32fast::hash(data).to_le_bytes());
+        body.extend_from_slice(&[0u8; 4]); // ftime
+        body.push(20); // unp_ver: 2.0
+        body.push(method);
+        body.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        body.extend_from_slice(&[0u8; 4]); // attr
+        body.extend_from_slice(name.as_bytes());
+        rar4_block(RAR4_HEAD_TYPE_FILE, flags, &body, data)
+    }
+
+    fn rar4_volume(blocks: &[Vec<u8>]) -> Vec<u8> {
+        let mut out = RAR4_SIGNATURE.to_vec();
+        for block in blocks {
+            out.extend_from_slice(block);
+        }
+        out
+    }
+
+    #[test]
+    fn rar4_store_tek_cilt_okunur() {
+        let data: Vec<u8> = (0..=251u8).cycle().take(5000).collect();
+        let bytes = rar4_volume(&[
+            rar4_main_block(),
+            rar4_file_block("movie.mkv", &data, 5000, RAR4_METHOD_STORE, 0),
+            rar4_endarc_block(),
+        ]);
+        let len = bytes.len() as u64;
+        let map = build_fragment_map(&mut Cursor::new(bytes), &[(0, len)], None).unwrap();
+        assert_eq!(map.total_len, 5000);
+        assert_eq!(map.filename, "movie.mkv");
+        assert_eq!(map.fragments.len(), 1);
+        assert!(map.crypt.is_none());
+    }
+
+    #[test]
+    fn rar4_split_zinciri_birlesir() {
+        let part1: Vec<u8> = vec![0xAA; 3000];
+        let part2: Vec<u8> = vec![0xBB; 5000];
+        let volume1 = rar4_volume(&[
+            rar4_main_block(),
+            rar4_file_block("movie.mkv", &part1, 8000, RAR4_METHOD_STORE, RAR4_LHD_SPLIT_AFTER),
+            rar4_endarc_block(),
+        ]);
+        let volume2 = rar4_volume(&[
+            rar4_main_block(),
+            rar4_file_block("movie.mkv", &part2, 8000, RAR4_METHOD_STORE, RAR4_LHD_SPLIT_BEFORE),
+            rar4_endarc_block(),
+        ]);
+        let len1 = volume1.len() as u64;
+        let len2 = volume2.len() as u64;
+        let mut bytes = volume1;
+        bytes.extend_from_slice(&volume2);
+
+        let map = build_fragment_map(
+            &mut Cursor::new(bytes),
+            &[(0, len1), (len1, len2)],
+            None,
+        )
+        .unwrap();
+        assert_eq!(map.total_len, 8000);
+        assert_eq!(map.fragments.len(), 2);
+        // Çözülmüş uzayın ikinci yarısı ikinci cilde denk gelmeli.
+        let slices = map.slices(3000..8000);
+        assert_eq!(slices.len(), 1);
+        assert_eq!(slices[0].end - slices[0].start, 5000);
+    }
+
+    #[test]
+    fn rar4_sikistirilmis_girdi_reddedilir() {
+        let data = vec![0u8; 100];
+        let bytes = rar4_volume(&[
+            rar4_main_block(),
+            rar4_file_block("movie.mkv", &data, 100, 0x33, 0),
+            rar4_endarc_block(),
+        ]);
+        let len = bytes.len() as u64;
+        assert!(matches!(
+            build_fragment_map(&mut Cursor::new(bytes), &[(0, len)], None),
+            Err(RarError::UnsupportedCompression)
+        ));
+    }
+
+    #[test]
+    fn rar4_sifreli_girdi_reddedilir() {
+        let data = vec![0u8; 100];
+        let bytes = rar4_volume(&[
+            rar4_main_block(),
+            rar4_file_block("movie.mkv", &data, 100, RAR4_METHOD_STORE, RAR4_LHD_PASSWORD),
+            rar4_endarc_block(),
+        ]);
+        let len = bytes.len() as u64;
+        assert!(matches!(
+            build_fragment_map(&mut Cursor::new(bytes), &[(0, len)], None),
+            Err(RarError::UnsupportedRar4Encryption)
+        ));
+    }
+
+    #[test]
+    fn rar4_bozuk_crc_reddedilir() {
+        let data = vec![0u8; 100];
+        let mut bytes = rar4_volume(&[
+            rar4_main_block(),
+            rar4_file_block("movie.mkv", &data, 100, RAR4_METHOD_STORE, 0),
+            rar4_endarc_block(),
+        ]);
+        // FILE bloğunun gövdesinde bir bayt bozulur: CRC uyuşmaz.
+        let corrupt_at = RAR4_SIGNATURE.len() + rar4_main_block().len() + 12;
+        bytes[corrupt_at] ^= 0xFF;
+        let len = bytes.len() as u64;
+        assert!(matches!(
+            build_fragment_map(&mut Cursor::new(bytes), &[(0, len)], None),
+            Err(RarError::Header(message)) if message.contains("CRC")
         ));
     }
 
