@@ -204,9 +204,11 @@
   }
   .support h2 { margin-top: 0; }
   .support p { color: var(--text-dim); max-width: 560px; margin: 0 auto 26px; }
-  .btn-patreon { background: #f96854; color: #fff; }
-  .btn-patreon:hover { background: #ff7a68; }
-  .btn-patreon svg { fill: currentColor; }
+  .btn-coffee { background: #ffdd00; color: #231f20; }
+  .btn-coffee:hover { background: #ffe94d; }
+  .btn-kofi { background: #f16061; color: #fff; }
+  .btn-kofi:hover { background: #ff7d7e; }
+  .support .btn-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
 
   /* ── roadmap ─────────────────────────── */
   .road { list-style: none; }
@@ -335,10 +337,16 @@
     <div class="support">
       <h2>Support the project</h2>
       <p>zanzibarr is free and open source, built in spare time. If it saved you a download queue, you can buy the next coffee that funds the engine — one-off or monthly, both keep the commits coming.</p>
-      <a class="btn btn-patreon" href="https://www.patreon.com/cw/envermeister" target="_blank" rel="noopener">
-        <svg viewBox="0 0 24 24" width="17" height="17"><path d="M15.4 3a5.6 5.6 0 1 0 0 11.2A5.6 5.6 0 0 0 15.4 3zM3 3h3v18H3z"/></svg>
-        Become a patron
-      </a>
+      <div class="btn-row">
+        <a class="btn btn-coffee" href="https://buymeacoffee.com/envermeister" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M18.5 3H6a2 2 0 0 0-2 2v6a5 5 0 0 0 5 5h4a5 5 0 0 0 5-5v-1h.5a2.5 2.5 0 0 0 0-5H18.5V3zm0 4v3h.5a.5.5 0 0 0 0-1H18.5zM4 18h14v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2z"/></svg>
+          Buy Me a Coffee
+        </a>
+        <a class="btn btn-kofi" href="https://ko-fi.com/envermeister" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" width="17" height="17" fill="currentColor"><path d="M12 21s-7.5-4.9-9.8-9.2C.4 8.6 2 5 5.5 5c2 0 3.4 1.1 4.2 2.2l2.3 3 2.3-3C15.1 6.1 16.5 5 18.5 5 22 5 23.6 8.6 21.8 11.8 19.5 16.1 12 21 12 21z"/></svg>
+          Support on Ko-fi
+        </a>
+      </div>
     </div>
   </section>
 
@@ -356,7 +364,8 @@
       <p>
         <a :href="repoUrl" target="_blank" rel="noopener">GitHub</a> ·
         <a :href="repoUrl + '/releases'" target="_blank" rel="noopener">Releases</a> ·
-        <a href="https://www.patreon.com/cw/envermeister" target="_blank" rel="noopener">Patreon</a>
+        <a href="https://buymeacoffee.com/envermeister" target="_blank" rel="noopener">Buy Me a Coffee</a> ·
+        <a href="https://ko-fi.com/envermeister" target="_blank" rel="noopener">Ko-fi</a>
         <br><br>© 2026 zanzibarr. Free and open source.
       </p>
     </div>

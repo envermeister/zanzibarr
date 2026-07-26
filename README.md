@@ -12,8 +12,9 @@
   <a href="https://github.com/envermeister/zanzibarr/actions/workflows/windows-build.yml"><img src="https://github.com/envermeister/zanzibarr/actions/workflows/windows-build.yml/badge.svg" alt="Windows build"></a>
   <a href="https://github.com/envermeister/zanzibarr/actions/workflows/android-build.yml"><img src="https://github.com/envermeister/zanzibarr/actions/workflows/android-build.yml/badge.svg" alt="Android build"></a>
   <img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows%20%C2%B7%20Android%20%C2%B7%20Android%20TV-blue" alt="platforms">
-  <img src="https://img.shields.io/badge/tests-157%20Rust%20%2B%2097%20Flutter-brightgreen" alt="tests">
-  <a href="https://www.patreon.com/cw/envermeister"><img src="https://img.shields.io/badge/Patreon-support%20zanzibarr-F96854?logo=patreon&logoColor=white" alt="Support on Patreon"></a>
+  <img src="https://img.shields.io/badge/tests-212%20Rust%20%2B%20113%20Flutter-brightgreen" alt="tests">
+  <a href="https://buymeacoffee.com/envermeister"><img src="https://img.shields.io/badge/Buy%20Me%20a%20Coffee-support%20zanzibarr-FFDD00?logo=buy-me-a-coffee&logoColor=black" alt="Support on Buy Me a Coffee"></a>
+  <a href="https://ko-fi.com/envermeister"><img src="https://img.shields.io/badge/Ko--fi-support%20zanzibarr-F16061?logo=ko-fi&logoColor=white" alt="Support on Ko-fi"></a>
 </p>
 
 ---
@@ -139,7 +140,7 @@ CI produces the Windows `.exe` and Android `.apk` artifacts on demand (see `.git
 
 ## Support the project
 
-zanzibarr is free and open source, built in spare time. If it saved you a download queue, you can buy the next coffee that funds the engine on [Patreon](https://www.patreon.com/cw/envermeister). One-off or monthly — both keep the commits coming.
+zanzibarr is free and open source, built in spare time. If it saved you a download queue, you can buy the next coffee that funds the engine on [Buy Me a Coffee](https://buymeacoffee.com/envermeister) or [Ko-fi](https://ko-fi.com/envermeister). One-off or monthly — both keep the commits coming.
 
 ## A note on responsibility
 
