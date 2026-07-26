@@ -226,6 +226,16 @@ impl NntpVolumeSet {
         self.volumes.len()
     }
 
+    /// PAR2 onarım katmanını ilgili ciltlere dağıtır. Katman adıyla eşleşen
+    /// cilt kaynakları hasarlı bölgeleri yerelden servis eder.
+    pub(crate) fn set_overlays(&self, overlay: &crate::engine::repair::RepairOverlay) {
+        for volume in &self.volumes {
+            if let Some(file_overlay) = overlay.for_file(volume.filename()) {
+                volume.set_overlay(Arc::new(file_overlay.clone()));
+            }
+        }
+    }
+
     /// Cildin sanal byte uzayındaki başlangıç ofseti.
     pub(crate) fn volume_start(&self, index: usize) -> u64 {
         self.starts[index]

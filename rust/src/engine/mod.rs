@@ -13,6 +13,7 @@ pub mod nzb;
 pub mod par2;
 pub mod rar;
 pub mod rarcrypt;
+pub mod repair;
 pub mod seekable_decode;
 pub mod server;
 pub mod sevenzip;

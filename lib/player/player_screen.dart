@@ -11,6 +11,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 
 import '../l10n/app_localizations.dart';
 import '../settings/provider_settings.dart';
+import '../src/rust/api/repair.dart';
 import '../src/rust/api/streaming.dart';
 import 'advanced_playback_controller.dart';
 import 'gyuni_player_controls.dart';
@@ -127,6 +128,12 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _startupActive = false;
   bool _startupFailed = false;
   bool _playbackReady = false;
+  // PAR2 onarım oturumu (hata ekranından başlatılır).
+  BigInt? _repairSessionId;
+  bool _repairActive = false;
+  RepairProgressDto? _repairProgress;
+  String? _repairError;
+  Timer? _repairPollTimer;
   HdrMode _hdrMode = HdrMode.sdr;
   bool _hardwareDecoding = true;
   bool _buffering = false;
@@ -700,6 +707,14 @@ class _PlayerScreenState extends State<PlayerScreen>
     _queuedSubtitlePosition = null;
     _queuedSubtitleDelay = null;
     _startupGuard.dispose();
+    _repairPollTimer?.cancel();
+    // Ekran kapanırken onarım oturumu da iptal edilir; oturum Rust tarafında
+    // watch sinyaliyle güvenli durur.
+    if (_repairActive) {
+      final sessionId = _repairSessionId;
+      if (sessionId != null) unawaited(cancelRepair(sessionId: sessionId));
+      _repairActive = false;
+    }
     _playButtonFocusNode.dispose();
     _controlsTimer?.cancel();
     _seekFlashTimer?.cancel();
@@ -1668,6 +1683,78 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (mounted) await Navigator.of(context).maybePop();
   }
 
+  /// Hata ekranındaki "PAR2 ile onar" akışı: oturum başlatılır, ilerleme
+  /// yoklanır, başarıda katman kurulmuş olarak oynatma yeniden denenir.
+  Future<void> _startRepair() async {
+    if (_repairActive) return;
+    final store = widget.store ?? ProviderSettingsStore();
+    final settings = await store.load();
+    if (!settings.isComplete || !mounted) return;
+
+    setState(() {
+      _repairActive = true;
+      _repairError = null;
+      _repairProgress = null;
+    });
+
+    final sessionId = await beginRepair(
+      config: ProviderConfigDto(
+        host: settings.host,
+        port: settings.port,
+        username: settings.username,
+        password: settings.password,
+        maxConnections: settings.maxConnections,
+      ),
+      nzbPath: widget.nzbPath,
+    );
+    _repairSessionId = sessionId;
+    _repairPollTimer?.cancel();
+    _repairPollTimer = Timer.periodic(const Duration(milliseconds: 500), (_) async {
+      final progress = await repairProgress(sessionId: sessionId);
+      if (!mounted || !_repairActive) return;
+      setState(() => _repairProgress = progress);
+    });
+
+    try {
+      final report = await awaitRepair(sessionId: sessionId);
+      if (!mounted) return;
+      _repairPollTimer?.cancel();
+      final l10n = AppLocalizations.of(context);
+      setState(() => _repairActive = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            report.clean
+                ? l10n.repairClean
+                : l10n.repairSuccess(report.repairedSlices),
+          ),
+        ),
+      );
+      // Katman kuruldu (veya set temiz çıktı): oynatmayı yeniden dene.
+      setState(() {
+        _error = null;
+        _startupFailed = false;
+        _status = l10n.statusPreparing;
+      });
+      unawaited(_start());
+    } catch (error) {
+      if (!mounted) return;
+      _repairPollTimer?.cancel();
+      setState(() {
+        _repairActive = false;
+        _repairError = '$error';
+      });
+    }
+  }
+
+  void _cancelRepair() {
+    final sessionId = _repairSessionId;
+    if (sessionId != null) unawaited(cancelRepair(sessionId: sessionId));
+    _repairPollTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _repairActive = false);
+  }
+
   Future<void> _togglePictureInPicture() async {
     final enter = !_isPictureInPicture;
     final videoState = _videoKey.currentState;
@@ -2374,6 +2461,11 @@ class _PlayerScreenState extends State<PlayerScreen>
           ? _ErrorView(
               message: _error.toString(),
               onClose: () => unawaited(_closePlayer()),
+              repairActive: _repairActive,
+              repairProgress: _repairProgress,
+              repairError: _repairError,
+              onRepair: _repairActive ? null : () => unawaited(_startRepair()),
+              onCancelRepair: _cancelRepair,
             )
           : _buildVideoSurface(),
     );
@@ -2588,13 +2680,29 @@ class _TuningRow extends StatelessWidget {
 }
 
 class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message, required this.onClose});
+  const _ErrorView({
+    required this.message,
+    required this.onClose,
+    this.repairActive = false,
+    this.repairProgress,
+    this.repairError,
+    this.onRepair,
+    this.onCancelRepair,
+  });
 
   final String message;
   final VoidCallback onClose;
 
+  /// PAR2 onarımı bu ekrandan başlatılabiliyorsa true düğmesi görünür.
+  final bool repairActive;
+  final RepairProgressDto? repairProgress;
+  final String? repairError;
+  final VoidCallback? onRepair;
+  final VoidCallback? onCancelRepair;
+
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -2612,14 +2720,93 @@ class _ErrorView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 18),
-            FilledButton.tonalIcon(
-              onPressed: onClose,
-              icon: const Icon(Icons.close_rounded),
-              label: Text(AppLocalizations.of(context).closePlayer),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                FilledButton.tonalIcon(
+                  onPressed: onClose,
+                  icon: const Icon(Icons.close_rounded),
+                  label: Text(l10n.closePlayer),
+                ),
+                if (onRepair != null && !repairActive) ...[
+                  const SizedBox(width: 10),
+                  FilledButton.icon(
+                    onPressed: onRepair,
+                    icon: const Icon(Icons.healing_rounded, size: 18),
+                    label: Text(l10n.repairButton),
+                  ),
+                ],
+              ],
             ),
+            if (repairActive) ...[
+              const SizedBox(height: 20),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: _RepairProgressPanel(
+                  progress: repairProgress,
+                  onCancel: onCancelRepair,
+                ),
+              ),
+            ],
+            if (repairError != null) ...[
+              const SizedBox(height: 14),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 560),
+                child: Text(
+                  l10n.repairFailed(repairError!),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Color(0xFFFF9F0A), fontSize: 12),
+                ),
+              ),
+            ],
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Onarım oturumunun faz/ilerleme paneli.
+class _RepairProgressPanel extends StatelessWidget {
+  const _RepairProgressPanel({required this.progress, required this.onCancel});
+
+  final RepairProgressDto? progress;
+  final VoidCallback? onCancel;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final progress = this.progress;
+    final phaseText = switch (progress?.phase) {
+      'loading' => l10n.repairPhaseLoading,
+      'verifying' => l10n.repairPhaseVerifying,
+      'solving' => l10n.repairPhaseSolving,
+      'repairing' => l10n.repairPhaseRepairing,
+      'writing' => l10n.repairPhaseWriting,
+      'done' => l10n.repairPhaseDone,
+      _ => l10n.repairPhaseLoading,
+    };
+    final total = progress?.totalBytes ?? BigInt.zero;
+    final completed = progress?.completedBytes ?? BigInt.zero;
+    final fraction = total > BigInt.zero
+        ? (completed / total).clamp(0.0, 1.0)
+        : null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          phaseText,
+          style: const TextStyle(color: Colors.white70, fontSize: 12),
+        ),
+        const SizedBox(height: 10),
+        LinearProgressIndicator(value: fraction?.toDouble(), minHeight: 3),
+        const SizedBox(height: 12),
+        TextButton.icon(
+          onPressed: onCancel,
+          icon: const Icon(Icons.stop_rounded, size: 16),
+          label: Text(l10n.repairCancelButton),
+        ),
+      ],
     );
   }
 }

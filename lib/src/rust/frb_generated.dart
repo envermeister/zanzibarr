@@ -3,6 +3,7 @@
 
 // ignore_for_file: unused_import, unused_element, unnecessary_import, duplicate_ignore, invalid_use_of_internal_member, annotate_overrides, non_constant_identifier_names, curly_braces_in_flow_control_structures, prefer_const_literals_to_create_immutables, unused_field
 
+import 'api/repair.dart';
 import 'api/search.dart';
 import 'api/simple.dart';
 import 'api/streaming.dart';
@@ -68,7 +69,7 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
   String get codegenVersion => '2.12.0';
 
   @override
-  int get rustContentHash => -283424956;
+  int get rustContentHash => 601800230;
 
   static const kDefaultExternalLibraryLoaderConfig =
       ExternalLibraryLoaderConfig(
@@ -80,12 +81,23 @@ class RustLib extends BaseEntrypoint<RustLibApi, RustLibApiImpl, RustLibWire> {
 }
 
 abstract class RustLibApi extends BaseApi {
+  Future<RepairReportDto> crateApiRepairAwaitRepair({
+    required BigInt sessionId,
+  });
+
   Future<StreamInfo> crateApiStreamingAwaitStream({required BigInt sessionId});
+
+  Future<BigInt> crateApiRepairBeginRepair({
+    required ProviderConfigDto config,
+    required String nzbPath,
+  });
 
   Future<BigInt> crateApiStreamingBeginStream({
     required ProviderConfigDto config,
     required String nzbPath,
   });
+
+  Future<bool> crateApiRepairCancelRepair({required BigInt sessionId});
 
   String crateApiSimpleEngineInfo();
 
@@ -110,6 +122,10 @@ abstract class RustLibApi extends BaseApi {
     required int offset,
   });
 
+  Future<RepairProgressDto?> crateApiRepairRepairProgress({
+    required BigInt sessionId,
+  });
+
   Future<StreamInfo> crateApiStreamingStartStream({
     required ProviderConfigDto config,
     required String nzbPath,
@@ -127,7 +143,9 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   });
 
   @override
-  Future<StreamInfo> crateApiStreamingAwaitStream({required BigInt sessionId}) {
+  Future<RepairReportDto> crateApiRepairAwaitRepair({
+    required BigInt sessionId,
+  }) {
     return handler.executeNormal(
       NormalTask(
         callFfi: (port_) {
@@ -137,6 +155,34 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
             generalizedFrbRustBinding,
             serializer,
             funcId: 1,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_repair_report_dto,
+          decodeErrorData: sse_decode_String,
+        ),
+        constMeta: kCrateApiRepairAwaitRepairConstMeta,
+        argValues: [sessionId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiRepairAwaitRepairConstMeta =>
+      const TaskConstMeta(debugName: "await_repair", argNames: ["sessionId"]);
+
+  @override
+  Future<StreamInfo> crateApiStreamingAwaitStream({required BigInt sessionId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(sessionId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 2,
             port: port_,
           );
         },
@@ -155,6 +201,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       const TaskConstMeta(debugName: "await_stream", argNames: ["sessionId"]);
 
   @override
+  Future<BigInt> crateApiRepairBeginRepair({
+    required ProviderConfigDto config,
+    required String nzbPath,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_box_autoadd_provider_config_dto(config, serializer);
+          sse_encode_String(nzbPath, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 3,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_u_64,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiRepairBeginRepairConstMeta,
+        argValues: [config, nzbPath],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiRepairBeginRepairConstMeta => const TaskConstMeta(
+    debugName: "begin_repair",
+    argNames: ["config", "nzbPath"],
+  );
+
+  @override
   Future<BigInt> crateApiStreamingBeginStream({
     required ProviderConfigDto config,
     required String nzbPath,
@@ -168,7 +248,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 2,
+            funcId: 4,
             port: port_,
           );
         },
@@ -190,12 +270,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<bool> crateApiRepairCancelRepair({required BigInt sessionId}) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(sessionId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 5,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_bool,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiRepairCancelRepairConstMeta,
+        argValues: [sessionId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiRepairCancelRepairConstMeta =>
+      const TaskConstMeta(debugName: "cancel_repair", argNames: ["sessionId"]);
+
+  @override
   String crateApiSimpleEngineInfo() {
     return handler.executeSync(
       SyncTask(
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 3)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 6)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -218,7 +326,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
         callFfi: () {
           final serializer = SseSerializer(generalizedFrbRustBinding);
           sse_encode_String(name, serializer);
-          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 4)!;
+          return pdeCallFfi(generalizedFrbRustBinding, serializer, funcId: 7)!;
         },
         codec: SseCodec(
           decodeSuccessData: sse_decode_String,
@@ -243,7 +351,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 5,
+            funcId: 8,
             port: port_,
           );
         },
@@ -273,7 +381,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 6,
+            funcId: 9,
             port: port_,
           );
         },
@@ -310,7 +418,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 7,
+            funcId: 10,
             port: port_,
           );
         },
@@ -349,7 +457,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 8,
+            funcId: 11,
             port: port_,
           );
         },
@@ -371,6 +479,39 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       );
 
   @override
+  Future<RepairProgressDto?> crateApiRepairRepairProgress({
+    required BigInt sessionId,
+  }) {
+    return handler.executeNormal(
+      NormalTask(
+        callFfi: (port_) {
+          final serializer = SseSerializer(generalizedFrbRustBinding);
+          sse_encode_u_64(sessionId, serializer);
+          pdeCallFfi(
+            generalizedFrbRustBinding,
+            serializer,
+            funcId: 12,
+            port: port_,
+          );
+        },
+        codec: SseCodec(
+          decodeSuccessData: sse_decode_opt_box_autoadd_repair_progress_dto,
+          decodeErrorData: null,
+        ),
+        constMeta: kCrateApiRepairRepairProgressConstMeta,
+        argValues: [sessionId],
+        apiImpl: this,
+      ),
+    );
+  }
+
+  TaskConstMeta get kCrateApiRepairRepairProgressConstMeta =>
+      const TaskConstMeta(
+        debugName: "repair_progress",
+        argNames: ["sessionId"],
+      );
+
+  @override
   Future<StreamInfo> crateApiStreamingStartStream({
     required ProviderConfigDto config,
     required String nzbPath,
@@ -384,7 +525,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 9,
+            funcId: 13,
             port: port_,
           );
         },
@@ -415,7 +556,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
-            funcId: 10,
+            funcId: 14,
             port: port_,
           );
         },
@@ -461,6 +602,12 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   ProviderConfigDto dco_decode_box_autoadd_provider_config_dto(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return dco_decode_provider_config_dto(raw);
+  }
+
+  @protected
+  RepairProgressDto dco_decode_box_autoadd_repair_progress_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return dco_decode_repair_progress_dto(raw);
   }
 
   @protected
@@ -538,6 +685,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RepairProgressDto? dco_decode_opt_box_autoadd_repair_progress_dto(
+    dynamic raw,
+  ) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    return raw == null ? null : dco_decode_box_autoadd_repair_progress_dto(raw);
+  }
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     return raw == null ? null : dco_decode_box_autoadd_u_32(raw);
@@ -561,6 +716,35 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       username: dco_decode_String(arr[2]),
       password: dco_decode_String(arr[3]),
       maxConnections: dco_decode_u_32(arr[4]),
+    );
+  }
+
+  @protected
+  RepairProgressDto dco_decode_repair_progress_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 4)
+      throw Exception('unexpected arr length: expect 4 but see ${arr.length}');
+    return RepairProgressDto(
+      phase: dco_decode_String(arr[0]),
+      completedBytes: dco_decode_u_64(arr[1]),
+      totalBytes: dco_decode_u_64(arr[2]),
+      detail: dco_decode_String(arr[3]),
+    );
+  }
+
+  @protected
+  RepairReportDto dco_decode_repair_report_dto(dynamic raw) {
+    // Codec=Dco (DartCObject based), see doc to use other codecs
+    final arr = raw as List<dynamic>;
+    if (arr.length != 5)
+      throw Exception('unexpected arr length: expect 5 but see ${arr.length}');
+    return RepairReportDto(
+      verifiedFiles: dco_decode_u_32(arr[0]),
+      damagedSlices: dco_decode_u_32(arr[1]),
+      repairedSlices: dco_decode_u_32(arr[2]),
+      clean: dco_decode_bool(arr[3]),
+      overlayActive: dco_decode_bool(arr[4]),
     );
   }
 
@@ -679,6 +863,14 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RepairProgressDto sse_decode_box_autoadd_repair_progress_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    return (sse_decode_repair_progress_dto(deserializer));
+  }
+
+  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     return (sse_decode_u_32(deserializer));
@@ -775,6 +967,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  RepairProgressDto? sse_decode_opt_box_autoadd_repair_progress_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    if (sse_decode_bool(deserializer)) {
+      return (sse_decode_box_autoadd_repair_progress_dto(deserializer));
+    } else {
+      return null;
+    }
+  }
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -812,6 +1017,40 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
       username: var_username,
       password: var_password,
       maxConnections: var_maxConnections,
+    );
+  }
+
+  @protected
+  RepairProgressDto sse_decode_repair_progress_dto(
+    SseDeserializer deserializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_phase = sse_decode_String(deserializer);
+    var var_completedBytes = sse_decode_u_64(deserializer);
+    var var_totalBytes = sse_decode_u_64(deserializer);
+    var var_detail = sse_decode_String(deserializer);
+    return RepairProgressDto(
+      phase: var_phase,
+      completedBytes: var_completedBytes,
+      totalBytes: var_totalBytes,
+      detail: var_detail,
+    );
+  }
+
+  @protected
+  RepairReportDto sse_decode_repair_report_dto(SseDeserializer deserializer) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    var var_verifiedFiles = sse_decode_u_32(deserializer);
+    var var_damagedSlices = sse_decode_u_32(deserializer);
+    var var_repairedSlices = sse_decode_u_32(deserializer);
+    var var_clean = sse_decode_bool(deserializer);
+    var var_overlayActive = sse_decode_bool(deserializer);
+    return RepairReportDto(
+      verifiedFiles: var_verifiedFiles,
+      damagedSlices: var_damagedSlices,
+      repairedSlices: var_repairedSlices,
+      clean: var_clean,
+      overlayActive: var_overlayActive,
     );
   }
 
@@ -946,6 +1185,15 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_box_autoadd_repair_progress_dto(
+    RepairProgressDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_repair_progress_dto(self, serializer);
+  }
+
+  @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_32(self, serializer);
@@ -1040,6 +1288,19 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   }
 
   @protected
+  void sse_encode_opt_box_autoadd_repair_progress_dto(
+    RepairProgressDto? self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+
+    sse_encode_bool(self != null, serializer);
+    if (self != null) {
+      sse_encode_box_autoadd_repair_progress_dto(self, serializer);
+    }
+  }
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer) {
     // Codec=Sse (Serialization based), see doc to use other codecs
 
@@ -1070,6 +1331,31 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     sse_encode_String(self.username, serializer);
     sse_encode_String(self.password, serializer);
     sse_encode_u_32(self.maxConnections, serializer);
+  }
+
+  @protected
+  void sse_encode_repair_progress_dto(
+    RepairProgressDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_String(self.phase, serializer);
+    sse_encode_u_64(self.completedBytes, serializer);
+    sse_encode_u_64(self.totalBytes, serializer);
+    sse_encode_String(self.detail, serializer);
+  }
+
+  @protected
+  void sse_encode_repair_report_dto(
+    RepairReportDto self,
+    SseSerializer serializer,
+  ) {
+    // Codec=Sse (Serialization based), see doc to use other codecs
+    sse_encode_u_32(self.verifiedFiles, serializer);
+    sse_encode_u_32(self.damagedSlices, serializer);
+    sse_encode_u_32(self.repairedSlices, serializer);
+    sse_encode_bool(self.clean, serializer);
+    sse_encode_bool(self.overlayActive, serializer);
   }
 
   @protected

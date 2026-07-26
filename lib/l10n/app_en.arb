@@ -144,6 +144,27 @@
     }
   },
   "statusPreparingCompressed": "Compressed archive — decoding sequentially, the first open may take a while…",
+  "repairButton": "Repair with PAR2",
+  "repairCancelButton": "Cancel repair",
+  "repairPhaseLoading": "Loading PAR2 index…",
+  "repairPhaseVerifying": "Verifying slices (full pass over the set)…",
+  "repairPhaseSolving": "Solving the recovery matrix…",
+  "repairPhaseRepairing": "Rebuilding damaged slices…",
+  "repairPhaseWriting": "Writing the repair overlay…",
+  "repairPhaseDone": "Repair complete",
+  "repairSuccess": "Repair complete: {count} slices rebuilt. Reopening…",
+  "@repairSuccess": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  },
+  "repairClean": "Verification finished — no damage found in this release.",
+  "repairFailed": "Repair failed: {error}",
+  "@repairFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "statusBuffering": "Buffering: {filename}",
   "@statusBuffering": {
     "placeholders": {

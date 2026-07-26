@@ -508,12 +508,151 @@ pub fn compute_recovery_slice(
     Ok(words_to_bytes(&out))
 }
 
-/// Eksik/bozuk girdi dilimlerini Reed-Solomon ile yeniden üretir.
+/// Onarım planı: matris çözümünün çıktısı. Akışlı kullanım için veri
+/// dilimleri plandan ayrı taşınır (bellekte yalnız katsayılar kalır).
+#[derive(Debug)]
+pub struct RepairPlan {
+    /// Sağlam girdi dilimlerinin global indeksleri (sütun sırasıyla).
+    pub present_indices: Vec<u64>,
+    /// Onarılacak eksik dilimlerin global indeksleri (satır sırasıyla).
+    pub missing_indices: Vec<u64>,
+    /// Satır başına katsayılar: [sağlam girdi sütunları | kurtarma sütunları].
+    factors: Vec<Vec<u16>>,
+    /// `set.recovery` içinde kullanılan dilimlerin indeksleri.
+    used_recovery: Vec<usize>,
+}
+
+/// Eksik dilimler için RS planı kurar. `missing` boşsa hata değil boş plan
+/// döner; kurtarma yetersizse `NotEnoughRecovery`.
+pub fn plan_repair(set: &Par2Set, missing: &[u64]) -> Result<RepairPlan, Par2Error> {
+    let total = set.total_input_slices();
+    let mut missing_sorted = missing.to_vec();
+    missing_sorted.sort_unstable();
+    missing_sorted.dedup();
+    for &index in &missing_sorted {
+        if index >= total {
+            return Err(Par2Error::Format(format!(
+                "eksik dilim {index} toplam {total} dilimin dışında"
+            )));
+        }
+    }
+    if missing_sorted.len() > set.recovery.len() {
+        return Err(Par2Error::NotEnoughRecovery {
+            needed: missing_sorted.len(),
+            available: set.recovery.len(),
+        });
+    }
+    let present_indices: Vec<u64> = (0..total)
+        .filter(|index| missing_sorted.binary_search(index).is_err())
+        .collect();
+    if missing_sorted.is_empty() {
+        return Ok(RepairPlan {
+            present_indices,
+            missing_indices: Vec::new(),
+            factors: Vec::new(),
+            used_recovery: Vec::new(),
+        });
+    }
+
+    let bases = input_bases(total)?;
+    let datapresent = present_indices.len();
+    let datamissing = missing_sorted.len();
+    let incount = datapresent + datamissing;
+
+    let mut left = vec![0u16; datamissing * incount];
+    let mut right = vec![0u16; datamissing * datamissing];
+    let used_recovery: Vec<usize> = (0..datamissing).collect();
+    for (row, &recovery_index) in used_recovery.iter().enumerate() {
+        let exponent = set.recovery[recovery_index].exponent;
+        for (col, &present) in present_indices.iter().enumerate() {
+            left[row * incount + col] = gf_pow(bases[present as usize], exponent);
+        }
+        left[row * incount + datapresent + row] = 1;
+        for (col, &missing) in missing_sorted.iter().enumerate() {
+            right[row * datamissing + col] = gf_pow(bases[missing as usize], exponent);
+        }
+    }
+
+    gauss_elim(&mut left, incount, &mut right, datamissing)?;
+
+    let factors = left
+        .chunks_exact(incount)
+        .map(|row| row.to_vec())
+        .collect();
+    Ok(RepairPlan {
+        present_indices,
+        missing_indices: missing_sorted,
+        factors,
+        used_recovery,
+    })
+}
+
+/// Akışlı onarım akümülatörü: sağlam dilimler birer birer beslenir, bellekte
+/// yalnız eksik dilim kadar tampon tutulur. Async sürücüler (NNTP) dilimleri
+/// await ile çekip senkron [`Self::add_present`] ile işler.
+pub struct RepairAccumulators {
+    out: Vec<Vec<u16>>,
+    slice_size: u64,
+}
+
+impl RepairAccumulators {
+    pub fn new(plan: &RepairPlan, slice_size: u64) -> Self {
+        Self {
+            out: vec![vec![0u16; slice_size as usize / 2]; plan.missing_indices.len()],
+            slice_size,
+        }
+    }
+
+    /// `plan.present_indices[column]` diliminin verisini tüm eksik satırlara
+    /// katsayısıyla ekler. Veri tam dilim (sıfır dolgulu) olmalı.
+    pub fn add_present(&mut self, plan: &RepairPlan, column: usize, data: &[u8]) {
+        debug_assert_eq!(data.len() as u64, self.slice_size);
+        for (row, factors) in plan.factors.iter().enumerate() {
+            gf_mul_add(factors[column], data, &mut self.out[row]);
+        }
+    }
+
+    /// Kurtarma dilimlerini de uygulayıp onarılan dilimleri IFSC sağlamasıyla
+    /// doğrulanmış olarak döndürür.
+    pub fn finish(
+        mut self,
+        set: &Par2Set,
+        plan: &RepairPlan,
+    ) -> Result<Vec<(u64, Vec<u8>)>, Par2Error> {
+        let datapresent = plan.present_indices.len();
+        let map = set.global_slice_map();
+        let mut repaired = Vec::with_capacity(plan.missing_indices.len());
+        for (row, &missing) in plan.missing_indices.iter().enumerate() {
+            for (col, &recovery_index) in plan.used_recovery.iter().enumerate() {
+                let factor = plan.factors[row][datapresent + col];
+                gf_mul_add(factor, &set.recovery[recovery_index].data, &mut self.out[row]);
+            }
+            let bytes = words_to_bytes(&self.out[row]);
+
+            let (file_index, first_slice, _) = map
+                .iter()
+                .find(|(_, first, count)| missing >= *first && missing < first + count)
+                .copied()
+                .expect("global dilim haritası toplamı kapsar");
+            let file = &set.files[file_index];
+            if let Some(checksum) = set.slice_checksum(file, missing - first_slice) {
+                if md5::compute(&bytes).0 != checksum.md5 {
+                    return Err(Par2Error::RepairMismatch(missing));
+                }
+            }
+            repaired.push((missing, bytes));
+        }
+        Ok(repaired)
+    }
+}
+
+/// Eksik/bozuk girdi dilimlerini Reed-Solomon ile yeniden üretir (bellek-içi
+/// kolaylık yolu; büyük setlerde [`plan_repair`] + [`RepairAccumulators`]
+/// akışlı yolu kullanılmalıdır).
 ///
 /// `input_slices`: global sırayla her dilim için `Some(veri)` (sağlam) veya
 /// `None` (eksik/bozuk). Dönüş: (global indeks, sıfır-dolgulu tam dilim)
-/// listesi. Onarılan dilimler IFSC sağlamalarıyla doğrulanır — referansla
-/// bayt birebirliği burada da kanıtlanır.
+/// listesi.
 pub fn repair(
     set: &Par2Set,
     input_slices: &[Option<Vec<u8>>],
@@ -525,78 +664,18 @@ pub fn repair(
             input_slices.len()
         )));
     }
-
-    let present_indices: Vec<u64> = (0..total)
-        .filter(|&index| input_slices[index as usize].is_some())
-        .collect();
-    let missing_indices: Vec<u64> = (0..total)
+    let missing: Vec<u64> = (0..total)
         .filter(|&index| input_slices[index as usize].is_none())
         .collect();
-    if missing_indices.is_empty() {
-        return Ok(Vec::new());
+    let plan = plan_repair(set, &missing)?;
+    let mut accumulators = RepairAccumulators::new(&plan, set.slice_size);
+    for (column, &present) in plan.present_indices.iter().enumerate() {
+        let data = input_slices[present as usize]
+            .as_ref()
+            .expect("sağlam dilim");
+        accumulators.add_present(&plan, column, data);
     }
-    if missing_indices.len() > set.recovery.len() {
-        return Err(Par2Error::NotEnoughRecovery {
-            needed: missing_indices.len(),
-            available: set.recovery.len(),
-        });
-    }
-
-    let bases = input_bases(total)?;
-    let datapresent = present_indices.len();
-    let datamissing = missing_indices.len();
-    let incount = datapresent + datamissing;
-
-    // Sol matris: [kurtarma satırları | kullanılan kurtarma için birim];
-    // sağ matris: eksik girdilerin katsayıları (çözüm sonrası birim olur).
-    let mut left = vec![0u16; datamissing * incount];
-    let mut right = vec![0u16; datamissing * datamissing];
-    let used_recovery = &set.recovery[..datamissing];
-    for (row, slice) in used_recovery.iter().enumerate() {
-        for (col, &present) in present_indices.iter().enumerate() {
-            left[row * incount + col] = gf_pow(bases[present as usize], slice.exponent);
-        }
-        left[row * incount + datapresent + row] = 1;
-        for (col, &missing) in missing_indices.iter().enumerate() {
-            right[row * datamissing + col] = gf_pow(bases[missing as usize], slice.exponent);
-        }
-    }
-
-    gauss_elim(&mut left, incount, &mut right, datamissing)?;
-
-    // Çözüm sonrası: eksik_j = Σ_c left[j][c]·girdi_c; girdi dizisi =
-    // sağlam veri dilimleri + kullanılan kurtarma dilimleri.
-    let mut repaired = Vec::with_capacity(datamissing);
-    for (row, &missing) in missing_indices.iter().enumerate() {
-        let mut out = vec![0u16; set.slice_size as usize / 2];
-        for (col, &present) in present_indices.iter().enumerate() {
-            let factor = left[row * incount + col];
-            let data = input_slices[present as usize]
-                .as_ref()
-                .expect("sağlam dilim");
-            gf_mul_add(factor, data, &mut out);
-        }
-        for (col, slice) in used_recovery.iter().enumerate() {
-            let factor = left[row * incount + datapresent + col];
-            gf_mul_add(factor, &slice.data, &mut out);
-        }
-        let bytes = words_to_bytes(&out);
-
-        // IFSC sağlaması: onarımın bayt-birebirliği kanıtı.
-        let (file_index, first_slice, _) = set
-            .global_slice_map()
-            .into_iter()
-            .find(|(_, first, count)| missing >= *first && missing < first + count)
-            .expect("global dilim haritası toplamı kapsar");
-        let file = &set.files[file_index];
-        if let Some(checksum) = set.slice_checksum(file, missing - first_slice) {
-            if md5::compute(&bytes).0 != checksum.md5 {
-                return Err(Par2Error::RepairMismatch(missing));
-            }
-        }
-        repaired.push((missing, bytes));
-    }
-    Ok(repaired)
+    accumulators.finish(set, &plan)
 }
 
 /// [left | right] üzerinde Gauss eliminasyonu; right birim matrise iner.

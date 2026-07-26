@@ -6,6 +6,7 @@
 // Static analysis wrongly picks the IO variant, thus ignore this
 // ignore_for_file: argument_type_not_assignable
 
+import 'api/repair.dart';
 import 'api/search.dart';
 import 'api/simple.dart';
 import 'api/streaming.dart';
@@ -38,6 +39,9 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProviderConfigDto dco_decode_box_autoadd_provider_config_dto(dynamic raw);
 
   @protected
+  RepairProgressDto dco_decode_box_autoadd_repair_progress_dto(dynamic raw);
+
+  @protected
   int dco_decode_box_autoadd_u_32(dynamic raw);
 
   @protected
@@ -68,6 +72,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64? dco_decode_opt_box_autoadd_i_64(dynamic raw);
 
   @protected
+  RepairProgressDto? dco_decode_opt_box_autoadd_repair_progress_dto(
+    dynamic raw,
+  );
+
+  @protected
   int? dco_decode_opt_box_autoadd_u_32(dynamic raw);
 
   @protected
@@ -75,6 +84,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
 
   @protected
   ProviderConfigDto dco_decode_provider_config_dto(dynamic raw);
+
+  @protected
+  RepairProgressDto dco_decode_repair_progress_dto(dynamic raw);
+
+  @protected
+  RepairReportDto dco_decode_repair_report_dto(dynamic raw);
 
   @protected
   SearchItemDto dco_decode_search_item_dto(dynamic raw);
@@ -120,6 +135,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  RepairProgressDto sse_decode_box_autoadd_repair_progress_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int sse_decode_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -152,6 +172,11 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   PlatformInt64? sse_decode_opt_box_autoadd_i_64(SseDeserializer deserializer);
 
   @protected
+  RepairProgressDto? sse_decode_opt_box_autoadd_repair_progress_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
   int? sse_decode_opt_box_autoadd_u_32(SseDeserializer deserializer);
 
   @protected
@@ -161,6 +186,14 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   ProviderConfigDto sse_decode_provider_config_dto(
     SseDeserializer deserializer,
   );
+
+  @protected
+  RepairProgressDto sse_decode_repair_progress_dto(
+    SseDeserializer deserializer,
+  );
+
+  @protected
+  RepairReportDto sse_decode_repair_report_dto(SseDeserializer deserializer);
 
   @protected
   SearchItemDto sse_decode_search_item_dto(SseDeserializer deserializer);
@@ -214,6 +247,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_box_autoadd_repair_progress_dto(
+    RepairProgressDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_box_autoadd_u_32(int self, SseSerializer serializer);
 
   @protected
@@ -259,6 +298,12 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   );
 
   @protected
+  void sse_encode_opt_box_autoadd_repair_progress_dto(
+    RepairProgressDto? self,
+    SseSerializer serializer,
+  );
+
+  @protected
   void sse_encode_opt_box_autoadd_u_32(int? self, SseSerializer serializer);
 
   @protected
@@ -267,6 +312,18 @@ abstract class RustLibApiImplPlatform extends BaseApiImpl<RustLibWire> {
   @protected
   void sse_encode_provider_config_dto(
     ProviderConfigDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_repair_progress_dto(
+    RepairProgressDto self,
+    SseSerializer serializer,
+  );
+
+  @protected
+  void sse_encode_repair_report_dto(
+    RepairReportDto self,
     SseSerializer serializer,
   );
 

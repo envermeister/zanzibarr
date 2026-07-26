@@ -28,7 +28,7 @@ use super::nzb::NzbFile;
 use super::server::{content_type_for, RangeSource};
 use super::yenc;
 
-const BODY_READ_TIMEOUT: Duration = Duration::from_secs(30);
+pub(crate) const BODY_READ_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// Önden çekim dalgasının genişliği (segment sayısı). Sıralı okuyucu bir
 /// segmenti beklerken sonraki segmentler yedek havuz bağlantılarıyla paralel
@@ -43,7 +43,7 @@ pub(crate) const ARCHIVE_PREFETCH_DEPTH: usize = 4;
 /// uyanma `Notify` ile anında gelir; bu yalnız kaçan sinyale karşı emniyettir.
 const INFLIGHT_WAIT_POLL: Duration = Duration::from_millis(100);
 
-async fn read_body_with_timeout(
+pub(crate) async fn read_body_with_timeout(
     duration: Duration,
     future: impl Future<Output = Result<Vec<u8>, NntpError>>,
 ) -> Result<Vec<u8>, NntpError> {
@@ -55,14 +55,14 @@ async fn read_body_with_timeout(
 }
 
 /// Çözülmüş segment verisi için basit kapasiteli FIFO önbellek.
-struct SegmentCache {
+pub(crate) struct SegmentCache {
     capacity: usize,
     map: HashMap<usize, Arc<Vec<u8>>>,
     order: VecDeque<usize>,
 }
 
 impl SegmentCache {
-    fn new(capacity: usize) -> Self {
+    pub(crate) fn new(capacity: usize) -> Self {
         SegmentCache {
             capacity: capacity.max(1),
             map: HashMap::new(),
@@ -70,11 +70,11 @@ impl SegmentCache {
         }
     }
 
-    fn get(&self, index: usize) -> Option<Arc<Vec<u8>>> {
+    pub(crate) fn get(&self, index: usize) -> Option<Arc<Vec<u8>>> {
         self.map.get(&index).cloned()
     }
 
-    fn insert(&mut self, index: usize, data: Arc<Vec<u8>>) {
+    pub(crate) fn insert(&mut self, index: usize, data: Arc<Vec<u8>>) {
         if self.map.contains_key(&index) {
             return;
         }
@@ -269,6 +269,8 @@ pub struct NntpByteSource {
     ctx: Arc<FetchContext>,
     content_type: &'static str,
     filename: String,
+    /// PAR2 onarımı sonrası hasarlı bölgeleri karşılayan yerel katman.
+    overlay: Mutex<Option<Arc<crate::engine::repair::FileOverlay>>>,
 }
 
 impl NntpByteSource {
@@ -323,6 +325,7 @@ impl NntpByteSource {
             }),
             content_type,
             filename,
+            overlay: Mutex::new(None),
         };
         // Bootstrap: ilk segment → file_size + tek tip parça boyutu. Bu
         // yerleşim öğrenimidir; önden çekim dalgası kurulmaz (okunmayacak
@@ -395,6 +398,43 @@ impl NntpByteSource {
         }
     }
 
+    /// PAR2 onarım katmanını kurar. Kurulumdan sonra hasarlı bölgeler ağa
+    /// çıkılmadan katmandan servis edilir.
+    pub(crate) fn set_overlay(&self, overlay: Arc<crate::engine::repair::FileOverlay>) {
+        *self.overlay.lock().expect("kilit") = Some(overlay);
+    }
+
+    /// Aralığı katman/ökün parçalarına böler. Katman yoksa tek ökün parçası.
+    fn overlay_pieces(&self, range: Range<u64>) -> Vec<RangePiece> {
+        let overlay = self.overlay.lock().expect("kilit").clone();
+        let Some(overlay) = overlay else {
+            return vec![RangePiece::Original(range)];
+        };
+        let mut pieces = Vec::new();
+        let mut cursor = range.start;
+        while cursor < range.end {
+            if let Some((index, data)) = overlay.slice_covering(cursor) {
+                let slice_start = index * overlay.slice_size;
+                let take_end = (slice_start + overlay.slice_size)
+                    .min(range.end)
+                    .min(overlay.file_len);
+                let skip = (cursor - slice_start) as usize;
+                let take = ((take_end - cursor) as usize).min(data.len().saturating_sub(skip));
+                pieces.push(RangePiece::Overlay {
+                    data: Arc::clone(data),
+                    skip,
+                    take,
+                });
+                cursor = take_end;
+            } else {
+                let next = overlay.next_slice_start(cursor).min(range.end);
+                pieces.push(RangePiece::Original(cursor..next));
+                cursor = next;
+            }
+        }
+        pieces
+    }
+
     /// Arşiv başlığı gibi küçük, rastgele aralıkları bellek tamponuna okur.
     /// Ofset çözümü yine yalnız yEnc `begin/end` kayıtlarıyla yapılır.
     pub(crate) async fn read_range_bytes(&self, range: Range<u64>) -> io::Result<Vec<u8>> {
@@ -412,6 +452,22 @@ impl NntpByteSource {
         let capacity = usize::try_from(range.end - range.start)
             .map_err(|_| io::Error::other("istenen aralık belleğe sığmıyor"))?;
         let mut output = Vec::with_capacity(capacity);
+        for piece in self.overlay_pieces(range) {
+            match piece {
+                RangePiece::Overlay { data, skip, take } => {
+                    output.extend_from_slice(&data[skip..skip + take]);
+                }
+                RangePiece::Original(sub) => {
+                    output.extend_from_slice(&self.read_range_original(sub).await?);
+                }
+            }
+        }
+        Ok(output)
+    }
+
+    /// Katman dışı aralığı segmentlerden okur (katman öncesi tek yoldu).
+    async fn read_range_original(&self, range: Range<u64>) -> io::Result<Vec<u8>> {
+        let mut output = Vec::with_capacity((range.end - range.start) as usize);
         let mut cursor = range.start;
         while cursor < range.end {
             let (index, span) = self.locate(cursor).await?;
@@ -439,9 +495,39 @@ impl RangeSource for NntpByteSource {
     where
         W: AsyncWrite + Unpin + Send,
     {
-        // Segment segment, tembel akış: her adımda cursor'ı içeren segmenti
-        // bulup yazarız. Player (mpv/media_kit) yeterince okuyup bağlantıyı
-        // kapatınca ilk `write_all` `BrokenPipe` döner ve gereksiz çekme durur.
+        for piece in self.overlay_pieces(range) {
+            match piece {
+                RangePiece::Overlay { data, skip, take } => {
+                    out.write_all(&data[skip..skip + take]).await?;
+                }
+                RangePiece::Original(sub) => {
+                    self.write_range_original(sub, out).await?;
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// [`NntpByteSource::overlay_pieces`] çıktısı: katman dilimi veya ökün aralık.
+enum RangePiece {
+    Overlay {
+        data: Arc<Vec<u8>>,
+        skip: usize,
+        take: usize,
+    },
+    Original(Range<u64>),
+}
+
+impl NntpByteSource {
+    /// Katman dışı aralığı segment segment, tembel akışla yazar: her adımda
+    /// cursor'ı içeren segmenti bulup yazarız. Player (mpv/media_kit)
+    /// yeterince okuyup bağlantıyı kapatınca ilk `write_all` `BrokenPipe`
+    /// döner ve gereksiz çekme durur.
+    async fn write_range_original<W>(&self, range: Range<u64>, out: &mut W) -> io::Result<()>
+    where
+        W: AsyncWrite + Unpin + Send,
+    {
         let mut cursor = range.start;
         while cursor < range.end {
             let (index, span) = self.locate(cursor).await?;

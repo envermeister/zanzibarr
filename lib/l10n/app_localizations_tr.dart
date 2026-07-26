@@ -331,6 +331,44 @@ class AppLocalizationsTr extends AppLocalizations {
       'Sıkıştırılmış arşiv — sırayla çözülüyor, ilk açılış uzun sürebilir…';
 
   @override
+  String get repairButton => 'PAR2 ile onar';
+
+  @override
+  String get repairCancelButton => 'Onarımı iptal et';
+
+  @override
+  String get repairPhaseLoading => 'PAR2 dizini yükleniyor…';
+
+  @override
+  String get repairPhaseVerifying =>
+      'Dilimler doğrulanıyor (set üzerinde tam tur)…';
+
+  @override
+  String get repairPhaseSolving => 'Kurtarma matrisi çözülüyor…';
+
+  @override
+  String get repairPhaseRepairing => 'Hasarlı dilimler yeniden kuruluyor…';
+
+  @override
+  String get repairPhaseWriting => 'Onarım katmanı yazılıyor…';
+
+  @override
+  String get repairPhaseDone => 'Onarım tamamlandı';
+
+  @override
+  String repairSuccess(int count) {
+    return 'Onarım tamam: $count dilim yeniden kuruldu. Yeniden açılıyor…';
+  }
+
+  @override
+  String get repairClean => 'Doğrulama tamam — bu yayında hasar bulunamadı.';
+
+  @override
+  String repairFailed(String error) {
+    return 'Onarım başarısız: $error';
+  }
+
+  @override
   String statusBuffering(String filename) {
     return 'Arabelleğe alınıyor: $filename';
   }

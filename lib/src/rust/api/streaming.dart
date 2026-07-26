@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `cancel_active_stream`, `cancellation_requested`, `ensure_stream_not_cancelled`, `filename`, `is_compressed`, `load_stream_selection_blocking`, `load_stream_selection`, `next_session_id`, `prepare_stream_source`, `read_nzb_bytes`, `run_stream_session`, `segment_count`, `select_stream`, `terminate_stream`, `url_encode_path`, `wait_for_cancellation`, `wait_for_stream_ready`
+// These functions are ignored because they are not marked as `pub`: `cancel_active_stream`, `cancellation_requested`, `ensure_stream_not_cancelled`, `filename`, `install_overlay`, `is_compressed`, `load_stream_selection_blocking`, `load_stream_selection`, `next_session_id`, `prepare_stream_source`, `read_nzb_bytes`, `run_stream_session`, `segment_count`, `select_stream`, `terminate_stream`, `url_encode_path`, `wait_for_cancellation`, `wait_for_stream_ready`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ActiveStream`, `StreamSelection`, `StreamSource`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `content_type`, `total_len`, `write_range`

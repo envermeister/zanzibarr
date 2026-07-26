@@ -704,6 +704,72 @@ abstract class AppLocalizations {
   /// **'Compressed archive — decoding sequentially, the first open may take a while…'**
   String get statusPreparingCompressed;
 
+  /// No description provided for @repairButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Repair with PAR2'**
+  String get repairButton;
+
+  /// No description provided for @repairCancelButton.
+  ///
+  /// In en, this message translates to:
+  /// **'Cancel repair'**
+  String get repairCancelButton;
+
+  /// No description provided for @repairPhaseLoading.
+  ///
+  /// In en, this message translates to:
+  /// **'Loading PAR2 index…'**
+  String get repairPhaseLoading;
+
+  /// No description provided for @repairPhaseVerifying.
+  ///
+  /// In en, this message translates to:
+  /// **'Verifying slices (full pass over the set)…'**
+  String get repairPhaseVerifying;
+
+  /// No description provided for @repairPhaseSolving.
+  ///
+  /// In en, this message translates to:
+  /// **'Solving the recovery matrix…'**
+  String get repairPhaseSolving;
+
+  /// No description provided for @repairPhaseRepairing.
+  ///
+  /// In en, this message translates to:
+  /// **'Rebuilding damaged slices…'**
+  String get repairPhaseRepairing;
+
+  /// No description provided for @repairPhaseWriting.
+  ///
+  /// In en, this message translates to:
+  /// **'Writing the repair overlay…'**
+  String get repairPhaseWriting;
+
+  /// No description provided for @repairPhaseDone.
+  ///
+  /// In en, this message translates to:
+  /// **'Repair complete'**
+  String get repairPhaseDone;
+
+  /// No description provided for @repairSuccess.
+  ///
+  /// In en, this message translates to:
+  /// **'Repair complete: {count} slices rebuilt. Reopening…'**
+  String repairSuccess(int count);
+
+  /// No description provided for @repairClean.
+  ///
+  /// In en, this message translates to:
+  /// **'Verification finished — no damage found in this release.'**
+  String get repairClean;
+
+  /// No description provided for @repairFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Repair failed: {error}'**
+  String repairFailed(String error);
+
   /// No description provided for @statusBuffering.
   ///
   /// In en, this message translates to:

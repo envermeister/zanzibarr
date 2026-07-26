@@ -363,6 +363,11 @@ impl RarEntrySource {
         self.archive.segment_count()
     }
 
+    /// PAR2 onarım katmanını cilt kümesine dağıtır.
+    pub fn set_overlays(&self, overlay: &crate::engine::repair::RepairOverlay) {
+        self.archive.set_overlays(overlay);
+    }
+
     /// Şifreli STORE verisini 16-hizalı pencerelerle okuyup çözer. CBC
     /// zinciri split parçalar arasında kesintisizdir; IV, global ilk blok için
     /// dosyanın InitV'si, diğerlerinde bir önceki şifreli bloktur.

@@ -334,6 +334,45 @@ class AppLocalizationsDe extends AppLocalizations {
       'Compressed archive — decoding sequentially, the first open may take a while…';
 
   @override
+  String get repairButton => 'Repair with PAR2';
+
+  @override
+  String get repairCancelButton => 'Cancel repair';
+
+  @override
+  String get repairPhaseLoading => 'Loading PAR2 index…';
+
+  @override
+  String get repairPhaseVerifying =>
+      'Verifying slices (full pass over the set)…';
+
+  @override
+  String get repairPhaseSolving => 'Solving the recovery matrix…';
+
+  @override
+  String get repairPhaseRepairing => 'Rebuilding damaged slices…';
+
+  @override
+  String get repairPhaseWriting => 'Writing the repair overlay…';
+
+  @override
+  String get repairPhaseDone => 'Repair complete';
+
+  @override
+  String repairSuccess(int count) {
+    return 'Repair complete: $count slices rebuilt. Reopening…';
+  }
+
+  @override
+  String get repairClean =>
+      'Verification finished — no damage found in this release.';
+
+  @override
+  String repairFailed(String error) {
+    return 'Repair failed: $error';
+  }
+
+  @override
   String statusBuffering(String filename) {
     return 'Puffern: $filename';
   }

@@ -184,6 +184,20 @@ impl StreamSource {
             Self::Rar(_) => false,
         }
     }
+
+    /// PAR2 onarım katmanını (varsa) kaynağa kurar. Katman diskte yoksa veya
+    /// dosya adı eşleşmezse kaynak değişmeden kalır.
+    fn install_overlay(&self, overlay: &crate::engine::repair::RepairOverlay) {
+        match self {
+            Self::Direct(source) => {
+                if let Some(file_overlay) = overlay.for_file(source.filename()) {
+                    source.set_overlay(std::sync::Arc::new(file_overlay.clone()));
+                }
+            }
+            Self::SevenZip(source) => source.set_overlays(overlay),
+            Self::Rar(source) => source.set_overlays(overlay),
+        }
+    }
 }
 
 #[flutter_rust_bridge::frb(ignore)]
@@ -380,7 +394,7 @@ async fn run_stream_session(
     // Dosya okuma/parse oturum kurulduktan sonra yapılır. Eski bir begin
     // çağrısı yavaş kalsa bile daha yeni oturum onu iptal eder ve bitmesini
     // bekler; sonuçların sırası tersine dönemez.
-    let selection = match load_stream_selection(nzb_path, cancellation.clone()).await {
+    let selection = match load_stream_selection(nzb_path.clone(), cancellation.clone()).await {
         Ok(selection) if !cancellation_requested(&cancellation) => selection,
         Ok(_) => {
             let _ = ready.send(Err("akış başlatma iptal edildi".into()));
@@ -399,6 +413,20 @@ async fn run_stream_session(
             return;
         }
     };
+
+    // Önceki bir onarım oturumundan kalan katman varsa kur: hasarlı bölgeler
+    // artık ağa çıkılmadan yerelden servis edilir.
+    let overlay_dir = crate::engine::repair::RepairOverlay::dir_for_nzb(
+        std::path::Path::new(nzb_path.as_str()),
+    );
+    match crate::engine::repair::RepairOverlay::load(&overlay_dir) {
+        Ok(Some(overlay)) => source.install_overlay(&overlay),
+        Ok(None) => {}
+        Err(error) => {
+            // Bozuk katman oynatmayı engellemez; ağ yolundan devam edilir.
+            let _ = error;
+        }
+    }
 
     if cancellation_requested(&cancellation) {
         let _ = ready.send(Err("akış başlatma iptal edildi".into()));

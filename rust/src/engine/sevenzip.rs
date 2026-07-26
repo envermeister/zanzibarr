@@ -212,6 +212,11 @@ impl SevenZipEntrySource {
         self.archive.segment_count()
     }
 
+    /// PAR2 onarım katmanını cilt kümesine dağıtır.
+    pub fn set_overlays(&self, overlay: &crate::engine::repair::RepairOverlay) {
+        self.archive.set_overlays(overlay);
+    }
+
     /// Medya LZMA/LZMA2 zinciriyle ardışıl çözülüyorsa true (yavaş seek uyarısı).
     pub fn is_compressed(&self) -> bool {
         self.facade.is_some()
