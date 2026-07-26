@@ -133,7 +133,7 @@ CI produces the Windows `.exe` and Android `.apk` artifacts on demand (see `.git
 - [x] Newznab indexer search (browse & play without leaving the app)
 - [x] Compressed 7z (LZMA/LZMA2, solid) stream-seek & RAR4 STORE sets
 - [x] PAR2 engine: packet parsing, slice health check, Reed-Solomon repair (verified byte-exact against par2cmdline)
-- [ ] PAR2 repair wired into playback (auto-heal missing/corrupt segments)
+- [x] PAR2 repair wired into playback (user-triggered from the player error screen; repaired slices served from a local overlay)
 - [ ] Compressed RAR stream-seek (needs a RAR decompressor — no pure-Rust one exists; C++ unrar FFI is the open question)
 - [ ] iOS & Linux builds
 
