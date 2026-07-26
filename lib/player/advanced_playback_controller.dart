@@ -297,16 +297,20 @@ class AdvancedPlaybackController {
   /// Dolby Vision Profile 5 içerikte pembe/yeşil bozuk renkleri düzelten
   /// reshape filtresini açar/kapatır.
   ///
-  /// Yalnız macOS'ta uygulanır: paketli Mpv çerçevesi libplacebo'lu FFmpeg
-  /// ve MoltenVK ile derlenmiştir; diğer platformlarda bayrak kapalı kalır
-  /// ve `vf`'ye dokunulmaz. Filtre libmpv tarafından reddedilirse (ör.
-  /// Vulkan başlatılamazsa) eski davranışa sessizce dönülür.
+  /// macOS'ta paketli Mpv çerçevesi libplacebo'lu FFmpeg ve MoltenVK ile
+  /// derlenmiştir. Android'de media-kit'in stok libmpv'sinde libplacebo
+  /// yoktur; bu yüzden uygulama, libplacebo+Vulkan destekli fork derlemesiyle
+  /// (vendor/media_kit_libs_android_video) gelir. Diğer platformlarda bayrak
+  /// kapalı kalır ve `vf`'ye dokunulmaz. Filtre libmpv tarafından reddedilirse
+  /// (örn. Vulkan başlatılamazsa) eski davranışa sessizce dönülür.
   ///
   /// Açıkken çıkış renk uzayı geçerli [hdrMode]'a göre seçilir; HDR modu
   /// sonradan değişirse [setHdrMode], kod çözme kipi değişirse
   /// [setHardwareDecoding] filtreyi uygun varyantla yeniden uygular.
   Future<void> setDolbyVisionReshaping(bool enabled) async {
-    if (defaultTargetPlatform != TargetPlatform.macOS) {
+    final platformSupported = defaultTargetPlatform == TargetPlatform.macOS ||
+        defaultTargetPlatform == TargetPlatform.android;
+    if (!platformSupported) {
       dolbyVisionReshaping = false;
       return;
     }

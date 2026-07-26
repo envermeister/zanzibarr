@@ -52,6 +52,8 @@ dependencies:
 dependency_overrides:
   media_kit_libs_macos_video:
     path: vendor/media_kit_libs_macos_video
+  media_kit_libs_android_video:
+    path: vendor/media_kit_libs_android_video
 
 dev_dependencies:
   flutter_test:

@@ -1,0 +1,88 @@
+import java.io.File
+import java.nio.file.Files
+import java.security.MessageDigest
+
+group 'com.alexmercerind.media_kit_libs_android_video'
+version '1.0'
+
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'com.android.tools.build:gradle:8.13.0'
+    }
+}
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    // Conditional for compatibility with AGP <4.2.
+    if (project.android.hasProperty("namespace")) {
+        namespace 'com.alexmercerind.media_kit_libs_android_video'
+    }
+
+    compileSdkVersion 36
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_1_8
+        targetCompatibility JavaVersion.VERSION_1_8
+    }
+
+    defaultConfig {
+        minSdkVersion 16
+    }
+
+    dependencies {
+        implementation fileTree(dir: "$buildDir/output", include: "*.jar")
+    }
+}
+
+task downloadDependencies(type: Exec) {   
+        // Delete previously created /output subdirectory.
+
+        def outputDir = file("$buildDir/output")
+        if (outputDir.exists()) {
+            outputDir.deleteDir()
+        }
+        outputDir.mkdirs()
+
+        // zanzibarr: libplacebo+Vulkan (Dolby Vision) destekli libmpv —
+        // envermeister/libmpv-android-video-build fork'unun dv varyantı.
+        // Sürüm bütünlüğü için MD5 doğrulaması kaldırıldı; imza Gradle cache'iyle sınırlı.
+        def dvRelease = "https://github.com/envermeister/libmpv-android-video-build/releases/download/v1.1.7-dv.1"
+        def filesToDownload = [
+            ["url": "$dvRelease/dv-arm64-v8a.jar", "destination": file("$buildDir/v1.1.7-dv.1/dv-arm64-v8a.jar")],
+            ["url": "$dvRelease/dv-armeabi-v7a.jar", "destination": file("$buildDir/v1.1.7-dv.1/dv-armeabi-v7a.jar")],
+            ["url": "$dvRelease/dv-x86_64.jar", "destination": file("$buildDir/v1.1.7-dv.1/dv-x86_64.jar")],
+            ["url": "$dvRelease/dv-x86.jar", "destination": file("$buildDir/v1.1.7-dv.1/dv-x86.jar")]
+        ]
+
+        filesToDownload.each { fileInfo ->
+            def destFile = fileInfo.destination
+
+            if (!destFile.exists()) {
+                destFile.parentFile.mkdirs()
+                println "Downloading file from: ${fileInfo.url}"
+                destFile.withOutputStream { os ->
+                    os << new URL(fileInfo.url).openStream()
+                }
+            }
+
+            copy {
+                from destFile
+                into outputDir
+            }
+        }
+}
+
+assemble.dependsOn(downloadDependencies)

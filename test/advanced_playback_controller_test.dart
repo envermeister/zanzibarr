@@ -747,8 +747,25 @@ void main() {
     expect(backend.properties['vf'], '');
   });
 
-  test('DV reshaping macOS dışında vf özelliğine dokunmaz', () async {
+  test('DV reshaping Android\'de de libplacebo filtresini uygular', () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setDolbyVisionReshaping(true);
+
+    expect(controller.dolbyVisionReshaping, isTrue);
+    expect(backend.properties['vf'], contains('libplacebo=colorspace=bt709'));
+
+    await controller.setDolbyVisionReshaping(false);
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(backend.properties['vf'], '');
+  });
+
+  test('DV reshaping desteklenmeyen platformda vf özelliğine dokunmaz',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend);
