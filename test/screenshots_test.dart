@@ -11,9 +11,12 @@ import 'package:zanzibarr/main.dart';
 import 'package:zanzibarr/player/gyuni_player_controls.dart';
 import 'package:zanzibarr/player/smart_canvas.dart';
 import 'package:zanzibarr/player/smart_canvas_overlay.dart';
+import 'package:zanzibarr/search/search_screen.dart';
+import 'package:zanzibarr/settings/indexer_settings.dart';
 import 'package:zanzibarr/settings/provider_settings.dart';
 import 'package:zanzibarr/settings/settings_screen.dart';
 import 'package:zanzibarr/settings/ui_preferences.dart';
+import 'package:zanzibarr/src/rust/api/search.dart';
 
 /// README için gerçek UI ekran görüntüleri üreten golden-test harness'ı.
 ///
@@ -184,6 +187,58 @@ class _FakeStore extends ProviderSettingsStore {
   @override
   Future<void> save(ProviderSettings settings) async {}
 }
+
+/// Indexer bölümü de dolu gözüksün diye sahte indexer deposu.
+class _FakeIndexerStore extends IndexerSettingsStore {
+  @override
+  Future<IndexerSettings> load() async => const IndexerSettings(
+    baseUrl: 'https://indexer.example',
+    apiKey: 'abc123-example-key',
+  );
+
+  @override
+  Future<void> save(IndexerSettings settings) async {}
+}
+
+/// Arama ekranı görseli için gerçekçi sonuç seti (rozetler Rust tarafından
+/// geliyormuş gibi; motor bunları release adından üretir).
+List<SearchItemDto> _fakeResults() => [
+  SearchItemDto(
+    title: 'Fight.Club.1999.UHD.BluRay.2160p.DDP.5.1.DV.HDR10.x265-hallowed',
+    nzbUrl: 'https://indexer.example/getnzb/1',
+    sizeBytes: BigInt.from(19463027098),
+    publishedEpochSecs:
+        DateTime.now().subtract(const Duration(days: 412)).millisecondsSinceEpoch ~/
+        1000,
+    badges: const ['2160p', 'BluRay', 'HEVC', 'DV', 'HDR10', 'DD+ 5.1'],
+    mediaKind: 'movie',
+    year: 1999,
+    group: 'hallowed',
+  ),
+  SearchItemDto(
+    title:
+        'Coming.to.America.1988.2160p.UHD.BluRay.Remux.HDR.DV.HEVC.DTS-HD.MA.5.1-PmP',
+    nzbUrl: 'https://indexer.example/getnzb/2',
+    sizeBytes: BigInt.from(52613349376),
+    publishedEpochSecs:
+        DateTime.now().subtract(const Duration(days: 87)).millisecondsSinceEpoch ~/
+        1000,
+    badges: const ['2160p', 'Remux', 'HEVC', 'HDR', 'DV', 'DTS-HD MA 5.1'],
+    mediaKind: 'movie',
+    year: 1988,
+  ),
+  SearchItemDto(
+    title: 'Fight.Club.1999.1080p.BluRay.x264.DTS-ESiR',
+    nzbUrl: 'https://indexer.example/getnzb/3',
+    sizeBytes: BigInt.from(10737418240),
+    publishedEpochSecs:
+        DateTime.now().subtract(const Duration(days: 640)).millisecondsSinceEpoch ~/
+        1000,
+    badges: const ['1080p', 'BluRay', 'x264', 'DTS'],
+    mediaKind: 'movie',
+    year: 1999,
+  ),
+];
 
 /// Oyuncu chrome'u için örnek parça listesi.
 const _tracks = Tracks(
@@ -614,6 +669,7 @@ void main() {
       _screenshotApp(
         SettingsScreen(
           store: _FakeStore(),
+          indexerStore: _FakeIndexerStore(),
           uiPreferences: UiPreferencesController(UiPreferencesStore()),
         ),
         ThemeMode.dark,
@@ -623,6 +679,33 @@ void main() {
     await expectLater(
       find.byType(MaterialApp),
       matchesGoldenFile('../docs/screenshots/settings.png'),
+    );
+  }), skip: _skipScreenshots);
+
+  testWidgets('search', (tester) => _desktopShot(() async {
+    _useWindow(tester, window);
+    await tester.pumpWidget(
+      _screenshotApp(
+        SearchScreen(
+          store: _FakeIndexerStore(),
+          searchFn: (config, query, limit, offset) async => SearchPageDto(
+            total: BigInt.from(3),
+            items: _fakeResults(),
+          ),
+          onDownloaded: (_) {},
+        ),
+        ThemeMode.dark,
+      ),
+    );
+    await _settleAssets(tester);
+    await tester.enterText(find.byType(TextField), 'fight club');
+    await tester.pump();
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+    await expectLater(
+      find.byType(MaterialApp),
+      matchesGoldenFile('../docs/screenshots/search.png'),
     );
   }), skip: _skipScreenshots);
 
@@ -688,5 +771,76 @@ void main() {
       find.byType(MaterialApp),
       matchesGoldenFile('../docs/screenshots/smart_canvas.png'),
     );
+  }), skip: _skipScreenshots);
+
+  /// docs/screenshots/demo.gif için kare dizisi: ana ekran → indexer araması
+  /// → sonuçlar → indirme. Kareler `build/demo_frames/` altına düşer ve
+  /// ffmpeg ile paletli GIF'e birleştirilir (bkz. commit mesajı/notlar).
+  testWidgets('demo_frames', (tester) => _desktopShot(() async {
+    _useWindow(tester, const Size(2200, 1720)); // 1100×860 logical @2x
+    var frameIndex = 0;
+    Future<void> frame() async {
+      frameIndex++;
+      final name = 'f${frameIndex.toString().padLeft(2, '0')}';
+      await expectLater(
+        find.byType(MaterialApp),
+        matchesGoldenFile('../build/demo_frames/$name.png'),
+      );
+    }
+
+    // 1-3: ana ekran (indexer kartı ile).
+    await tester.pumpWidget(_screenshotApp(const HomeScreen(), ThemeMode.dark));
+    await _settleAssets(tester);
+    for (var n = 0; n < 3; n++) {
+      await frame();
+      await tester.pump(const Duration(milliseconds: 250));
+    }
+
+    // 4-7: arama ekranında sorgu yazımı.
+    await tester.pumpWidget(
+      _screenshotApp(
+        SearchScreen(
+          store: _FakeIndexerStore(),
+          searchFn: (config, query, limit, offset) async {
+            await Future<void>.delayed(const Duration(milliseconds: 350));
+            return SearchPageDto(total: BigInt.from(3), items: _fakeResults());
+          },
+          downloadFn: (config, url, name) async {
+            await Future<void>.delayed(const Duration(seconds: 2));
+            return '/tmp/demo.nzb';
+          },
+          onDownloaded: (_) {},
+        ),
+        ThemeMode.dark,
+      ),
+    );
+    await _settleAssets(tester);
+    for (final query in ['f', 'figh', 'fight cl', 'fight club']) {
+      await tester.enterText(find.byType(TextField), query);
+      await tester.pump();
+      await frame();
+    }
+
+    // 8: arama spinner'ı.
+    await tester.testTextInput.receiveAction(TextInputAction.search);
+    await tester.pump();
+    await frame();
+
+    // 9-10: sonuçlar.
+    await tester.pump(const Duration(milliseconds: 450));
+    await tester.pump();
+    await frame();
+    await tester.pump(const Duration(milliseconds: 250));
+    await frame();
+
+    // 11-12: ilk sonuca dokunma → indirme spinner'ı.
+    await tester.tap(find.text(_fakeResults().first.title));
+    await tester.pump();
+    await frame();
+    await tester.pump(const Duration(milliseconds: 250));
+    await frame();
+    // Gecikmeli downloadFn'in saati bitsin ki teardown'da timer kalmasın.
+    await tester.pump(const Duration(seconds: 2));
+    await tester.pumpAndSettle();
   }), skip: _skipScreenshots);
 }

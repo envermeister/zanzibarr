@@ -389,6 +389,11 @@ createApp({
           icon: icon('<polygon points="6 4 20 12 6 20 6 4" fill="currentColor" stroke="none"/>'),
         },
         {
+          title: 'Built-in indexer search',
+          body: 'Type a title, get release rows with quality badges — 2160p · HEVC · DV · Atmos — tap one and it just plays. No browser, no download queue.',
+          icon: icon('<circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/>'),
+        },
+        {
           title: 'Seek like it\'s a local file',
           body: 'Byte offsets resolve from decoded yEnc begin/end positions — frame-accurate across thousands of segments, even on 100+ GB releases.',
           icon: icon('<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15.5 14"/>'),
@@ -397,6 +402,11 @@ createApp({
           title: 'Opens archives others won\'t',
           body: 'Multi-volume RAR5 and split 7z — including AES-256 encrypted sets — reassemble in memory into one virtual, seekable file. Nothing touches disk.',
           icon: icon('<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 4v5"/>'),
+        },
+        {
+          title: 'Scratches don\'t stop the show',
+          body: 'Missing or corrupt segments get rebuilt with PAR2 Reed-Solomon repair — byte-exact against par2cmdline — and served from a local overlay. Playback resumes where it failed.',
+          icon: icon('<path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/>'),
         },
         {
           title: 'HDR & Dolby Vision, honest',
@@ -431,10 +441,11 @@ createApp({
       ],
       shots: [
         { src: 'home_dark.png', caption: 'Home — dark theme' },
+        { src: 'search.png', caption: 'Indexer search — badges at a glance' },
         { src: 'player_controls.png', caption: 'Player — auto-hiding controls' },
         { src: 'advanced_settings.png', caption: 'Video & audio — HDR, decode, presets' },
         { src: 'smart_canvas.png', caption: 'Smart Canvas — draw your crop' },
-        { src: 'settings.png', caption: 'Provider settings — keychain only' },
+        { src: 'settings.png', caption: 'Provider & indexer settings — keychain only' },
         { src: 'home_light.png', caption: 'Home — light theme' },
       ],
       downloads: [
@@ -473,9 +484,10 @@ createApp({
         { text: 'Multi-volume RAR5 & split 7z (STORE, AES-256) as virtual files', done: true },
         { text: 'HDR / HDR10 / Dolby Vision — incl. Profile 5 GPU reshape', done: true },
         { text: 'Android TV, 14 languages, dark & light themes', done: true },
-        { text: 'Newznab indexer search — browse & play inside the app', done: false },
-        { text: 'Compressed RAR/7z stream-seek, in-stream AES for RAR', done: false },
-        { text: 'PAR2 health check & repair', done: false },
+        { text: 'Newznab indexer search — browse & play inside the app', done: true },
+        { text: 'Compressed 7z (LZMA/LZMA2, solid) & RAR4 STORE stream-seek', done: true },
+        { text: 'PAR2 health check & Reed-Solomon repair — byte-exact vs par2cmdline', done: true },
+        { text: 'Compressed RAR stream-seek (no pure-Rust decoder exists)', done: false },
         { text: 'iOS & Linux builds', done: false },
       ],
     };

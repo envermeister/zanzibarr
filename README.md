@@ -37,6 +37,7 @@ zanzibarr turns Usenet into your personal streaming library. Point it at any `.n
 
 <details>
   <summary>More screenshots</summary>
+  <p align="center"><img src="docs/screenshots/search.png" alt="Indexer search" width="720"></p>
   <p align="center"><img src="docs/screenshots/advanced_settings.png" alt="Video & audio settings" width="720"></p>
   <p align="center"><img src="docs/screenshots/smart_canvas.png" alt="Smart Canvas" width="720"></p>
   <p align="center"><img src="docs/screenshots/settings.png" alt="Settings" width="720"></p>
@@ -48,11 +49,17 @@ zanzibarr turns Usenet into your personal streaming library. Point it at any `.n
 **Play instantly, never download**
 The Rust engine maps every seek position to the exact Usenet segments that hold it, fetches only those, decodes yEnc on the fly and serves the result through a lazy, range-aware local stream. Pause the player and the network goes quiet. Close the app and nothing is left behind on your disk.
 
+**Find it and play it — without leaving the app**
+Hook up any Newznab-compatible indexer and the home screen becomes your launchpad: capability discovery, release names parsed into quality badges (2160p · HEVC · DV · HDR10+ · TrueHD · Atmos · group), and a single tap streams the NZB straight into the player. No browser round-trips, no download manager, no queue.
+
 **Seek like it's a local file**
 Byte offsets are resolved from the decoded yEnc `begin/end` positions of every segment — never guessed from article sizes. The result is frame-accurate seeking across thousands of segments, even mid-segment, even on 100+ GB releases.
 
 **It opens the archives others won't**
-Straight video NZBs, multi-volume **RAR5** sets and split **7z** releases — including **AES-256 encrypted 7z** archives — are reassembled into a single virtual, seekable file entirely in memory. Nothing is extracted to disk. (Deliberately honest: compressed RAR/7z and RAR4 are declined rather than faked — see the roadmap.)
+Straight video NZBs, multi-volume **RAR5** sets, legacy **RAR4** volumes and split **7z** releases — **LZMA/LZMA2-compressed** and **AES-256 encrypted** sets included — are reassembled into a single virtual, seekable file entirely in memory. Nothing is extracted to disk. (Deliberately honest: only compressed RAR is still declined rather than faked — see the roadmap.)
+
+**Scratches don't stop the show**
+Missing or corrupt Usenet segments no longer kill the movie: hit **Repair with PAR2** on the error screen and the engine verifies every slice of the recovery set, rebuilds the damaged ones with Reed-Solomon (byte-exact against par2cmdline) and serves them from a local overlay. Playback resumes exactly where it failed.
 
 **A picture pipeline that respects your content**
 - Dynamic range selector that adapts to the file: **SDR · HDR · HDR10 · Dolby Vision** — modes the content doesn't carry stay visibly disabled, so you always know exactly what you're watching.
