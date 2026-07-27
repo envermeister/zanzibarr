@@ -18,7 +18,12 @@ void main() {
 
 Future<void> _initializeNativeEngine(UiPreferencesController uiPreferences) async {
   MediaKit.ensureInitialized();
-  await Future.wait([RustLib.init(), uiPreferences.load()]);
+  // Tercih deposu hatası (ör. Android Keystore anahtarı yeniden kurulumda
+  // geçersizleşti) motorun açılmasını engellemez; varsayılanlarla devam edilir.
+  final preferencesLoaded = uiPreferences.load().catchError((Object error) {
+    debugPrint('uiPreferences yüklenemedi, varsayılanlarla devam: $error');
+  });
+  await Future.wait([RustLib.init(), preferencesLoaded]);
 }
 
 /// İlk native çağrı hata verse veya takılsa bile boş pencere yerine anlaşılır
@@ -59,6 +64,7 @@ class _ZanzibarrBootstrapState extends State<ZanzibarrBootstrap> {
         uiPreferences: widget.uiPreferences,
         home: _EngineStartupView(
           failed: snapshot.hasError,
+          error: snapshot.hasError ? snapshot.error : null,
           onRetry: snapshot.hasError ? _retry : null,
         ),
       );
@@ -222,10 +228,13 @@ class ZanzibarrApp extends StatelessWidget {
 }
 
 class _EngineStartupView extends StatelessWidget {
-  const _EngineStartupView({required this.failed, required this.onRetry});
+  const _EngineStartupView({required this.failed, required this.onRetry, this.error});
 
   final bool failed;
   final VoidCallback? onRetry;
+
+  /// Başlatma hatasının teknik ayrıntısı; tanı için ekranda gösterilir.
+  final Object? error;
 
   @override
   Widget build(BuildContext context) {
@@ -276,6 +285,23 @@ class _EngineStartupView extends StatelessWidget {
                     textAlign: TextAlign.center,
                     style: const TextStyle(color: Colors.white38, fontSize: 12),
                   ),
+                  if (error != null) ...[
+                    const SizedBox(height: 12),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: Text(
+                        '$error',
+                        textAlign: TextAlign.center,
+                        maxLines: 6,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Color(0xFFFF9F0A),
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   FilledButton.icon(
                     onPressed: onRetry,
