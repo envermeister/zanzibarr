@@ -287,6 +287,18 @@ class AdvancedPlaybackController {
       mode == HdrMode.sdr ? 'no' : 'yes',
     );
     hdrMode = mode;
+    // Android libmpv'si (2023) DV profilini raporlayamadığından otomatik P5
+    // algısı orada çalışmaz; kullanıcının DV kipini seçmesi reshape'i
+    // etkinleştirir (P5 için tek güvenilir sinyal budur). Diğer kiplerde
+    // filtre temizlenir.
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      if (mode == HdrMode.dolbyVision) {
+        await setDolbyVisionReshaping(true);
+      } else if (dolbyVisionReshaping) {
+        await setDolbyVisionReshaping(false);
+      }
+      return;
+    }
     // DV reshape filtresi çıkış renk uzayını kendisi sabitler; HDR modu
     // değişince filtre yeni hedefle yeniden uygulanır.
     if (dolbyVisionReshaping) {

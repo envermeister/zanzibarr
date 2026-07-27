@@ -763,6 +763,26 @@ void main() {
     expect(backend.properties['vf'], '');
   });
 
+  test('Android\'de DV kipi seçimi reshape filtresini etkinleştirir', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    // Eski Android libmpv DV profilini raporlayamaz; DV kipini seçmek P5
+    // reshape'ini HDR (bt.2020/PQ) varyantıyla açar.
+    await controller.setHdrMode(HdrMode.dolbyVision);
+
+    expect(controller.dolbyVisionReshaping, isTrue);
+    expect(backend.properties['vf'], contains('libplacebo=colorspace=bt2020nc'));
+    expect(backend.properties['vf'], contains('color_trc=smpte2084'));
+
+    // Başka kipe geçince filtre temizlenir.
+    await controller.setHdrMode(HdrMode.sdr);
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(backend.properties['vf'], '');
+  });
+
   test('DV reshaping desteklenmeyen platformda vf özelliğine dokunmaz',
       () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.windows;
