@@ -329,17 +329,36 @@ class AdvancedPlaybackController {
     if (!enabled) {
       dolbyVisionReshaping = false;
       await _trySetProperty('vf', '');
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        // Mediacodec yüzey karelerine geri dön (sıfır-kopya render yolu).
+        await _trySetProperty('hwdec', 'mediacodec');
+      }
       return;
     }
     try {
-      await _backend.setProperty('vf', _dvReshapeFilterFor(hdrMode));
+      // Android'de mediacodec donanım kareleri CPU'ya indirilemez (FFmpeg'de
+      // hwdownload yok); `mediacodec-copy` donanım hızını koruyup kareleri
+      // sistem belleğine kopyalar — filtre bunlara yazılım karesi gibi girer.
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await _backend.setProperty('hwdec', 'mediacodec-copy');
+        await _backend.setProperty('vf', _dvReshapeFilterSoftwareFor(hdrMode));
+      } else {
+        await _backend.setProperty('vf', _dvReshapeFilterFor(hdrMode));
+      }
       dolbyVisionReshaping = true;
     } catch (_) {
       // Filtre bu derlemede yoksa/başarısızsa eski davranışla sürdürülür.
       dolbyVisionReshaping = false;
       await _trySetProperty('vf', '');
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await _trySetProperty('hwdec', 'mediacodec');
+      }
     }
   }
+
+  /// HDR hedefi için yazılım-karesi (öneksiz) filtre varyantı.
+  String _dvReshapeFilterSoftwareFor(HdrMode mode) =>
+      mode == HdrMode.sdr ? dvReshapeFilterSdrSoftware : dvReshapeFilterHdrSoftware;
 
   /// HDR hedefini ve kare biçimine göre zorunlu `hwdownload` önekini
   /// seçer; önek kuralları [dvReshapeFilterSdr] belgesinde.

@@ -756,11 +756,16 @@ void main() {
     await controller.setDolbyVisionReshaping(true);
 
     expect(controller.dolbyVisionReshaping, isTrue);
+    // Mediacodec hw kareleri CPU'ya indirilemez; kopyalı hwdec + yazılım
+    // karesi varyantı (hwdownload öneki YOK) kullanılır.
+    expect(backend.properties['hwdec'], 'mediacodec-copy');
     expect(backend.properties['vf'], contains('libplacebo=colorspace=bt709'));
+    expect(backend.properties['vf'], isNot(contains('hwdownload')));
 
     await controller.setDolbyVisionReshaping(false);
     expect(controller.dolbyVisionReshaping, isFalse);
     expect(backend.properties['vf'], '');
+    expect(backend.properties['hwdec'], 'mediacodec');
   });
 
   test('Android\'de DV kipi seçimi reshape filtresini etkinleştirir', () async {
