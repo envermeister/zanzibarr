@@ -59,12 +59,12 @@ task downloadDependencies(type: Exec) {
         // zanzibarr: libplacebo+Vulkan (Dolby Vision) destekli libmpv —
         // envermeister/libmpv-android-video-build fork'unun dv varyantı.
         // Sürüm bütünlüğü için MD5 doğrulaması kaldırıldı; imza Gradle cache'iyle sınırlı.
-        def dvRelease = "https://github.com/envermeister/libmpv-android-video-build/releases/download/v1.1.7-dv.2"
+        def dvRelease = "https://github.com/envermeister/libmpv-android-video-build/releases/download/v1.1.7-dv.3"
         def filesToDownload = [
-            ["url": "$dvRelease/dv-arm64-v8a.jar", "destination": file("$buildDir/v1.1.7-dv.2/dv-arm64-v8a.jar")],
-            ["url": "$dvRelease/dv-armeabi-v7a.jar", "destination": file("$buildDir/v1.1.7-dv.2/dv-armeabi-v7a.jar")],
-            ["url": "$dvRelease/dv-x86_64.jar", "destination": file("$buildDir/v1.1.7-dv.2/dv-x86_64.jar")],
-            ["url": "$dvRelease/dv-x86.jar", "destination": file("$buildDir/v1.1.7-dv.2/dv-x86.jar")]
+            ["url": "$dvRelease/dv-arm64-v8a.jar", "destination": file("$buildDir/v1.1.7-dv.3/dv-arm64-v8a.jar")],
+            ["url": "$dvRelease/dv-armeabi-v7a.jar", "destination": file("$buildDir/v1.1.7-dv.3/dv-armeabi-v7a.jar")],
+            ["url": "$dvRelease/dv-x86_64.jar", "destination": file("$buildDir/v1.1.7-dv.3/dv-x86_64.jar")],
+            ["url": "$dvRelease/dv-x86.jar", "destination": file("$buildDir/v1.1.7-dv.3/dv-x86.jar")]
         ]
 
         filesToDownload.each { fileInfo ->
