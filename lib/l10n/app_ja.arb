@@ -123,5 +123,12 @@
   "dynamicRangeLabel": "ダイナミックレンジ",
   "hdrInfoText": "コンテンツが保持するフォーマットのみ選択でき、それ以外は無効になります。SDRを選択すると、HDRコンテンツはbt.709にトーンマッピングされます（BT.2390 + ピーク検出）。HDR10+はlibmpvが動的メタデータを検出できないため無効です。Dolby VisionはHDR10ベースレイヤーを含むプロファイルでサポートされます。",
   "doneLabel": "完了",
-  "videoPreparing": "動画を準備中…"
+  "videoPreparing": "動画を準備中…",
+  "dvReshapeApplying": "Dolby Vision カラー補正を適用しています…",
+  "dvReshapeActiveHw": "Dolby Vision カラー補正が有効（ハードウェアデコード）",
+  "dvReshapeActiveSw": "Dolby Vision カラー補正が有効（ソフトウェアデコード）",
+  "dvReshapeFailed": "このデバイスで Dolby Vision カラー補正を開始できませんでした。詳細を見るにはタップしてください。",
+  "dvReshapeFailedShort": "Dolby Vision カラー補正を開始できませんでした — 詳細は詳細設定にあります。",
+  "dvReshapeDiagnosticsTitle": "DV 補正の診断",
+  "dvReshapeDiagnosticsEmpty": "フィルターのエンジンログは記録されませんでした。"
 }

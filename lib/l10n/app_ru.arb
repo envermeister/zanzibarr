@@ -123,5 +123,12 @@
   "dynamicRangeLabel": "Динамический диапазон",
   "hdrInfoText": "Можно выбрать только форматы, присутствующие в контенте; остальные недоступны. При выборе SDR HDR-контент тонально отображается в bt.709 (BT.2390 + peak detect). HDR10+ отключён, так как libmpv не может определить его динамические метаданные; Dolby Vision поддерживается в профилях с базовым слоем HDR10.",
   "doneLabel": "Готово",
-  "videoPreparing": "Подготовка видео…"
+  "videoPreparing": "Подготовка видео…",
+  "dvReshapeApplying": "Применяется цветокоррекция Dolby Vision…",
+  "dvReshapeActiveHw": "Цветокоррекция Dolby Vision активна (аппаратное декодирование)",
+  "dvReshapeActiveSw": "Цветокоррекция Dolby Vision активна (программное декодирование)",
+  "dvReshapeFailed": "Не удалось запустить цветокоррекцию Dolby Vision на этом устройстве. Нажмите для подробностей.",
+  "dvReshapeFailedShort": "Не удалось запустить цветокоррекцию Dolby Vision — подробности в расширенных настройках.",
+  "dvReshapeDiagnosticsTitle": "Диагностика коррекции DV",
+  "dvReshapeDiagnosticsEmpty": "Строки журнала движка для фильтра не зафиксированы."
 }

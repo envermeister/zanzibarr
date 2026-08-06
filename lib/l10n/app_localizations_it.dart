@@ -541,4 +541,31 @@ class AppLocalizationsIt extends AppLocalizations {
 
   @override
   String get videoPreparing => 'Preparazione del video…';
+
+  @override
+  String get dvReshapeApplying =>
+      'Applicazione della correzione colore Dolby Vision…';
+
+  @override
+  String get dvReshapeActiveHw =>
+      'Correzione colore Dolby Vision attiva (decodifica hardware)';
+
+  @override
+  String get dvReshapeActiveSw =>
+      'Correzione colore Dolby Vision attiva (decodifica software)';
+
+  @override
+  String get dvReshapeFailed =>
+      'Impossibile avviare la correzione colore Dolby Vision su questo dispositivo. Tocca per i dettagli.';
+
+  @override
+  String get dvReshapeFailedShort =>
+      'Impossibile avviare la correzione colore Dolby Vision — dettagli nelle impostazioni avanzate.';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'Diagnostica della correzione DV';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty =>
+      'Nessuna riga di log del motore catturata per il filtro.';
 }

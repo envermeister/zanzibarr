@@ -123,5 +123,12 @@
   "dynamicRangeLabel": "动态范围",
   "hdrInfoText": "只能选择内容所携带的格式，其余格式将被禁用。选择 SDR 时，HDR 内容将通过色调映射转换为 bt.709（BT.2390 + 峰值检测）。HDR10+ 已禁用，因为 libmpv 无法检测其动态元数据；Dolby Vision 在包含 HDR10 基础层的配置文件上受支持。",
   "doneLabel": "完成",
-  "videoPreparing": "正在准备视频…"
+  "videoPreparing": "正在准备视频…",
+  "dvReshapeApplying": "正在应用 Dolby Vision 色彩校正…",
+  "dvReshapeActiveHw": "Dolby Vision 色彩校正已启用（硬件解码）",
+  "dvReshapeActiveSw": "Dolby Vision 色彩校正已启用（软件解码）",
+  "dvReshapeFailed": "无法在此设备上启用 Dolby Vision 色彩校正。点击查看详情。",
+  "dvReshapeFailedShort": "无法启用 Dolby Vision 色彩校正——详情请见高级设置。",
+  "dvReshapeDiagnosticsTitle": "DV 校正诊断",
+  "dvReshapeDiagnosticsEmpty": "未捕获到该滤镜的引擎日志。"
 }

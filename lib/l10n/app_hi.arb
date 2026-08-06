@@ -123,5 +123,12 @@
   "dynamicRangeLabel": "डायनामिक रेंज",
   "hdrInfoText": "केवल वही फ़ॉर्मैट चुने जा सकते हैं जो कंटेंट में मौजूद हैं; बाकी अक्षम रहते हैं। SDR चुनने पर HDR कंटेंट को bt.709 पर टोन-मैप किया जाता है (BT.2390 + पीक डिटेक्ट)। HDR10+ अक्षम है क्योंकि libmpv उसका डायनामिक मेटाडेटा पहचान नहीं सकता; Dolby Vision उन प्रोफ़ाइलों पर समर्थित है जिनमें HDR10 बेस लेयर होती है।",
   "doneLabel": "हो गया",
-  "videoPreparing": "वीडियो तैयार हो रहा है…"
+  "videoPreparing": "वीडियो तैयार हो रहा है…",
+  "dvReshapeApplying": "Dolby Vision रंग सुधार लागू किया जा रहा है…",
+  "dvReshapeActiveHw": "Dolby Vision रंग सुधार सक्रिय (हार्डवेयर डिकोडिंग)",
+  "dvReshapeActiveSw": "Dolby Vision रंग सुधार सक्रिय (सॉफ़्टवेयर डिकोडिंग)",
+  "dvReshapeFailed": "इस डिवाइस पर Dolby Vision रंग सुधार शुरू नहीं हो सका। विवरण के लिए टैप करें।",
+  "dvReshapeFailedShort": "Dolby Vision रंग सुधार शुरू नहीं हो सका — विवरण उन्नत सेटिंग्स में है।",
+  "dvReshapeDiagnosticsTitle": "DV सुधार निदान",
+  "dvReshapeDiagnosticsEmpty": "फ़िल्टर के लिए कोई इंजन लॉग पंक्ति कैप्चर नहीं हुई।"
 }

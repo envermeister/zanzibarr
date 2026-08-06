@@ -123,5 +123,12 @@
   "dynamicRangeLabel": "다이내믹 레인지",
   "hdrInfoText": "콘텐츠에 포함된 형식만 선택할 수 있으며 나머지는 비활성화됩니다. SDR을 선택하면 HDR 콘텐츠가 bt.709로 톤 매핑됩니다(BT.2390 + peak detect). HDR10+는 libmpv가 동적 메타데이터를 감지할 수 없어 비활성화되며, Dolby Vision은 HDR10 베이스 레이어를 포함하는 프로필에서 지원됩니다.",
   "doneLabel": "완료",
-  "videoPreparing": "비디오 준비 중…"
+  "videoPreparing": "비디오 준비 중…",
+  "dvReshapeApplying": "Dolby Vision 색 보정을 적용하는 중…",
+  "dvReshapeActiveHw": "Dolby Vision 색 보정 활성화됨 (하드웨어 디코딩)",
+  "dvReshapeActiveSw": "Dolby Vision 색 보정 활성화됨 (소프트웨어 디코딩)",
+  "dvReshapeFailed": "이 기기에서 Dolby Vision 색 보정을 시작할 수 없습니다. 자세히 보려면 탭하세요.",
+  "dvReshapeFailedShort": "Dolby Vision 색 보정을 시작할 수 없습니다 — 자세한 내용은 고급 설정에서 확인하세요.",
+  "dvReshapeDiagnosticsTitle": "DV 보정 진단",
+  "dvReshapeDiagnosticsEmpty": "필터에 대한 엔진 로그가 캡처되지 않았습니다."
 }

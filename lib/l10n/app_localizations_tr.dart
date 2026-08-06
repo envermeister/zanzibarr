@@ -538,4 +538,30 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get videoPreparing => 'Video hazırlanıyor…';
+
+  @override
+  String get dvReshapeApplying => 'Dolby Vision renk düzeltmesi uygulanıyor…';
+
+  @override
+  String get dvReshapeActiveHw =>
+      'Dolby Vision renk düzeltmesi etkin (donanım çözme)';
+
+  @override
+  String get dvReshapeActiveSw =>
+      'Dolby Vision renk düzeltmesi etkin (yazılım çözme)';
+
+  @override
+  String get dvReshapeFailed =>
+      'Dolby Vision renk düzeltmesi bu cihazda başlatılamadı. Ayrıntılar için dokunun.';
+
+  @override
+  String get dvReshapeFailedShort =>
+      'Dolby Vision renk düzeltmesi başlatılamadı — ayrıntılar gelişmiş ayarlarda.';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'DV düzeltme tanılaması';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty =>
+      'Filtre için motor günlüğü satırı yakalanamadı.';
 }

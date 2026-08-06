@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,10 @@ abstract interface class PlaybackBackend {
   Future<String> getProperty(String name);
 
   Future<void> command(List<String> arguments);
+
+  /// libmpv günlük satırları (hata düzeyi). DV reshape filtresinin çalışma
+  /// zamanı doğrulaması için kullanılır; desteklenmiyorsa boş akış döner.
+  Stream<String> get logLines;
 }
 
 class MediaKitPlaybackBackend implements PlaybackBackend {
@@ -44,6 +49,11 @@ class MediaKitPlaybackBackend implements PlaybackBackend {
   @override
   Future<void> command(List<String> arguments) =>
       _nativePlayer.command(arguments);
+
+  @override
+  Stream<String> get logLines => player.stream.log.map(
+    (entry) => '[${entry.prefix}] ${entry.text}',
+  );
 }
 
 enum VideoPreset { natural, cinema, vivid }
@@ -57,6 +67,25 @@ enum AudioPreset { balanced, dialogue, night }
 /// İçerik hangi formatları taşıyorsa yalnız onlar seçilebilir; SDR her zaman
 /// seçilebilir çünkü her HDR sinyali aşağı ton eşlenebilir.
 enum HdrMode { sdr, hdr, hdr10, hdr10plus, dolbyVision }
+
+/// DV reshape filtresinin çalışma zamanı durumu. `vf` yazımı başarılı olsa
+/// bile lavfi grafı kareler akmaya başlayınca sessizce devre dışı kalabilir
+/// (Vulkan başlatılamaz, biçim uyuşmaz vb.); bu yüzden filtre, libmpv günlük
+/// akışıyla izlenir ve sonuç burada raporlanır.
+enum DvReshapeStatus {
+  /// Filtre kapalı.
+  inactive,
+
+  /// Filtre uygulandı; çalışma zamanı doğrulaması sürüyor.
+  applying,
+
+  /// İzleme penceresi hatasız geçti; filtre etkin kabul ediliyor.
+  active,
+
+  /// Filtre (yazılım çözme denemesi dahil) başlatılamadı; eski davranışa
+  /// dönüldü. Ayrıntılar [AdvancedPlaybackController.dvDiagnostics]'te.
+  failed,
+}
 
 /// Geçerli içeriğin taşıdığı dinamik aralık yetenekleri. libmpv video
 /// parametreleri ve başlık (track) üstverisinden okunur.
@@ -271,6 +300,37 @@ class AdvancedPlaybackController {
   /// etkin mi. Yalnız [setDolbyVisionReshaping] ile değişir.
   bool dolbyVisionReshaping = false;
 
+  /// Filtrenin çalışma zamanı durumu; [onDvReshapeStatusChanged] ile izlenir.
+  DvReshapeStatus dvReshapeStatus = DvReshapeStatus.inactive;
+
+  /// Durum değişiminde çağrılır (UI katmanı setState bağlar).
+  void Function()? onDvReshapeStatusChanged;
+
+  /// İzleme penceresinde yakalanan filtreye ilişkin libmpv günlük satırları
+  /// (son 16 satır). Uzaktan hata raporu için UI'da gösterilebilir.
+  List<String> get dvDiagnostics => List.unmodifiable(_dvDiagnostics);
+  final List<String> _dvDiagnostics = <String>[];
+
+  /// Android'de donanım (mediacodec-copy) denemesi başarısız olup yazılım
+  /// çözmeye düşüldüyse true. Yalnız reshape etkinken anlamlıdır.
+  bool get dvUsesSoftwareDecoding => _dvSoftwareRetried;
+  bool _dvSoftwareRetried = false;
+
+  StreamSubscription<String>? _dvLogSubscription;
+  Timer? _dvWatchTimer;
+  bool _dvFailureHandling = false;
+
+  /// Filtrenin hatasız sayılması için gereken sükûnet süresi: lavfi graf
+  /// yapılandırma hataları (Vulkan init, biçim uyuşmazlığı) ilk karelerde
+  /// günlüğe düşer. Testlerde küçültülür.
+  @visibleForTesting
+  Duration dvWatchWindow = const Duration(seconds: 8);
+
+  /// Bir graf hatası genelde art arda birkaç günlük satırı üretir; ilk hata
+  /// satırından sonra bu kadar beklenir ki patlama tek deneme sayılsın.
+  @visibleForTesting
+  Duration dvFailureSettleWindow = const Duration(milliseconds: 250);
+
   /// HDR modu seçer: SDR dışındaki modlarda doğal HDR/Dolby Vision sinyali
   /// ekrana işlenmeden verilir, SDR'de içerik bt.709'a ton eşlenir. Her ayarın
   /// libmpv tarafından kabul edildiği geri okunarak doğrulanır.
@@ -287,9 +347,8 @@ class AdvancedPlaybackController {
       mode == HdrMode.sdr ? 'no' : 'yes',
     );
     hdrMode = mode;
-    // Android libmpv'si (2023) DV profilini raporlayamadığından otomatik P5
-    // algısı orada çalışmaz; kullanıcının DV kipini seçmesi reshape'i
-    // etkinleştirir (P5 için tek güvenilir sinyal budur). Diğer kiplerde
+    // Android'de P5 algısı track üstverisinden çalışır; kullanıcının DV
+    // kipini seçmesi de reshape'i aynı yoldan etkinleştirir. Diğer kiplerde
     // filtre temizlenir.
     if (defaultTargetPlatform == TargetPlatform.android) {
       if (mode == HdrMode.dolbyVision) {
@@ -313,8 +372,16 @@ class AdvancedPlaybackController {
   /// derlenmiştir. Android'de media-kit'in stok libmpv'sinde libplacebo
   /// yoktur; bu yüzden uygulama, libplacebo+Vulkan destekli fork derlemesiyle
   /// (vendor/media_kit_libs_android_video) gelir. Diğer platformlarda bayrak
-  /// kapalı kalır ve `vf`'ye dokunulmaz. Filtre libmpv tarafından reddedilirse
-  /// (örn. Vulkan başlatılamazsa) eski davranışa sessizce dönülür.
+  /// kapalı kalır ve `vf`'ye dokunulmaz.
+  ///
+  /// `vf` yazımının başarılı olması filtrenin gerçekten çalıştığını
+  /// GARANTİLEMEZ: lavfi grafı ilk karelerde (Vulkan init, biçim uyuşmazlığı)
+  /// sessizce devre dışı kalabilir. Bu yüzden filtre uygulandıktan sonra
+  /// libmpv günlük akışı [dvWatchWindow] süresince izlenir; hata imzası
+  /// yakalanırsa Android'de önce yazılım çözmeyle bir kez yeniden denenir,
+  /// o da başarısızsa eski davranışa dönülüp durum [DvReshapeStatus.failed]
+  /// yapılır (ayrıntılar [dvDiagnostics]'te). Sonuç [dvReshapeStatus] ve
+  /// [onDvReshapeStatusChanged] üzerinden UI'a yansır.
   ///
   /// Açıkken çıkış renk uzayı geçerli [hdrMode]'a göre seçilir; HDR modu
   /// sonradan değişirse [setHdrMode], kod çözme kipi değişirse
@@ -328,6 +395,9 @@ class AdvancedPlaybackController {
     }
     if (!enabled) {
       dolbyVisionReshaping = false;
+      _cancelDvWatch();
+      _dvSoftwareRetried = false;
+      _setDvReshapeStatus(DvReshapeStatus.inactive);
       await _trySetProperty('vf', '');
       if (defaultTargetPlatform == TargetPlatform.android) {
         // Mediacodec yüzey karelerine geri dön (sıfır-kopya render yolu).
@@ -335,25 +405,149 @@ class AdvancedPlaybackController {
       }
       return;
     }
+    // Yeni bir kullanıcı denemesi: tanılama ve deneme merdiveni sıfırlanır.
+    _dvDiagnostics.clear();
+    _dvSoftwareRetried = false;
+    await _applyDvReshapeFilter();
+  }
+
+  /// Filtreyi geçerli kip ve HDR hedefiyle uygular; çalışma zamanı izleme
+  /// penceresini kurar. Özellik yazımı reddedilirse başarısızlık yoluna
+  /// ([_handleDvFailure]) düşer.
+  Future<void> _applyDvReshapeFilter() async {
+    _setDvReshapeStatus(DvReshapeStatus.applying);
+    _armDvWatch();
     try {
       // Android'de mediacodec donanım kareleri CPU'ya indirilemez (FFmpeg'de
       // hwdownload yok); `mediacodec-copy` donanım hızını koruyup kareleri
       // sistem belleğine kopyalar — filtre bunlara yazılım karesi gibi girer.
+      // Kopya yolu bu cihazda daha önce başarısız olduysa yazılım çözme
+      // kullanılır.
       if (defaultTargetPlatform == TargetPlatform.android) {
-        await _backend.setProperty('hwdec', 'mediacodec-copy');
+        await _backend.setProperty(
+          'hwdec',
+          _dvSoftwareRetried ? 'no' : 'mediacodec-copy',
+        );
         await _backend.setProperty('vf', _dvReshapeFilterSoftwareFor(hdrMode));
       } else {
         await _backend.setProperty('vf', _dvReshapeFilterFor(hdrMode));
       }
       dolbyVisionReshaping = true;
+      _dvWatchTimer = Timer(dvWatchWindow, () {
+        if (dvReshapeStatus == DvReshapeStatus.applying) {
+          _setDvReshapeStatus(DvReshapeStatus.active);
+        }
+      });
     } catch (_) {
-      // Filtre bu derlemede yoksa/başarısızsa eski davranışla sürdürülür.
-      dolbyVisionReshaping = false;
-      await _trySetProperty('vf', '');
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        await _trySetProperty('hwdec', 'mediacodec');
-      }
+      // Filtre bu derlemede yoksa/yazım reddedildiyse başarısızlık yolu.
+      await _handleDvFailure('vf/hwdec özellik yazımı reddedildi');
     }
+  }
+
+  /// Çalışma zamanı hatası yakalandığında: Android'de ilk hatada yazılım
+  /// çözmeyle bir kez yeniden dener; son denemede (veya macOS'ta) filtreyi
+  /// temizleyip eski davranışa döner ve durumu failed yapar.
+  Future<void> _handleDvFailure(String reason) async {
+    _dvWatchTimer?.cancel();
+    _recordDvDiagnostic(reason);
+    if (defaultTargetPlatform == TargetPlatform.android &&
+        !_dvSoftwareRetried) {
+      _dvSoftwareRetried = true;
+      _recordDvDiagnostic(
+        'donanım yolu başarısız; yazılım çözme ile yeniden deneniyor',
+      );
+      await _applyDvReshapeFilter();
+      return;
+    }
+    dolbyVisionReshaping = false;
+    await _trySetProperty('vf', '');
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      await _trySetProperty('hwdec', 'mediacodec');
+    }
+    _setDvReshapeStatus(DvReshapeStatus.failed);
+  }
+
+  void _armDvWatch() {
+    _dvWatchTimer?.cancel();
+    _dvLogSubscription ??= _backend.logLines.listen(
+      _onDvLogLine,
+      onError: (_) {
+        // Günlük akışındaki hata tanılamayı engellemez.
+      },
+    );
+  }
+
+  void _cancelDvWatch() {
+    _dvWatchTimer?.cancel();
+    _dvWatchTimer = null;
+    unawaited(_dvLogSubscription?.cancel());
+    _dvLogSubscription = null;
+  }
+
+  void _onDvLogLine(String line) {
+    if (dvReshapeStatus != DvReshapeStatus.applying) return;
+    final lower = line.toLowerCase();
+    if (lower.contains('libplacebo') ||
+        lower.contains('lavfi') ||
+        lower.contains('vulkan') ||
+        lower.contains('dovi')) {
+      _recordDvDiagnostic(line.trim());
+    }
+    if (!_looksLikeDvFailure(lower)) return;
+    _dvWatchTimer?.cancel();
+    // Aynı graf hatası genelde art arda birkaç günlük satırı üretir; ilk
+    // satırda kısa bir sükûnet penceresi başlatılır ve patlama tek deneme
+    // sayılır (yeniden giriş koruması).
+    if (_dvFailureHandling) return;
+    _dvFailureHandling = true;
+    unawaited(_handleDvFailureAfterSettle(line.trim()));
+  }
+
+  Future<void> _handleDvFailureAfterSettle(String reason) async {
+    try {
+      // Patlama süresince gelen satırlar yalnız tanılamaya kaydedilir.
+      await Future<void>.delayed(dvFailureSettleWindow);
+      await _handleDvFailure(reason);
+    } finally {
+      _dvFailureHandling = false;
+    }
+  }
+
+  void _recordDvDiagnostic(String line) {
+    if (line.isEmpty) return;
+    if (_dvDiagnostics.isNotEmpty && _dvDiagnostics.last == line) return;
+    _dvDiagnostics.add(line);
+    if (_dvDiagnostics.length > 16) _dvDiagnostics.removeAt(0);
+  }
+
+  /// lavfi/libplacebo filtresinin çalışma zamanında devre dışı kaldığını
+  /// gösteren libmpv günlük imzaları (küçük harfe indirgenmiş satırda aranır).
+  static bool _looksLikeDvFailure(String lower) {
+    if (lower.contains('disabling filter')) return true;
+    if (lower.contains('impossible to convert')) return true;
+    if (lower.contains('error configuring filter')) return true;
+    if (lower.contains('vulkan') &&
+        (lower.contains('failed') ||
+            lower.contains('error') ||
+            lower.contains('could not') ||
+            lower.contains('cannot'))) {
+      return true;
+    }
+    if (lower.contains('libplacebo') &&
+        (lower.contains('failed') || lower.contains('error'))) {
+      return true;
+    }
+    if (lower.contains('lavfi') &&
+        (lower.contains('failed') || lower.contains('error'))) {
+      return true;
+    }
+    return false;
+  }
+
+  void _setDvReshapeStatus(DvReshapeStatus status) {
+    if (dvReshapeStatus == status) return;
+    dvReshapeStatus = status;
+    onDvReshapeStatusChanged?.call();
   }
 
   /// HDR hedefi için yazılım-karesi (öneksiz) filtre varyantı.

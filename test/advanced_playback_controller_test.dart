@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
@@ -9,6 +10,13 @@ class _FakeBackend implements PlaybackBackend {
   final properties = <String, String>{};
   final readbackOverrides = <String, String>{};
   final unsupportedProperties = <String>{};
+  final logController = StreamController<String>.broadcast();
+
+  /// Taklit libmpv günlüğüne bir satır basar (DV izleme testleri).
+  void emitLog(String line) => logController.add(line);
+
+  @override
+  Stream<String> get logLines => logController.stream;
 
   @override
   Future<void> command(List<String> arguments) async {
@@ -823,6 +831,118 @@ void main() {
 
     expect(controller.dolbyVisionReshaping, isFalse);
     expect(backend.properties['vf'], '');
+  });
+
+  test('DV reshape izleme penceresi hatasız geçince durum active olur',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend)
+      ..dvWatchWindow = const Duration(milliseconds: 20);
+
+    await controller.setDolbyVisionReshaping(true);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
+
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    expect(controller.dvReshapeStatus, DvReshapeStatus.active);
+    expect(controller.dvUsesSoftwareDecoding, isFalse);
+
+    await controller.setDolbyVisionReshaping(false);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.inactive);
+  });
+
+  test('Android DV filtresi çalışma zamanı hatasında yazılıma düşer',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend)
+      ..dvWatchWindow = const Duration(milliseconds: 40)
+      ..dvFailureSettleWindow = const Duration(milliseconds: 5);
+
+    await controller.setDolbyVisionReshaping(true);
+    expect(backend.properties['hwdec'], 'mediacodec-copy');
+
+    // Grafın çalışma zamanında devre dışı kalması (tipik mpv imzası).
+    backend.emitLog('[vf] Disabling filter lavfi.00 because it has failed.');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    // Bir kez yazılım çözmeyle yeniden denenir.
+    expect(backend.properties['hwdec'], 'no');
+    expect(controller.dolbyVisionReshaping, isTrue);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
+
+    await Future<void>.delayed(const Duration(milliseconds: 90));
+    expect(controller.dvReshapeStatus, DvReshapeStatus.active);
+    expect(controller.dvUsesSoftwareDecoding, isTrue);
+    expect(controller.dvDiagnostics, isNotEmpty);
+
+    await controller.setDolbyVisionReshaping(false);
+  });
+
+  test('Android DV her iki deneme de başarısızsa eski davranışa döner',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend)
+      ..dvFailureSettleWindow = const Duration(milliseconds: 5);
+
+    await controller.setDolbyVisionReshaping(true);
+    backend.emitLog('[ffmpeg/libplacebo] Failed creating Vulkan device!');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+    expect(backend.properties['hwdec'], 'no');
+
+    backend.emitLog('[ffmpeg/libplacebo] Failed creating Vulkan device!');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
+    expect(backend.properties['vf'], '');
+    expect(backend.properties['hwdec'], 'mediacodec');
+    expect(controller.dvDiagnostics, isNotEmpty);
+  });
+
+  test('macOS DV çalışma zamanı hatasında yazılım denemesi yapılmaz', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend)
+      ..dvFailureSettleWindow = const Duration(milliseconds: 5);
+
+    await controller.setDolbyVisionReshaping(true);
+    backend.emitLog('[vf] Disabling filter lavfi.00 because it has failed.');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
+    expect(backend.properties['vf'], '');
+    expect(backend.properties['hwdec'], isNot('no'));
+  });
+
+  test('Android DV art arda hata satırları tek deneme sayılır', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend)
+      ..dvWatchWindow = const Duration(milliseconds: 40)
+      ..dvFailureSettleWindow = const Duration(milliseconds: 5);
+
+    await controller.setDolbyVisionReshaping(true);
+    // Aynı graf hatası genelde birkaç satırlık patlama üretir; yalnız ilk
+    // satır deneme merdivenini ilerletmeli.
+    backend.emitLog('[ffmpeg/libplacebo] Failed creating Vulkan device!');
+    backend.emitLog('[ffmpeg/libplacebo] Failed creating Vulkan device!');
+    backend.emitLog('[vf] Disabling filter lavfi.00 because it has failed.');
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(backend.properties['hwdec'], 'no');
+    expect(controller.dolbyVisionReshaping, isTrue);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
+
+    await controller.setDolbyVisionReshaping(false);
   });
 }
 

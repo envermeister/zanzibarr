@@ -81,6 +81,10 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   final _videoKey = GlobalKey<VideoState>();
   final _playButtonFocusNode = FocusNode(debugLabel: 'Oynat/Duraklat düğmesi');
+
+  /// Gelişmiş ayarlar menüsü açıkken onun StatefulBuilder setState'i; DV
+  /// durum satırının menü açıkken de canlı güncellenmesi için kullanılır.
+  void Function()? _advancedControlsRefresh;
   StreamSubscription<Duration>? _positionSubscription;
   StreamSubscription<Duration>? _durationSubscription;
   StreamSubscription<bool>? _playingSubscription;
@@ -207,6 +211,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       ),
     );
     _playback = AdvancedPlaybackController(MediaKitPlaybackBackend(_player));
+    _playback.onDvReshapeStatusChanged = _onDvReshapeStatusChanged;
     _pictureInPictureWindow =
         widget.pictureInPictureWindow ?? NativePictureInPictureWindow();
     _preferenceStore = widget.preferenceStore ?? MediaPreferencesStore();
@@ -376,6 +381,48 @@ class _PlayerScreenState extends State<PlayerScreen>
     } catch (_) {
       // Algılama başarısızsa oynatma mevcut davranışla sürer.
     }
+  }
+
+  /// DV reshape filtresinin çalışma zamanı durumu değiştiğinde (uygulanıyor
+  /// → etkin / başarısız) arayüzü tazeler; başarısızlıkta kullanıcıya kısa
+  /// bir bildirim gösterir (ayrıntılar gelişmiş ayarlar menüsünde).
+  void _onDvReshapeStatusChanged() {
+    if (!mounted) return;
+    setState(() {});
+    _advancedControlsRefresh?.call();
+    if (_playback.dvReshapeStatus == DvReshapeStatus.failed) {
+      final l10n = AppLocalizations.of(context);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(l10n.dvReshapeFailedShort)));
+    }
+  }
+
+  /// Gelişmiş ayarlar menüsündeki DV durum satırından açılan tanılama
+  /// penceresi: filtrenin neden başlatılamadığını gösteren libmpv günlük
+  /// satırlarını (varsa) seçilebilir metin olarak verir.
+  void _showDvDiagnostics() {
+    final l10n = AppLocalizations.of(context);
+    final lines = _playback.dvDiagnostics;
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.dvReshapeDiagnosticsTitle),
+        content: SizedBox(
+          width: 420,
+          child: SelectableText(
+            lines.isEmpty ? l10n.dvReshapeDiagnosticsEmpty : lines.join('\n'),
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l10n.doneLabel),
+          ),
+        ],
+      ),
+    );
   }
 
   void _markPlaybackReady() {
@@ -2003,6 +2050,11 @@ class _PlayerScreenState extends State<PlayerScreen>
             if (dialogContext.mounted) setDialogState(() {});
           }
 
+          // DV reshape durumu menü açıkken değişirse satırı canlı tazele.
+          _advancedControlsRefresh = () {
+            if (dialogContext.mounted) setDialogState(() {});
+          };
+
           void onDialogDrag(DragUpdateDetails details) {
             setDialogState(() {
               final candidate = dragOffset + details.delta;
@@ -2306,6 +2358,10 @@ class _PlayerScreenState extends State<PlayerScreen>
                           },
                         ),
                       ),
+                      // DV kipi seçiliyken filtrenin çalışma zamanı durumu
+                      // (uygulanıyor/etkin/başarısız) görünür olur.
+                      if (_hdrMode == HdrMode.dolbyVision)
+                        _dvReshapeStatusRow(context),
                       Text(
                         l10n.hdrInfoText,
                         style: Theme.of(
@@ -2327,7 +2383,62 @@ class _PlayerScreenState extends State<PlayerScreen>
         },
       ),
     );
+    _advancedControlsRefresh = null;
     _revealControls();
+  }
+
+  /// Gelişmiş ayarlar menüsünde DV kipi seçiliyken gösterilen çalışma zamanı
+  /// durum satırı: filtre uygulanıyor / etkin (donanım-yazılım) / başarısız.
+  /// Başarısızlıkta satıra dokunmak libmpv günlük tanılamasını açar.
+  Widget _dvReshapeStatusRow(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final status = _playback.dvReshapeStatus;
+    final (IconData, Color, String) presentation = switch (status) {
+      DvReshapeStatus.applying => (
+        Icons.hourglass_top,
+        Colors.white54,
+        l10n.dvReshapeApplying,
+      ),
+      DvReshapeStatus.active => (
+        Icons.check_circle_outline,
+        Colors.lightGreenAccent.shade100,
+        _playback.dvUsesSoftwareDecoding
+            ? l10n.dvReshapeActiveSw
+            : l10n.dvReshapeActiveHw,
+      ),
+      DvReshapeStatus.failed => (
+        Icons.warning_amber_rounded,
+        Colors.orangeAccent.shade100,
+        l10n.dvReshapeFailed,
+      ),
+      // inactive: DV kipi seçili ama platform desteklemiyor (Windows/Linux)
+      // ya da filtre henüz kurulmadı; satır göstermeye gerek yok.
+      DvReshapeStatus.inactive => (
+        Icons.info_outline,
+        Colors.white54,
+        '',
+      ),
+    };
+    if (status == DvReshapeStatus.inactive) return const SizedBox.shrink();
+    final row = Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(presentation.$1, size: 14, color: presentation.$2),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              presentation.$3,
+              style: TextStyle(color: presentation.$2, fontSize: 12),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (status != DvReshapeStatus.failed) return row;
+    return InkWell(onTap: _showDvDiagnostics, child: row);
   }
 
   Future<void> _setHdrMode(HdrMode mode) async {

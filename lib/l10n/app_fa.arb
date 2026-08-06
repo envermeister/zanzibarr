@@ -123,5 +123,12 @@
   "dynamicRangeLabel": "محدوده دینامیک",
   "hdrInfoText": "فقط قالب‌هایی که توسط محتوا ارائه می‌شوند قابل انتخاب هستند؛ بقیه غیرفعال‌اند. هنگام انتخاب SDR، محتوای HDR به bt.709 تون-مپ می‌شود (BT.2390 + تشخیص پیک). HDR10+ غیرفعال است زیرا libmpv نمی‌تواند متادیتای دینامیک آن را تشخیص دهد؛ Dolby Vision در پروفایل‌هایی پشتیبانی می‌شود که شامل لایه پایه HDR10 باشند.",
   "doneLabel": "انجام شد",
-  "videoPreparing": "در حال آماده‌سازی ویدیو…"
+  "videoPreparing": "در حال آماده‌سازی ویدیو…",
+  "dvReshapeApplying": "در حال اعمال تصحیح رنگ Dolby Vision…",
+  "dvReshapeActiveHw": "تصحیح رنگ Dolby Vision فعال است (رمزگشایی سخت‌افزاری)",
+  "dvReshapeActiveSw": "تصحیح رنگ Dolby Vision فعال است (رمزگشایی نرم‌افزاری)",
+  "dvReshapeFailed": "تصحیح رنگ Dolby Vision روی این دستگاه آغاز نشد. برای جزئیات ضربه بزنید.",
+  "dvReshapeFailedShort": "تصحیح رنگ Dolby Vision آغاز نشد — جزئیات در تنظیمات پیشرفته است.",
+  "dvReshapeDiagnosticsTitle": "عیب‌یابی تصحیح DV",
+  "dvReshapeDiagnosticsEmpty": "هیچ خط گزارشی از موتور برای فیلتر ثبت نشد."
 }

@@ -539,4 +539,30 @@ class AppLocalizationsHi extends AppLocalizations {
 
   @override
   String get videoPreparing => 'वीडियो तैयार हो रहा है…';
+
+  @override
+  String get dvReshapeApplying => 'Dolby Vision रंग सुधार लागू किया जा रहा है…';
+
+  @override
+  String get dvReshapeActiveHw =>
+      'Dolby Vision रंग सुधार सक्रिय (हार्डवेयर डिकोडिंग)';
+
+  @override
+  String get dvReshapeActiveSw =>
+      'Dolby Vision रंग सुधार सक्रिय (सॉफ़्टवेयर डिकोडिंग)';
+
+  @override
+  String get dvReshapeFailed =>
+      'इस डिवाइस पर Dolby Vision रंग सुधार शुरू नहीं हो सका। विवरण के लिए टैप करें।';
+
+  @override
+  String get dvReshapeFailedShort =>
+      'Dolby Vision रंग सुधार शुरू नहीं हो सका — विवरण उन्नत सेटिंग्स में है।';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'DV सुधार निदान';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty =>
+      'फ़िल्टर के लिए कोई इंजन लॉग पंक्ति कैप्चर नहीं हुई।';
 }

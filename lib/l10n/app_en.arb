@@ -269,5 +269,12 @@
   "dynamicRangeLabel": "Dynamic range",
   "hdrInfoText": "Only the formats carried by the content can be selected; the others are disabled. When SDR is selected, HDR content is tone-mapped to bt.709 (BT.2390 + peak detect). HDR10+ is disabled because libmpv cannot detect its dynamic metadata; Dolby Vision is supported on profiles that include an HDR10 base layer.",
   "doneLabel": "Done",
-  "videoPreparing": "Preparing video…"
+  "videoPreparing": "Preparing video…",
+  "dvReshapeApplying": "Applying Dolby Vision color correction…",
+  "dvReshapeActiveHw": "Dolby Vision color correction active (hardware decoding)",
+  "dvReshapeActiveSw": "Dolby Vision color correction active (software decoding)",
+  "dvReshapeFailed": "Dolby Vision color correction could not be started on this device. Tap for details.",
+  "dvReshapeFailedShort": "Dolby Vision color correction could not be started — details in advanced settings.",
+  "dvReshapeDiagnosticsTitle": "DV correction diagnostics",
+  "dvReshapeDiagnosticsEmpty": "No engine log lines were captured for the filter."
 }

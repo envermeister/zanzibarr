@@ -529,4 +529,25 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get videoPreparing => '正在准备视频…';
+
+  @override
+  String get dvReshapeApplying => '正在应用 Dolby Vision 色彩校正…';
+
+  @override
+  String get dvReshapeActiveHw => 'Dolby Vision 色彩校正已启用（硬件解码）';
+
+  @override
+  String get dvReshapeActiveSw => 'Dolby Vision 色彩校正已启用（软件解码）';
+
+  @override
+  String get dvReshapeFailed => '无法在此设备上启用 Dolby Vision 色彩校正。点击查看详情。';
+
+  @override
+  String get dvReshapeFailedShort => '无法启用 Dolby Vision 色彩校正——详情请见高级设置。';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'DV 校正诊断';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty => '未捕获到该滤镜的引擎日志。';
 }

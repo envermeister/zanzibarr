@@ -531,4 +531,27 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get videoPreparing => '動画を準備中…';
+
+  @override
+  String get dvReshapeApplying => 'Dolby Vision カラー補正を適用しています…';
+
+  @override
+  String get dvReshapeActiveHw => 'Dolby Vision カラー補正が有効（ハードウェアデコード）';
+
+  @override
+  String get dvReshapeActiveSw => 'Dolby Vision カラー補正が有効（ソフトウェアデコード）';
+
+  @override
+  String get dvReshapeFailed =>
+      'このデバイスで Dolby Vision カラー補正を開始できませんでした。詳細を見るにはタップしてください。';
+
+  @override
+  String get dvReshapeFailedShort =>
+      'Dolby Vision カラー補正を開始できませんでした — 詳細は詳細設定にあります。';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'DV 補正の診断';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty => 'フィルターのエンジンログは記録されませんでした。';
 }

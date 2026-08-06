@@ -123,5 +123,12 @@
   "dynamicRangeLabel": "Plage dynamique",
   "hdrInfoText": "Seuls les formats transportés par le contenu peuvent être sélectionnés ; les autres sont désactivés. Lorsque SDR est sélectionné, le contenu HDR est converti en bt.709 par mappage de tons (BT.2390 + détection des pics). HDR10+ est désactivé car libmpv ne peut pas détecter ses métadonnées dynamiques ; Dolby Vision est pris en charge sur les profils incluant une couche de base HDR10.",
   "doneLabel": "Terminé",
-  "videoPreparing": "Préparation de la vidéo…"
+  "videoPreparing": "Préparation de la vidéo…",
+  "dvReshapeApplying": "Application de la correction colorimétrique Dolby Vision…",
+  "dvReshapeActiveHw": "Correction colorimétrique Dolby Vision active (décodage matériel)",
+  "dvReshapeActiveSw": "Correction colorimétrique Dolby Vision active (décodage logiciel)",
+  "dvReshapeFailed": "La correction colorimétrique Dolby Vision n'a pas pu démarrer sur cet appareil. Touchez pour les détails.",
+  "dvReshapeFailedShort": "La correction Dolby Vision n'a pas pu démarrer — détails dans les réglages avancés.",
+  "dvReshapeDiagnosticsTitle": "Diagnostic de la correction DV",
+  "dvReshapeDiagnosticsEmpty": "Aucune ligne de journal du moteur capturée pour le filtre."
 }

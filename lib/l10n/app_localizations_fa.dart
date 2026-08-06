@@ -538,4 +538,30 @@ class AppLocalizationsFa extends AppLocalizations {
 
   @override
   String get videoPreparing => 'در حال آماده‌سازی ویدیو…';
+
+  @override
+  String get dvReshapeApplying => 'در حال اعمال تصحیح رنگ Dolby Vision…';
+
+  @override
+  String get dvReshapeActiveHw =>
+      'تصحیح رنگ Dolby Vision فعال است (رمزگشایی سخت‌افزاری)';
+
+  @override
+  String get dvReshapeActiveSw =>
+      'تصحیح رنگ Dolby Vision فعال است (رمزگشایی نرم‌افزاری)';
+
+  @override
+  String get dvReshapeFailed =>
+      'تصحیح رنگ Dolby Vision روی این دستگاه آغاز نشد. برای جزئیات ضربه بزنید.';
+
+  @override
+  String get dvReshapeFailedShort =>
+      'تصحیح رنگ Dolby Vision آغاز نشد — جزئیات در تنظیمات پیشرفته است.';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'عیب‌یابی تصحیح DV';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty =>
+      'هیچ خط گزارشی از موتور برای فیلتر ثبت نشد.';
 }

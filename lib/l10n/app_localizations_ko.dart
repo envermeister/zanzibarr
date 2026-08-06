@@ -531,4 +531,27 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get videoPreparing => '비디오 준비 중…';
+
+  @override
+  String get dvReshapeApplying => 'Dolby Vision 색 보정을 적용하는 중…';
+
+  @override
+  String get dvReshapeActiveHw => 'Dolby Vision 색 보정 활성화됨 (하드웨어 디코딩)';
+
+  @override
+  String get dvReshapeActiveSw => 'Dolby Vision 색 보정 활성화됨 (소프트웨어 디코딩)';
+
+  @override
+  String get dvReshapeFailed =>
+      '이 기기에서 Dolby Vision 색 보정을 시작할 수 없습니다. 자세히 보려면 탭하세요.';
+
+  @override
+  String get dvReshapeFailedShort =>
+      'Dolby Vision 색 보정을 시작할 수 없습니다 — 자세한 내용은 고급 설정에서 확인하세요.';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'DV 보정 진단';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty => '필터에 대한 엔진 로그가 캡처되지 않았습니다.';
 }

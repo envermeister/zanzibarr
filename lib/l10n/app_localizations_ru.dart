@@ -541,4 +541,30 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get videoPreparing => 'Подготовка видео…';
+
+  @override
+  String get dvReshapeApplying => 'Применяется цветокоррекция Dolby Vision…';
+
+  @override
+  String get dvReshapeActiveHw =>
+      'Цветокоррекция Dolby Vision активна (аппаратное декодирование)';
+
+  @override
+  String get dvReshapeActiveSw =>
+      'Цветокоррекция Dolby Vision активна (программное декодирование)';
+
+  @override
+  String get dvReshapeFailed =>
+      'Не удалось запустить цветокоррекцию Dolby Vision на этом устройстве. Нажмите для подробностей.';
+
+  @override
+  String get dvReshapeFailedShort =>
+      'Не удалось запустить цветокоррекцию Dolby Vision — подробности в расширенных настройках.';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'Диагностика коррекции DV';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty =>
+      'Строки журнала движка для фильтра не зафиксированы.';
 }

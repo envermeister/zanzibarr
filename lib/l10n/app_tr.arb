@@ -156,5 +156,12 @@
   "dynamicRangeLabel": "Dinamik aralık",
   "hdrInfoText": "İçeriğin taşıdığı formatlar seçilebilir, diğerleri pasiftir. SDR seçiliyken HDR içerik bt.709'a ton eşlenir (BT.2390 + peak detect). HDR10+ dinamik üstverisi libmpv tarafından algılanamadığı için pasiftir; Dolby Vision, HDR10 taban katmanı bulunan profillerde desteklenir.",
   "doneLabel": "Bitti",
-  "videoPreparing": "Video hazırlanıyor…"
+  "videoPreparing": "Video hazırlanıyor…",
+  "dvReshapeApplying": "Dolby Vision renk düzeltmesi uygulanıyor…",
+  "dvReshapeActiveHw": "Dolby Vision renk düzeltmesi etkin (donanım çözme)",
+  "dvReshapeActiveSw": "Dolby Vision renk düzeltmesi etkin (yazılım çözme)",
+  "dvReshapeFailed": "Dolby Vision renk düzeltmesi bu cihazda başlatılamadı. Ayrıntılar için dokunun.",
+  "dvReshapeFailedShort": "Dolby Vision renk düzeltmesi başlatılamadı — ayrıntılar gelişmiş ayarlarda.",
+  "dvReshapeDiagnosticsTitle": "DV düzeltme tanılaması",
+  "dvReshapeDiagnosticsEmpty": "Filtre için motor günlüğü satırı yakalanamadı."
 }

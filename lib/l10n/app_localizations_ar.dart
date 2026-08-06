@@ -537,4 +537,30 @@ class AppLocalizationsAr extends AppLocalizations {
 
   @override
   String get videoPreparing => 'جارٍ تجهيز الفيديو…';
+
+  @override
+  String get dvReshapeApplying => 'جارٍ تطبيق تصحيح ألوان Dolby Vision…';
+
+  @override
+  String get dvReshapeActiveHw =>
+      'تصحيح ألوان Dolby Vision مفعّل (فك ترميز بالأجهزة)';
+
+  @override
+  String get dvReshapeActiveSw =>
+      'تصحيح ألوان Dolby Vision مفعّل (فك ترميز بالبرمجيات)';
+
+  @override
+  String get dvReshapeFailed =>
+      'تعذّر بدء تصحيح ألوان Dolby Vision على هذا الجهاز. اضغط للاطلاع على التفاصيل.';
+
+  @override
+  String get dvReshapeFailedShort =>
+      'تعذّر بدء تصحيح ألوان Dolby Vision — التفاصيل في الإعدادات المتقدمة.';
+
+  @override
+  String get dvReshapeDiagnosticsTitle => 'تشخيص تصحيح DV';
+
+  @override
+  String get dvReshapeDiagnosticsEmpty =>
+      'لم يتم التقاط أي سطور من سجل المحرك للمرشح.';
 }

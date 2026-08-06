@@ -1063,6 +1063,48 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Preparing video…'**
   String get videoPreparing;
+
+  /// No description provided for @dvReshapeApplying.
+  ///
+  /// In en, this message translates to:
+  /// **'Applying Dolby Vision color correction…'**
+  String get dvReshapeApplying;
+
+  /// No description provided for @dvReshapeActiveHw.
+  ///
+  /// In en, this message translates to:
+  /// **'Dolby Vision color correction active (hardware decoding)'**
+  String get dvReshapeActiveHw;
+
+  /// No description provided for @dvReshapeActiveSw.
+  ///
+  /// In en, this message translates to:
+  /// **'Dolby Vision color correction active (software decoding)'**
+  String get dvReshapeActiveSw;
+
+  /// No description provided for @dvReshapeFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Dolby Vision color correction could not be started on this device. Tap for details.'**
+  String get dvReshapeFailed;
+
+  /// No description provided for @dvReshapeFailedShort.
+  ///
+  /// In en, this message translates to:
+  /// **'Dolby Vision color correction could not be started — details in advanced settings.'**
+  String get dvReshapeFailedShort;
+
+  /// No description provided for @dvReshapeDiagnosticsTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'DV correction diagnostics'**
+  String get dvReshapeDiagnosticsTitle;
+
+  /// No description provided for @dvReshapeDiagnosticsEmpty.
+  ///
+  /// In en, this message translates to:
+  /// **'No engine log lines were captured for the filter.'**
+  String get dvReshapeDiagnosticsEmpty;
 }
 
 class _AppLocalizationsDelegate

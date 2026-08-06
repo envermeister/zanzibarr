@@ -123,5 +123,12 @@
   "dynamicRangeLabel": "النطاق الديناميكي",
   "hdrInfoText": "يمكن اختيار الصيغ التي يحملها المحتوى فقط؛ أما الأخرى فهي معطّلة. عند اختيار SDR، يُعاد تعيين ألوان محتوى HDR إلى bt.709 (BT.2390 + كشف الذروة). HDR10+ معطّل لأن libmpv لا يستطيع اكتشاف بياناته الوصفية الديناميكية؛ أما Dolby Vision فمدعوم على الملفات التعريفية التي تتضمن طبقة أساس HDR10.",
   "doneLabel": "تم",
-  "videoPreparing": "جارٍ تجهيز الفيديو…"
+  "videoPreparing": "جارٍ تجهيز الفيديو…",
+  "dvReshapeApplying": "جارٍ تطبيق تصحيح ألوان Dolby Vision…",
+  "dvReshapeActiveHw": "تصحيح ألوان Dolby Vision مفعّل (فك ترميز بالأجهزة)",
+  "dvReshapeActiveSw": "تصحيح ألوان Dolby Vision مفعّل (فك ترميز بالبرمجيات)",
+  "dvReshapeFailed": "تعذّر بدء تصحيح ألوان Dolby Vision على هذا الجهاز. اضغط للاطلاع على التفاصيل.",
+  "dvReshapeFailedShort": "تعذّر بدء تصحيح ألوان Dolby Vision — التفاصيل في الإعدادات المتقدمة.",
+  "dvReshapeDiagnosticsTitle": "تشخيص تصحيح DV",
+  "dvReshapeDiagnosticsEmpty": "لم يتم التقاط أي سطور من سجل المحرك للمرشح."
 }
