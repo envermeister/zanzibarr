@@ -374,6 +374,9 @@ class _PlayerScreenState extends State<PlayerScreen>
   /// render yolu doğru çalıştığından filtre kapalı kalır.
   Future<void> _applyDolbyVisionReshapingIfNeeded() async {
     try {
+      // Önceki bir içerikte filtre motoru kilitlediyse bu oturumda kapalı
+      // tutulur; kullanıcı uygulamayı yeniden başlatınca tekrar denenir.
+      if (_playback.dvSessionBlacklisted) return;
       final capabilities = await _playback.detectHdrCapabilities();
       await _playback.setDolbyVisionReshaping(
         capabilities.dolbyVisionProfile == 5,

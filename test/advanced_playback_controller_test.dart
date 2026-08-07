@@ -12,6 +12,10 @@ class _FakeBackend implements PlaybackBackend {
   final unsupportedProperties = <String>{};
   final logController = StreamController<String>.broadcast();
 
+  /// Bu özellikler sorgulanınca asla dönmeyen bir future üretir (kilitli
+  /// oynatma döngüsünü taklit eder; dvVerifyTimeout testleri için).
+  final hangingProperties = <String>{};
+
   /// Taklit libmpv günlüğüne bir satır basar (DV izleme testleri).
   void emitLog(String line) => logController.add(line);
 
@@ -26,6 +30,11 @@ class _FakeBackend implements PlaybackBackend {
   @override
   Future<String> getProperty(String name) async {
     calls.add('get:$name');
+    if (hangingProperties.contains(name)) {
+      // Kilitli motor: sorgu sonsuza dek bekler (dvVerifyTimeout devreye
+      // girsin diye asla tamamlanmayan future).
+      return Completer<String>().future;
+    }
     return readbackOverrides[name] ?? properties[name] ?? '';
   }
 
@@ -837,7 +846,8 @@ void main() {
       () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    final backend = _FakeBackend();
+    final backend = _FakeBackend()
+      ..readbackOverrides['video-out-params/pixelformat'] = 'p010';
     final controller = AdvancedPlaybackController(backend)
       ..dvWatchWindow = const Duration(milliseconds: 20);
 
@@ -857,7 +867,8 @@ void main() {
       () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    final backend = _FakeBackend();
+    final backend = _FakeBackend()
+      ..readbackOverrides['video-out-params/pixelformat'] = 'p010';
     final controller = AdvancedPlaybackController(backend)
       ..dvWatchWindow = const Duration(milliseconds: 40)
       ..dvFailureSettleWindow = const Duration(milliseconds: 5);
@@ -943,6 +954,63 @@ void main() {
     expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
 
     await controller.setDolbyVisionReshaping(false);
+  });
+
+  test('Android DV filtre çıkış üretmezse sessiz başarısızlık yakalanır',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    // Hata satırı yok ama video-out-params da boş: filtre sessizce düştü.
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend)
+      ..dvWatchWindow = const Duration(milliseconds: 20)
+      ..dvFailureSettleWindow = const Duration(milliseconds: 5);
+
+    await controller.setDolbyVisionReshaping(true);
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+
+    // İlk sessiz başarısızlıkta yazılım çözmeyle yeniden denenir.
+    expect(backend.properties['hwdec'], 'no');
+    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
+
+    await Future<void>.delayed(const Duration(milliseconds: 40));
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
+    expect(backend.properties['vf'], '');
+    expect(backend.properties['hwdec'], 'mediacodec');
+    expect(controller.dvSessionBlacklisted, isFalse);
+  });
+
+  test('Android DV kilitlenmesinde sorgu zaman aşımı kara listeye alır',
+      () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.android;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    // Kilitli motor: özellik sorgusu asla dönmez.
+    final backend = _FakeBackend()
+      ..hangingProperties.add('video-out-params/pixelformat');
+    final controller = AdvancedPlaybackController(backend)
+      ..dvWatchWindow = const Duration(milliseconds: 20)
+      ..dvVerifyTimeout = const Duration(milliseconds: 30)
+      ..dvFailureSettleWindow = const Duration(milliseconds: 5);
+
+    await controller.setDolbyVisionReshaping(true);
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+
+    // İlk kilitlenmede yazılım çözmeyle bir kez denenir.
+    expect(backend.properties['hwdec'], 'no');
+    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
+
+    await Future<void>.delayed(const Duration(milliseconds: 80));
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
+    expect(controller.dvSessionBlacklisted, isTrue);
+
+    // Kara liste sonrası yeniden deneme istekleri yok sayılır.
+    backend.properties.clear();
+    await controller.setDolbyVisionReshaping(true);
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(backend.properties.containsKey('vf'), isFalse);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
   });
 }
 

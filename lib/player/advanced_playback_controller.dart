@@ -331,6 +331,18 @@ class AdvancedPlaybackController {
   @visibleForTesting
   Duration dvFailureSettleWindow = const Duration(milliseconds: 250);
 
+  /// [_verifyDvFilterOutput] sorgusunun üst süresi: kilitli bir oynatma
+  /// döngüsüne yapılan özellik sorgusu asla dönmez; zaman aşımı kilitlenme
+  /// kanıtı sayılır. Testlerde küçültülür.
+  @visibleForTesting
+  Duration dvVerifyTimeout = const Duration(seconds: 3);
+
+  /// Bu oturumda filtre motoru kilitlediyse (sürücü düzeyi Vulkan sorunu)
+  /// true: yeniden denemek aynı kilitlenmeyi üretir, bu yüzden reshape
+  /// istekleri uygulama yeniden başlayana dek yok sayılır.
+  bool get dvSessionBlacklisted => _dvSessionBlacklisted;
+  bool _dvSessionBlacklisted = false;
+
   /// HDR modu seçer: SDR dışındaki modlarda doğal HDR/Dolby Vision sinyali
   /// ekrana işlenmeden verilir, SDR'de içerik bt.709'a ton eşlenir. Her ayarın
   /// libmpv tarafından kabul edildiği geri okunarak doğrulanır.
@@ -405,6 +417,14 @@ class AdvancedPlaybackController {
       }
       return;
     }
+    if (_dvSessionBlacklisted) {
+      // Motor bu oturumda filtreye kilitlendi; yeniden denemek aynı
+      // kilitlenmeyi üretir. Kullanıcı uygulamayı yeniden başlatıncaya dek
+      // reshape kapalı tutulur (içerik SDR ton eşliyle izlenebilir).
+      dolbyVisionReshaping = false;
+      _setDvReshapeStatus(DvReshapeStatus.failed);
+      return;
+    }
     // Yeni bir kullanıcı denemesi: tanılama ve deneme merdiveni sıfırlanır.
     _dvDiagnostics.clear();
     _dvSoftwareRetried = false;
@@ -434,13 +454,46 @@ class AdvancedPlaybackController {
       }
       dolbyVisionReshaping = true;
       _dvWatchTimer = Timer(dvWatchWindow, () {
-        if (dvReshapeStatus == DvReshapeStatus.applying) {
-          _setDvReshapeStatus(DvReshapeStatus.active);
-        }
+        unawaited(_verifyDvFilterOutput());
       });
     } catch (_) {
       // Filtre bu derlemede yoksa/yazım reddedildiyse başarısızlık yolu.
       await _handleDvFailure('vf/hwdec özellik yazımı reddedildi');
+    }
+  }
+
+  /// İzleme penceresi hata imzası olmadan geçtiğinde çıkış doğrulaması yapar.
+  /// İki sessiz arıza biçimi de burada yakalanır: (a) filtre hiç çıkış
+  /// üretmediyse `video-out-params` boş kalır, (b) sürücü düzeyinde
+  /// kilitlenme (örn. Xclipse 920'de Vulkan init) mpv'nin oynatma döngüsünü
+  /// dondurur — bu durumda hata satırı ASLA gelmez ve özellik sorgusu da
+  /// yanıt vermez; sorgunun zaman aşımı kilitlenmenin kanıtıdır.
+  Future<void> _verifyDvFilterOutput() async {
+    if (dvReshapeStatus != DvReshapeStatus.applying) return;
+    String fmt;
+    try {
+      fmt = await _backend
+          .getProperty('video-out-params/pixelformat')
+          .timeout(dvVerifyTimeout);
+    } on TimeoutException {
+      // Oynatma döngüsü kilitli: uygulama içi merdivenle kurtarılamaz
+      // (kilitli motora sonradan yazılan vf/hwdec işlenmez). Bu oturumda
+      // filtre kara listeye alınır; kullanıcı içeriği kapatıp açınca
+      // düzeltmesiz ama izlenebilir oynatma (SDR ton eşli) elde eder.
+      _dvSessionBlacklisted = true;
+      _recordDvDiagnostic(
+        'motor yanıt vermiyor (filtre kilitlendi) — içeriği kapatıp '
+        'yeniden açın; DV düzeltmesi bu oturumda devre dışı bırakıldı',
+      );
+      await _handleDvFailure('video-out-params sorgusu zaman aşımı (kilitlenme)');
+      return;
+    } catch (_) {
+      fmt = '';
+    }
+    if (fmt.trim().isNotEmpty) {
+      _setDvReshapeStatus(DvReshapeStatus.active);
+    } else {
+      await _handleDvFailure('video-out-params boş — filtre çıkış üretmedi');
     }
   }
 
@@ -487,12 +540,10 @@ class AdvancedPlaybackController {
   void _onDvLogLine(String line) {
     if (dvReshapeStatus != DvReshapeStatus.applying) return;
     final lower = line.toLowerCase();
-    if (lower.contains('libplacebo') ||
-        lower.contains('lavfi') ||
-        lower.contains('vulkan') ||
-        lower.contains('dovi')) {
-      _recordDvDiagnostic(line.trim());
-    }
+    // İzleme penceresinde gelen her hata düzeyi satır tanılamaya girer;
+    // kilitlenme kök analizinde filtreye ilişkin görünmeyen satırlar da
+    // (örn. son başarılı aşama) belirleyici olabiliyor.
+    _recordDvDiagnostic(line.trim());
     if (!_looksLikeDvFailure(lower)) return;
     _dvWatchTimer?.cancel();
     // Aynı graf hatası genelde art arda birkaç günlük satırı üretir; ilk
@@ -517,7 +568,7 @@ class AdvancedPlaybackController {
     if (line.isEmpty) return;
     if (_dvDiagnostics.isNotEmpty && _dvDiagnostics.last == line) return;
     _dvDiagnostics.add(line);
-    if (_dvDiagnostics.length > 16) _dvDiagnostics.removeAt(0);
+    if (_dvDiagnostics.length > 30) _dvDiagnostics.removeAt(0);
   }
 
   /// lavfi/libplacebo filtresinin çalışma zamanında devre dışı kaldığını
