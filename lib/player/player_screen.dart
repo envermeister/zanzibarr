@@ -2405,7 +2405,9 @@ class _PlayerScreenState extends State<PlayerScreen>
       DvReshapeStatus.active => (
         Icons.check_circle_outline,
         Colors.lightGreenAccent.shade100,
-        _playback.dvUsesSoftwareDecoding
+        // Merdiven yazılıma düştüyse veya kullanıcı donanımı elle
+        // kapattıysa etiket "yazılım" olur.
+        _playback.dvUsesSoftwareDecoding || !_playback.hardwareDecoding
             ? l10n.dvReshapeActiveSw
             : l10n.dvReshapeActiveHw,
       ),
@@ -2440,7 +2442,13 @@ class _PlayerScreenState extends State<PlayerScreen>
         ],
       ),
     );
-    if (status != DvReshapeStatus.failed) return row;
+    // Başarısızlıkta satır tanılama penceresini açar; etkin durumda da
+    // açılabilir (pazarlık edilen biçim zinciri uzaktan analizde gerekli).
+    if (status != DvReshapeStatus.failed &&
+        !(status == DvReshapeStatus.active &&
+            _playback.dvDiagnostics.isNotEmpty)) {
+      return row;
+    }
     return InkWell(onTap: _showDvDiagnostics, child: row);
   }
 

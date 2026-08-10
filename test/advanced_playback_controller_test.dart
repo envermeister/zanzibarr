@@ -774,9 +774,11 @@ void main() {
 
     expect(controller.dolbyVisionReshaping, isTrue);
     // Mediacodec hw kareleri CPU'ya indirilemez; kopyalı hwdec + yazılım
-    // karesi varyantı (hwdownload öneki YOK) kullanılır.
+    // karesi varyantı (hwdownload öneki YOK) kullanılır. Çıkış her zaman
+    // bt.709 + sabit yuv420p'dir (ES/ANGLE render yolunda güvenli biçim).
     expect(backend.properties['hwdec'], 'mediacodec-copy');
     expect(backend.properties['vf'], contains('libplacebo=colorspace=bt709'));
+    expect(backend.properties['vf'], contains('format=yuv420p'));
     expect(backend.properties['vf'], isNot(contains('hwdownload')));
 
     await controller.setDolbyVisionReshaping(false);
@@ -791,13 +793,14 @@ void main() {
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend);
 
-    // Eski Android libmpv DV profilini raporlayamaz; DV kipini seçmek P5
-    // reshape'ini HDR (bt.2020/PQ) varyantıyla açar.
+    // Android'de graf her zaman bt.709 + sabit yuv420p çıkışlıdır: ES/ANGLE
+    // yolu ekrana HDR sinyalleyemez ve pazarlık edilmiş 10-bit çıkış bazı
+    // sürücülerde sessiz siyah kare üretir (S23 FE gözlemi).
     await controller.setHdrMode(HdrMode.dolbyVision);
 
     expect(controller.dolbyVisionReshaping, isTrue);
-    expect(backend.properties['vf'], contains('libplacebo=colorspace=bt2020nc'));
-    expect(backend.properties['vf'], contains('color_trc=smpte2084'));
+    expect(backend.properties['vf'], contains('libplacebo=colorspace=bt709'));
+    expect(backend.properties['vf'], contains('format=yuv420p'));
 
     // Başka kipe geçince filtre temizlenir.
     await controller.setHdrMode(HdrMode.sdr);

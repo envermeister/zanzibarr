@@ -225,6 +225,20 @@ class AdvancedPlaybackController {
       'lavfi=[libplacebo=colorspace=bt2020nc:color_primaries=bt2020:'
       'color_trc=smpte2084]';
 
+  /// Android'e özel DV reshape grafiği; iki farkı vardır:
+  ///
+  /// 1) Hedef her zaman bt.709/SDR: Android'de video çıkışı (ANGLE üzerinden
+  ///    OpenGL ES) ekrana HDR sinyalleyemez; bt.2020/PQ çıkış hem anlamsız
+  ///    hem de Xclipse 920 sınıfı sürücülerde sessiz siyah kare ürettiği
+  ///    gözlendi. bt.709 hedefi her ekranda doğru görünür.
+  /// 2) Çıkış biçimi `format=yuv420p` ile sabitlenir: aksi halde biçim
+  ///    pazarlığı 10-bit/geniş biçimlerden birini seçebilir ve ES render
+  ///    yolu (ANGLE) bunu siyah olarak işleyebilir. 8-bit yuv420p her GLES
+  ///    yolunda güvenle işlenir.
+  static const dvReshapeFilterAndroid =
+      'lavfi=[libplacebo=colorspace=bt709:color_primaries=bt709:'
+      'color_trc=bt709:format=yuv420p]';
+
   static const _videoPresetProperties = <VideoPreset, Map<String, String>>{
     VideoPreset.natural: {
       'brightness': '0',
@@ -442,13 +456,14 @@ class AdvancedPlaybackController {
       // hwdownload yok); `mediacodec-copy` donanım hızını koruyup kareleri
       // sistem belleğine kopyalar — filtre bunlara yazılım karesi gibi girer.
       // Kopya yolu bu cihazda daha önce başarısız olduysa yazılım çözme
-      // kullanılır.
+      // kullanılır. Android grafı her zaman SDR/bt.709 + sabit yuv420p
+      // çıkışlıdır (bkz. [dvReshapeFilterAndroid]).
       if (defaultTargetPlatform == TargetPlatform.android) {
         await _backend.setProperty(
           'hwdec',
           _dvSoftwareRetried ? 'no' : 'mediacodec-copy',
         );
-        await _backend.setProperty('vf', _dvReshapeFilterSoftwareFor(hdrMode));
+        await _backend.setProperty('vf', dvReshapeFilterAndroid);
       } else {
         await _backend.setProperty('vf', _dvReshapeFilterFor(hdrMode));
       }
@@ -492,8 +507,26 @@ class AdvancedPlaybackController {
     }
     if (fmt.trim().isNotEmpty) {
       _setDvReshapeStatus(DvReshapeStatus.active);
+      // Doğrulanan biçim zincirini tanılamaya düş: uzaktan kök analizinde
+      // "siyah ekran" bildirimi gelirse pazarlık edilmiş zincir belirleyici
+      // olur (örn. ES yolunun işleyemediği 10-bit çıkış).
+      final hw = await _readPropertySafe('hwdec-current');
+      final inFmt = await _readPropertySafe('video-params/pixelformat');
+      _recordDvDiagnostic(
+        'etkin zincir: hwdec=$hw, giris=$inFmt, cikis=${fmt.trim()}',
+      );
     } else {
       await _handleDvFailure('video-out-params boş — filtre çıkış üretmedi');
+    }
+  }
+
+  /// Sorgulanamazsa '?' döner (tanılama satırı bozulmasın).
+  Future<String> _readPropertySafe(String name) async {
+    try {
+      final value = (await _backend.getProperty(name)).trim();
+      return value.isEmpty ? '?' : value;
+    } catch (_) {
+      return '?';
     }
   }
 
@@ -600,10 +633,6 @@ class AdvancedPlaybackController {
     dvReshapeStatus = status;
     onDvReshapeStatusChanged?.call();
   }
-
-  /// HDR hedefi için yazılım-karesi (öneksiz) filtre varyantı.
-  String _dvReshapeFilterSoftwareFor(HdrMode mode) =>
-      mode == HdrMode.sdr ? dvReshapeFilterSdrSoftware : dvReshapeFilterHdrSoftware;
 
   /// HDR hedefini ve kare biçimine göre zorunlu `hwdownload` önekini
   /// seçer; önek kuralları [dvReshapeFilterSdr] belgesinde.
