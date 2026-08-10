@@ -850,7 +850,7 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final backend = _FakeBackend()
-      ..readbackOverrides['video-out-params/pixelformat'] = 'p010';
+      ..readbackOverrides['video-params/pixelformat'] = 'p010';
     final controller = AdvancedPlaybackController(backend)
       ..dvWatchWindow = const Duration(milliseconds: 20);
 
@@ -871,7 +871,7 @@ void main() {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final backend = _FakeBackend()
-      ..readbackOverrides['video-out-params/pixelformat'] = 'p010';
+      ..readbackOverrides['video-params/pixelformat'] = 'p010';
     final controller = AdvancedPlaybackController(backend)
       ..dvWatchWindow = const Duration(milliseconds: 40)
       ..dvFailureSettleWindow = const Duration(milliseconds: 5);
@@ -990,7 +990,7 @@ void main() {
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     // Kilitli motor: özellik sorgusu asla dönmez.
     final backend = _FakeBackend()
-      ..hangingProperties.add('video-out-params/pixelformat');
+      ..hangingProperties.add('video-params/pixelformat');
     final controller = AdvancedPlaybackController(backend)
       ..dvWatchWindow = const Duration(milliseconds: 20)
       ..dvVerifyTimeout = const Duration(milliseconds: 30)

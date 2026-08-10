@@ -487,8 +487,11 @@ class AdvancedPlaybackController {
     if (dvReshapeStatus != DvReshapeStatus.applying) return;
     String fmt;
     try {
+      // Giriş tarafı sorğulanır: video-out-params eski bir yapılandırmadan
+      // kalma olabilir (yanlış "etkin"); video-params yalnız kare akışı
+      // gerçekten varsa dolu olur.
       fmt = await _backend
-          .getProperty('video-out-params/pixelformat')
+          .getProperty('video-params/pixelformat')
           .timeout(dvVerifyTimeout);
     } on TimeoutException {
       // Oynatma döngüsü kilitli: uygulama içi merdivenle kurtarılamaz
@@ -500,7 +503,7 @@ class AdvancedPlaybackController {
         'motor yanıt vermiyor (filtre kilitlendi) — içeriği kapatıp '
         'yeniden açın; DV düzeltmesi bu oturumda devre dışı bırakıldı',
       );
-      await _handleDvFailure('video-out-params sorgusu zaman aşımı (kilitlenme)');
+      await _handleDvFailure('video-params sorgusu zaman aşımı (kilitlenme)');
       return;
     } catch (_) {
       fmt = '';
@@ -511,12 +514,12 @@ class AdvancedPlaybackController {
       // "siyah ekran" bildirimi gelirse pazarlık edilmiş zincir belirleyici
       // olur (örn. ES yolunun işleyemediği 10-bit çıkış).
       final hw = await _readPropertySafe('hwdec-current');
-      final inFmt = await _readPropertySafe('video-params/pixelformat');
+      final outFmt = await _readPropertySafe('video-out-params/pixelformat');
       _recordDvDiagnostic(
-        'etkin zincir: hwdec=$hw, giris=$inFmt, cikis=${fmt.trim()}',
+        'etkin zincir: hwdec=$hw, giris=${fmt.trim()}, cikis=$outFmt',
       );
     } else {
-      await _handleDvFailure('video-out-params boş — filtre çıkış üretmedi');
+      await _handleDvFailure('video-params boş — kare akışı yok (filtre çıkış üretmedi)');
     }
   }
 
