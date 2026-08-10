@@ -773,13 +773,15 @@ void main() {
     await controller.setDolbyVisionReshaping(true);
 
     expect(controller.dolbyVisionReshaping, isTrue);
-    // Mediacodec hw kareleri CPU'ya indirilemez; kopyalı hwdec + yazılım
-    // karesi varyantı (hwdownload öneki YOK) kullanılır. Çıkış her zaman
-    // bt.709 + sabit yuv420p'dir (ES/ANGLE render yolunda güvenli biçim).
-    expect(backend.properties['hwdec'], 'mediacodec-copy');
+    // FFmpeg'de hevc mediacodec HWACCEL yok; bağımsız hevc_mediacodec
+    // çözücüsü dovi side-data taşımadığından reshape'in tek doğru kaynağı
+    // yazılım çözmedir (hevcdec.c set_side_data'yı çalıştırır). Çıkış her
+    // zaman bt.709 + sabit yuv420p'dir (ES/ANGLE render yolunda güvenli).
+    expect(backend.properties['hwdec'], 'no');
     expect(backend.properties['vf'], contains('libplacebo=colorspace=bt709'));
     expect(backend.properties['vf'], contains('format=yuv420p'));
     expect(backend.properties['vf'], isNot(contains('hwdownload')));
+    expect(controller.dvUsesSoftwareDecoding, isTrue);
 
     await controller.setDolbyVisionReshaping(false);
     expect(controller.dolbyVisionReshaping, isFalse);
@@ -860,58 +862,30 @@ void main() {
     await Future<void>.delayed(const Duration(milliseconds: 60));
 
     expect(controller.dvReshapeStatus, DvReshapeStatus.active);
-    expect(controller.dvUsesSoftwareDecoding, isFalse);
+    // Android'de reshape tek doğru kaynak olarak yazılım çözmeyi kullanır.
+    expect(controller.dvUsesSoftwareDecoding, isTrue);
 
     await controller.setDolbyVisionReshaping(false);
     expect(controller.dvReshapeStatus, DvReshapeStatus.inactive);
   });
 
-  test('Android DV filtresi çalışma zamanı hatasında yazılıma düşer',
-      () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.android;
-    addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    final backend = _FakeBackend()
-      ..readbackOverrides['video-params/pixelformat'] = 'p010';
-    final controller = AdvancedPlaybackController(backend)
-      ..dvWatchWindow = const Duration(milliseconds: 40)
-      ..dvFailureSettleWindow = const Duration(milliseconds: 5);
-
-    await controller.setDolbyVisionReshaping(true);
-    expect(backend.properties['hwdec'], 'mediacodec-copy');
-
-    // Grafın çalışma zamanında devre dışı kalması (tipik mpv imzası).
-    backend.emitLog('[vf] Disabling filter lavfi.00 because it has failed.');
-    await Future<void>.delayed(const Duration(milliseconds: 30));
-
-    // Bir kez yazılım çözmeyle yeniden denenir.
-    expect(backend.properties['hwdec'], 'no');
-    expect(controller.dolbyVisionReshaping, isTrue);
-    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
-
-    await Future<void>.delayed(const Duration(milliseconds: 90));
-    expect(controller.dvReshapeStatus, DvReshapeStatus.active);
-    expect(controller.dvUsesSoftwareDecoding, isTrue);
-    expect(controller.dvDiagnostics, isNotEmpty);
-
-    await controller.setDolbyVisionReshaping(false);
-  });
-
-  test('Android DV her iki deneme de başarısızsa eski davranışa döner',
+  test('Android DV çalışma zamanı hatası tek denemede güvenli davranışa döner',
       () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend)
+      ..dvWatchWindow = const Duration(milliseconds: 40)
       ..dvFailureSettleWindow = const Duration(milliseconds: 5);
 
     await controller.setDolbyVisionReshaping(true);
-    backend.emitLog('[ffmpeg/libplacebo] Failed creating Vulkan device!');
-    await Future<void>.delayed(const Duration(milliseconds: 30));
     expect(backend.properties['hwdec'], 'no');
 
-    backend.emitLog('[ffmpeg/libplacebo] Failed creating Vulkan device!');
+    // Grafın çalışma zamanında devre dışı kalması (tipik mpv imzası).
+    backend.emitLog('[vf] Disabling filter lavfi.00 because it has failed.');
     await Future<void>.delayed(const Duration(milliseconds: 30));
 
+    // Yedek donanım yolu olmadığından tek denemedir.
     expect(controller.dolbyVisionReshaping, isFalse);
     expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
     expect(backend.properties['vf'], '');
@@ -945,25 +919,24 @@ void main() {
       ..dvFailureSettleWindow = const Duration(milliseconds: 5);
 
     await controller.setDolbyVisionReshaping(true);
-    // Aynı graf hatası genelde birkaç satırlık patlama üretir; yalnız ilk
-    // satır deneme merdivenini ilerletmeli.
+    // Aynı graf hatası genelde birkaç satırlık patlama üretir; patlama tek
+    // deneme sayılmalı (deneme zaten yazılım ile başladığı için yedek yok).
     backend.emitLog('[ffmpeg/libplacebo] Failed creating Vulkan device!');
     backend.emitLog('[ffmpeg/libplacebo] Failed creating Vulkan device!');
     backend.emitLog('[vf] Disabling filter lavfi.00 because it has failed.');
     await Future<void>.delayed(const Duration(milliseconds: 30));
 
-    expect(backend.properties['hwdec'], 'no');
-    expect(controller.dolbyVisionReshaping, isTrue);
-    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
-
-    await controller.setDolbyVisionReshaping(false);
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
+    expect(backend.properties['vf'], '');
+    expect(backend.properties['hwdec'], 'mediacodec');
   });
 
   test('Android DV filtre çıkış üretmezse sessiz başarısızlık yakalanır',
       () async {
     debugDefaultTargetPlatformOverride = TargetPlatform.android;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
-    // Hata satırı yok ama video-out-params da boş: filtre sessizce düştü.
+    // Hata satırı yok ama video-params da boş: filtre sessizce düştü.
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend)
       ..dvWatchWindow = const Duration(milliseconds: 20)
@@ -972,11 +945,6 @@ void main() {
     await controller.setDolbyVisionReshaping(true);
     await Future<void>.delayed(const Duration(milliseconds: 40));
 
-    // İlk sessiz başarısızlıkta yazılım çözmeyle yeniden denenir.
-    expect(backend.properties['hwdec'], 'no');
-    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
-
-    await Future<void>.delayed(const Duration(milliseconds: 40));
     expect(controller.dolbyVisionReshaping, isFalse);
     expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
     expect(backend.properties['vf'], '');
@@ -999,11 +967,6 @@ void main() {
     await controller.setDolbyVisionReshaping(true);
     await Future<void>.delayed(const Duration(milliseconds: 80));
 
-    // İlk kilitlenmede yazılım çözmeyle bir kez denenir.
-    expect(backend.properties['hwdec'], 'no');
-    expect(controller.dvReshapeStatus, DvReshapeStatus.applying);
-
-    await Future<void>.delayed(const Duration(milliseconds: 80));
     expect(controller.dolbyVisionReshaping, isFalse);
     expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
     expect(controller.dvSessionBlacklisted, isTrue);

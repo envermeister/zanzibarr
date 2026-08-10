@@ -403,11 +403,18 @@ class AdvancedPlaybackController {
   /// `vf` yazımının başarılı olması filtrenin gerçekten çalıştığını
   /// GARANTİLEMEZ: lavfi grafı ilk karelerde (Vulkan init, biçim uyuşmazlığı)
   /// sessizce devre dışı kalabilir. Bu yüzden filtre uygulandıktan sonra
-  /// libmpv günlük akışı [dvWatchWindow] süresince izlenir; hata imzası
-  /// yakalanırsa Android'de önce yazılım çözmeyle bir kez yeniden denenir,
-  /// o da başarısızsa eski davranışa dönülüp durum [DvReshapeStatus.failed]
-  /// yapılır (ayrıntılar [dvDiagnostics]'te). Sonuç [dvReshapeStatus] ve
-  /// [onDvReshapeStatusChanged] üzerinden UI'a yansır.
+  /// libmpv günlük akışı [dvWatchWindow] süresince izlenir; hata imzası,
+  /// boş `video-params` (kare akışı yok) veya sorgu zaman aşımı (playloop
+  /// kilitlenmesi) yakalanırsa eski davranışa dönülüp durum
+  /// [DvReshapeStatus.failed] yapılır (ayrıntılar [dvDiagnostics]'te).
+  /// Sonuç [dvReshapeStatus] ve [onDvReshapeStatusChanged] üzerinden UI'a
+  /// yansır.
+  ///
+  /// Android'de decode her zaman yazılımdır: FFmpeg'de hevc mediacodec
+  /// HWACCEL bulunmadığından mpv'nin mediacodec(-copy) yolu bağımsız
+  /// `hevc_mediacodec` çözücüsünü kullanır ve bu çözücü dovi side-data
+  /// ÜRETMEZ; reshape'in tek doğru kaynağı hevcdec.c yazılım yoludur
+  /// (set_side_data her karede DOVI_METADATA iliştirir).
   ///
   /// Açıkken çıkış renk uzayı geçerli [hdrMode]'a göre seçilir; HDR modu
   /// sonradan değişirse [setHdrMode], kod çözme kipi değişirse
@@ -452,17 +459,19 @@ class AdvancedPlaybackController {
     _setDvReshapeStatus(DvReshapeStatus.applying);
     _armDvWatch();
     try {
-      // Android'de mediacodec donanım kareleri CPU'ya indirilemez (FFmpeg'de
-      // hwdownload yok); `mediacodec-copy` donanım hızını koruyup kareleri
-      // sistem belleğine kopyalar — filtre bunlara yazılım karesi gibi girer.
-      // Kopya yolu bu cihazda daha önce başarısız olduysa yazılım çözme
-      // kullanılır. Android grafı her zaman SDR/bt.709 + sabit yuv420p
-      // çıkışlıdır (bkz. [dvReshapeFilterAndroid]).
+      // Android'de tek doğru dovi kaynağı yazılım çözmedir: FFmpeg'de hevc
+      // için mediacodec HWACCEL yok; mpv'nin mediacodec(-copy) yolu bağımsız
+      // `hevc_mediacodec` çözücüsünü kullanır ve bu çözücü hevcdec.c'nin
+      // ortak side_data yolunu (set_side_data → DOVI_METADATA) HİÇ
+      // çalıştırmaz. Çıkış karelerinde dovi üstverisi olmayınca filtre
+      // reshape uygulayamaz — tüm Android cihazlardaki pembe/yeşilin gerçek
+      // kökü budur. hevcdec.c (yazılım çözme) set_side_data'yı her karede
+      // çalıştırır; kareler köprüden side-data ile geçer.
       if (defaultTargetPlatform == TargetPlatform.android) {
-        await _backend.setProperty(
-          'hwdec',
-          _dvSoftwareRetried ? 'no' : 'mediacodec-copy',
-        );
+        // Yedek donanım varyantı yok; merdiven tek denemedir ve etiket de
+        // doğru olsun diye yazılım bayrağı baştan kurulur.
+        _dvSoftwareRetried = true;
+        await _backend.setProperty('hwdec', 'no');
         await _backend.setProperty('vf', dvReshapeFilterAndroid);
       } else {
         await _backend.setProperty('vf', _dvReshapeFilterFor(hdrMode));
