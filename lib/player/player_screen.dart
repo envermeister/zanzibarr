@@ -378,9 +378,24 @@ class _PlayerScreenState extends State<PlayerScreen>
       // tutulur; kullanıcı uygulamayı yeniden başlatınca tekrar denenir.
       if (_playback.dvSessionBlacklisted) return;
       final capabilities = await _playback.detectHdrCapabilities();
-      await _playback.setDolbyVisionReshaping(
-        capabilities.dolbyVisionProfile == 5,
-      );
+      final needsReshape = capabilities.dolbyVisionProfile == 5;
+      // Android'de reshape'i başlangıç penceresinde uygulamak, media_kit'in
+      // yüzey yeniden kurulumu (SetSurfaceSize → VO re-init) ile çakışıp
+      // video zincirini öldürüyor (S23 FE gözlemi: P8 içerik —reshape
+      // gerekmeyen— sorunsuz oynarken P5 her kipte siyahtı). İlk kare
+      // ekrana düşene kadar beklenir, filtre ondan sonra uygulanır; mpv
+      // oynatma sırasındaki vf değişimini güvenle işler.
+      if (needsReshape && defaultTargetPlatform == TargetPlatform.android) {
+        await _videoController.waitUntilFirstFrameRendered.timeout(
+          const Duration(seconds: 20),
+          onTimeout: () {},
+        );
+        // İlk-kare sinyali video-params'a bakar; VO'nun yüzey yeniden
+        // kurulumu ondan SONRA tamamlanır. Kısa bir sükûnet payı bırakılır.
+        await Future<void>.delayed(const Duration(milliseconds: 1200));
+        if (!mounted || _disposing) return;
+      }
+      await _playback.setDolbyVisionReshaping(needsReshape);
     } catch (_) {
       // Algılama başarısızsa oynatma mevcut davranışla sürer.
     }
