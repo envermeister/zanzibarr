@@ -231,13 +231,15 @@ class AdvancedPlaybackController {
   ///    OpenGL ES) ekrana HDR sinyalleyemez; bt.2020/PQ çıkış hem anlamsız
   ///    hem de Xclipse 920 sınıfı sürücülerde sessiz siyah kare ürettiği
   ///    gözlendi. bt.709 hedefi her ekranda doğru görünür.
-  /// 2) Çıkış biçimi `format=yuv420p` ile sabitlenir: aksi halde biçim
-  ///    pazarlığı 10-bit/geniş biçimlerden birini seçebilir ve ES render
-  ///    yolu (ANGLE) bunu siyah olarak işleyebilir. 8-bit yuv420p her GLES
-  ///    yolunda güvenle işlenir.
+  /// 2) Çıkış biçimi zincirdeki ayrı `format` filtresiyle yuv420p'ye
+  ///    sabitlenir: ES render yolu (ANGLE) her durumda 8-bit 420 planar'ı
+  ///    güvenle işler. Not: aynı sabitlemeyi libplacebo'nun kendi
+  ///    `format=yuv420p` SEÇENEĞİYLE yapmak Android derlemesinde graf
+  ///    ayrıştırma hatası üretti (cihaz kaydı: "parsing the filter graph
+  ///    failed"); bağımsız `format` filtresi biçimi her derlemede ayrışır.
   static const dvReshapeFilterAndroid =
       'lavfi=[libplacebo=colorspace=bt709:color_primaries=bt709:'
-      'color_trc=bt709:format=yuv420p]';
+      'color_trc=bt709,format=yuv420p]';
 
   static const _videoPresetProperties = <VideoPreset, Map<String, String>>{
     VideoPreset.natural: {
