@@ -225,20 +225,24 @@ class AdvancedPlaybackController {
       'lavfi=[libplacebo=colorspace=bt2020nc:color_primaries=bt2020:'
       'color_trc=smpte2084]';
 
-  /// Android'e özel DV reshape grafiği; iki farkı vardır:
+  /// Android'e özel DV reshape grafiği; üç kuralı vardır:
   ///
   /// 1) Hedef her zaman bt.709/SDR: Android'de video çıkışı (ANGLE üzerinden
   ///    OpenGL ES) ekrana HDR sinyalleyemez; bt.2020/PQ çıkış hem anlamsız
   ///    hem de Xclipse 920 sınıfı sürücülerde sessiz siyah kare ürettiği
   ///    gözlendi. bt.709 hedefi her ekranda doğru görünür.
-  /// 2) Çıkış biçimi zincirdeki ayrı `format` filtresiyle yuv420p'ye
-  ///    sabitlenir: ES render yolu (ANGLE) her durumda 8-bit 420 planar'ı
-  ///    güvenle işler. Not: aynı sabitlemeyi libplacebo'nun kendi
-  ///    `format=yuv420p` SEÇENEĞİYLE yapmak Android derlemesinde graf
-  ///    ayrıştırma hatası üretti (cihaz kaydı: "parsing the filter graph
-  ///    failed"); bağımsız `format` filtresi biçimi her derlemede ayrışır.
+  /// 2) Girdi `format=yuv420p` ile 8-bit'e indirgenir: libplacebo 10-bit
+  ///    girdiyi rg16 dokulara yükler ve reshape shader'ı linear örnekleme
+  ///    ister; rg16'da PL_FMT_CAP_LINEAR her sürücüde yok (Xclipse 920'de
+  ///    yok — "Failed dispatching scaler"). 8-bit rg8 dokularda linear
+  ///    örnekleme Vulkan'da evrenseldir. SDR hedefi zaten 8-bit çıkıyor;
+  ///    hassasiyet kaybı ihmal edilebilir.
+  /// 3) Çıkış da yuv420p'ye sabitlenir (bağımsız `format` filtresiyle —
+  ///    libplacebo'nun kendi format= seçeneği Android derlemesinde graf
+  ///    ayrıştırma hatası üretir). Yerel harness ile gerçek P5 içerikte
+  ///    doğrulandı: çıkış etiketleri bt.709/bt.1886 (reshape çalışıyor).
   static const dvReshapeFilterAndroid =
-      'lavfi=[libplacebo=colorspace=bt709:color_primaries=bt709:'
+      'lavfi=[format=yuv420p,libplacebo=colorspace=bt709:color_primaries=bt709:'
       'color_trc=bt709,format=yuv420p]';
 
   static const _videoPresetProperties = <VideoPreset, Map<String, String>>{
