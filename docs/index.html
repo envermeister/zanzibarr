@@ -380,7 +380,7 @@ const icon = (path) => `<svg viewBox="0 0 24 24">${path}</svg>`;
 createApp({
   data() {
     return {
-      version: 'v1.1',
+      version: 'v1.2',
       repoUrl: 'https://github.com/envermeister/zanzibarr',
       features: [
         {
@@ -409,9 +409,14 @@ createApp({
           icon: icon('<path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/><path d="M9 12l2 2 4-4"/>'),
         },
         {
-          title: 'HDR & Dolby Vision, honest',
-          body: 'SDR · HDR · HDR10 · DV selector adapts to the file. Profile 5 reshaped on the GPU via libplacebo; BT.2390 tone mapping for clean SDR.',
+          title: 'Dolby Vision P5, everywhere',
+          body: 'macOS reshapes via Vulkan → Metal; Android ships a custom mpv 0.41 + FFmpeg 8.1.2 + libplacebo build — an 8-bit reshape path that survives drivers lacking 16-bit linear sampling (Xclipse) as well as Adreno. Verified on Galaxy S23 FE & Poco F6.',
           icon: icon('<circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/>'),
+        },
+        {
+          title: 'Diagnostics that tell the truth',
+          body: 'The dynamic-range row reports live engine status — applying, active, or unavailable — with a tap-to-open technical detail panel. If a device can\'t run the correction, the app says so instead of failing silently.',
+          icon: icon('<path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/>'),
         },
         {
           title: 'Smart Canvas',
@@ -483,6 +488,7 @@ createApp({
         { text: 'Streaming playback with true seek (STORE releases)', done: true },
         { text: 'Multi-volume RAR5 & split 7z (STORE, AES-256) as virtual files', done: true },
         { text: 'HDR / HDR10 / Dolby Vision — incl. Profile 5 GPU reshape', done: true },
+        { text: 'Dolby Vision P5 on Android — custom Vulkan-linked engine, 8-bit reshape path', done: true },
         { text: 'Android TV, 14 languages, dark & light themes', done: true },
         { text: 'Newznab indexer search — browse & play inside the app', done: true },
         { text: 'Compressed 7z (LZMA/LZMA2, solid) & RAR4 STORE stream-seek', done: true },

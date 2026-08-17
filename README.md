@@ -63,7 +63,7 @@ Missing or corrupt Usenet segments no longer kill the movie: hit **Repair with P
 
 **A picture pipeline that respects your content**
 - Dynamic range selector that adapts to the file: **SDR · HDR · HDR10 · Dolby Vision** — modes the content doesn't carry stay visibly disabled, so you always know exactly what you're watching.
-- Dolby Vision handled honestly: **Profile 5** is reshaped on the GPU via libplacebo (Vulkan → Metal), HDR10-based profiles ride the natural decoder path — no pink-and-green fakeouts.
+- Dolby Vision handled honestly: **Profile 5** is reshaped on the GPU via libplacebo — on macOS via Vulkan → Metal, on Android via a custom mpv 0.41 + FFmpeg 8.1.2 + libplacebo build with an 8-bit reshape path that survives drivers lacking 16-bit linear sampling (Samsung Xclipse) as well as Adreno. HDR10-based profiles ride the natural decoder path — no pink-and-green fakeouts, and the player shows live engine status when a device can't run the correction.
 - BT.2390 tone mapping with per-frame peak detection for clean SDR conversion.
 - Custom libmpv 0.41 + full FFmpeg 8.1 build: **TrueHD / Atmos, DTS-HD MA**, AV1 and everything else your releases actually use.
 - Video presets (Natural / Cinema / Vivid), GPU scaling quality, and audio presets (Balanced / Dialogue / Night) — one tap, no filter graphs.

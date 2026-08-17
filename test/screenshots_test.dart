@@ -561,8 +561,34 @@ class _TuningDialogReplica extends StatelessWidget {
                 label: l10n.dynamicRangeLabel,
                 child: segments(
                   const ['SDR', 'HDR', 'HDR10', 'HDR10+', 'DV'],
-                  'SDR',
-                  const {'HDR10+', 'DV'},
+                  'DV',
+                  const {'HDR10+'},
+                ),
+              ),
+              // v1.2'deki gerçek durum satırının birebir görünümü
+              // (player_screen._dvReshapeStatusRow, etkin-yazılım sunumu).
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline,
+                      size: 14,
+                      color: Colors.lightGreenAccent.shade100,
+                    ),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        l10n.dvReshapeActiveSw,
+                        style: TextStyle(
+                          color: Colors.lightGreenAccent.shade100,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Text(
