@@ -327,6 +327,17 @@
   </section>
 
   <section class="wrap">
+    <p class="kicker">What's new</p>
+    <h2>{{ version }} — subtitles that show up</h2>
+    <ul class="road">
+      <li class="done">Embedded text subtitles finally render on Android — a bundled wide-coverage font (Noto Sans) feeds libass where fontconfig can't reach</li>
+      <li class="done">Engine error messages follow the app language — all 14 locales, no more Turkish-only diagnostics</li>
+      <li class="done">Ubuntu 24.04 build guide for building from source (community-contributed)</li>
+    </ul>
+    <p class="section-sub"><a :href="repoUrl + '/releases/latest'" target="_blank" rel="noopener">Full release notes on GitHub →</a></p>
+  </section>
+
+  <section class="wrap">
     <p class="kicker">Localization</p>
     <h2>Speaks your language</h2>
     <p class="section-sub">Fourteen fully localized interfaces — with proper RTL layout — plus dark and light themes.</p>
@@ -380,7 +391,7 @@ const icon = (path) => `<svg viewBox="0 0 24 24">${path}</svg>`;
 createApp({
   data() {
     return {
-      version: 'v1.2',
+      version: 'v1.3',
       repoUrl: 'https://github.com/envermeister/zanzibarr',
       features: [
         {
