@@ -554,4 +554,85 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get dvReshapeDiagnosticsEmpty => '필터에 대한 엔진 로그가 캡처되지 않았습니다.';
+
+  @override
+  String get errFormatNotRecognized =>
+      '미디어 형식을 인식할 수 없습니다. NZB가 직접 비디오 대신 아카이브나 PAR2 복구 데이터를 포함하고 있을 수 있습니다.';
+
+  @override
+  String get errLocalStreamUnreadable =>
+      '로컬 비디오 스트림을 읽을 수 없습니다. Usenet 세그먼트가 누락되었거나 연결이 끊어졌을 수 있습니다.';
+
+  @override
+  String get errDecoderFailed => '비디오 또는 오디오 디코더가 스트림을 열 수 없습니다.';
+
+  @override
+  String get errPlayerGeneric => '플레이어가 스트림을 열 수 없습니다.';
+
+  @override
+  String get errNoMpvDetail => 'libmpv가 세부 정보를 제공하지 않았습니다.';
+
+  @override
+  String get errNoEngineDetail => '스트리밍 엔진이 세부 정보를 제공하지 않았습니다.';
+
+  @override
+  String technicalDetail(String detail) {
+    return '기술 세부 정보: $detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      'Usenet 제공업체의 동시 연결 한도에 도달했습니다. 다른 활성 세션을 닫거나 잠시 후 다시 시도하세요. 계속되면 앱의 연결 수를 요금제 한도로 줄이세요.';
+
+  @override
+  String get errAuthFailed =>
+      'Usenet 인증에 실패했습니다. 제공업체 설정의 사용자 이름과 비밀번호를 확인하세요.';
+
+  @override
+  String get errRarEncrypted =>
+      'RAR 아카이브가 암호화되어 있습니다. 비밀번호로 보호된 RAR 릴리스는 지원되지 않습니다. 암호화 없이 패키징된 릴리스(STORE)를 선택하세요.';
+
+  @override
+  String get err7zPassword =>
+      '7z 아카이브의 비밀번호가 없거나 유효하지 않습니다. 메타데이터에 비밀번호가 포함된 NZB를 선택하세요.';
+
+  @override
+  String get errArchiveCompressed =>
+      '이 아카이브는 압축되어 있습니다. 즉시 재생하려면 비압축(COPY/STORE, 7z/RAR)으로 패키징된 릴리스가 필요합니다.';
+
+  @override
+  String get errArchiveSolid =>
+      '이 아카이브는 솔리드 구조입니다. 임의 탐색에는 비솔리드 STORE로 패키징된 릴리스가 필요합니다.';
+
+  @override
+  String get errRar4 =>
+      '이 RAR 아카이브는 구형(RAR4 이하) 형식을 사용합니다. RAR5 STORE 릴리스만 재생할 수 있습니다.';
+
+  @override
+  String get errSplitArchiveBroken =>
+      '멀티파트 아카이브(7z/RAR)가 불완전하거나 손상되었습니다. 모든 볼륨과 세그먼트를 포함하는 완전한 NZB를 선택하세요.';
+
+  @override
+  String get errMissingSegments =>
+      'NZB가 불완전하거나 손상되었습니다: 필요한 Usenet 세그먼트를 모두 찾을 수 없습니다. 이 릴리스에는 완전한 다른 NZB를 선택하세요.';
+
+  @override
+  String get errConnectionFailed =>
+      'Usenet 제공업체에 연결할 수 없습니다. 인터넷 연결, 서버 주소, 포트 및 제공업체 도달 가능성을 확인하세요.';
+
+  @override
+  String get errNzbUnreadable =>
+      'NZB 파일을 읽을 수 없거나 손상되었습니다. 유효하고 완전한 NZB 파일을 선택하세요.';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'NZB 내부의 아카이브(7z/RAR)를 재생할 수 없거나 구조가 손상되었습니다. 완전한 STORE 릴리스를 선택하세요.';
+
+  @override
+  String get errNoPlayableMedia =>
+      'NZB에서 지원되는 비디오 스트림을 찾을 수 없습니다. 직접 미디어 또는 지원되는 STORE 아카이브가 포함된 릴리스를 선택하세요.';
+
+  @override
+  String get errStreamStartupGeneric =>
+      '스트림을 시작할 수 없습니다. NZB 내용과 제공업체 연결을 확인하세요.';
 }

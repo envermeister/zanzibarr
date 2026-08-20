@@ -32,16 +32,16 @@ pub(crate) enum VolumeSetError {
     Io(#[from] io::Error),
     #[error("{0}")]
     InvalidLayout(String),
-    #[error("arşiv ciltleri hazırlanırken iptal edildi")]
+    #[error("cancelled while preparing archive volumes")]
     Cancelled,
 }
 
 /// `spawn_blocking` içinde yürütülen arşiv ayrıştırma görevinin sonucu.
 #[derive(Debug, Error)]
 pub(crate) enum BlockingTaskError {
-    #[error("ayrıştırma görevi tamamlanamadı: {0}")]
+    #[error("parse task failed to complete: {0}")]
     Task(String),
-    #[error("arşiv hazırlama iptal edildi")]
+    #[error("archive preparation cancelled")]
     Cancelled,
 }
 
@@ -62,11 +62,11 @@ pub(crate) async fn wait_for_cancellation(cancellation: &mut watch::Receiver<boo
 
 fn validate_volume_count(count: usize) -> Result<(), VolumeSetError> {
     if count == 0 {
-        return Err(VolumeSetError::InvalidLayout("arşiv cildi yok".into()));
+        return Err(VolumeSetError::InvalidLayout("no archive volume".into()));
     }
     if count > MAX_ARCHIVE_VOLUMES {
         return Err(VolumeSetError::InvalidLayout(format!(
-            "arşiv cilt sayısı {count}; güvenli sınır {MAX_ARCHIVE_VOLUMES}"
+            "archive volume count {count}; safe limit {MAX_ARCHIVE_VOLUMES}"
         )));
     }
     Ok(())
@@ -135,7 +135,7 @@ where
                 tasks.abort_all();
                 while tasks.join_next().await.is_some() {}
                 return Err(VolumeSetError::InvalidLayout(format!(
-                    "bootstrap görevi tamamlanamadı: {error}"
+                    "bootstrap task failed to complete: {error}"
                 )));
             }
             None => break,
@@ -202,7 +202,7 @@ impl NntpVolumeSet {
             starts.push(total_len);
             total_len = total_len
                 .checked_add(volume.total_len())
-                .ok_or_else(|| VolumeSetError::InvalidLayout("arşiv boyutu taştı".into()))?;
+                .ok_or_else(|| VolumeSetError::InvalidLayout("archive size overflow".into()))?;
             segment_count = segment_count.saturating_add(volume.segment_count());
         }
 
@@ -256,14 +256,14 @@ impl NntpVolumeSet {
     pub(crate) async fn read_range_bytes(&self, range: Range<u64>) -> io::Result<Vec<u8>> {
         validate_range(range.clone(), self.total_len)?;
         let capacity = usize::try_from(range.end - range.start)
-            .map_err(|_| io::Error::other("istenen aralık belleğe sığmıyor"))?;
+            .map_err(|_| io::Error::other("requested range does not fit in memory"))?;
         let mut output = Vec::with_capacity(capacity);
         let mut cursor = range.start;
 
         while cursor < range.end {
             let index = self
                 .volume_at(cursor)
-                .ok_or_else(|| io::Error::other("arşiv cilt ofseti bulunamadı"))?;
+                .ok_or_else(|| io::Error::other("archive volume offset not found"))?;
             let volume_start = self.starts[index];
             let volume_len = self.volumes[index].total_len();
             let end = range.end.min(volume_start + volume_len);
@@ -285,7 +285,7 @@ impl NntpVolumeSet {
         while cursor < range.end {
             let index = self
                 .volume_at(cursor)
-                .ok_or_else(|| io::Error::other("arşiv cilt ofseti bulunamadı"))?;
+                .ok_or_else(|| io::Error::other("archive volume offset not found"))?;
             let volume_start = self.starts[index];
             let volume_len = self.volumes[index].total_len();
             let end = range.end.min(volume_start + volume_len);
@@ -303,7 +303,7 @@ pub(crate) fn validate_range(range: Range<u64>, total_len: u64) -> io::Result<()
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
             format!(
-                "geçersiz byte aralığı {}..{} (boyut {total_len})",
+                "invalid byte range {}..{} (size {total_len})",
                 range.start, range.end
             ),
         ));
@@ -344,7 +344,7 @@ impl BlockingArchiveReader {
 }
 
 fn cancellation_io_error() -> io::Error {
-    io::Error::new(io::ErrorKind::Interrupted, "arşiv hazırlama iptal edildi")
+    io::Error::new(io::ErrorKind::Interrupted, "archive preparation cancelled")
 }
 
 impl Read for BlockingArchiveReader {
@@ -386,7 +386,7 @@ impl Seek for BlockingArchiveReader {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "arşiv seek sınırının dışında: hedef {target}, boyut {}",
+                    "outside archive seek bounds: target {target}, size {}",
                     self.source.total_len()
                 ),
             ));
@@ -556,12 +556,12 @@ mod tests {
         cancel_tx.send(true).unwrap();
         let result = tokio::time::timeout(std::time::Duration::from_secs(1), task)
             .await
-            .expect("blocking parser cooperative olarak kapanmalı")
+            .expect("blocking parser must close cooperatively")
             .unwrap();
         assert!(matches!(result, Err(BlockingTaskError::Cancelled)));
         assert!(
             finished.load(Ordering::SeqCst),
-            "outer future blocking parser bitmeden dönmemeli"
+            "outer future must not return before the blocking parser finishes"
         );
     }
 }

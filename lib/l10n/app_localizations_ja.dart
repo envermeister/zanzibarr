@@ -554,4 +554,84 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get dvReshapeDiagnosticsEmpty => 'フィルターのエンジンログは記録されませんでした。';
+
+  @override
+  String get errFormatNotRecognized =>
+      'メディア形式を認識できませんでした。NZB が直接の動画ではなく、アーカイブや PAR2 復旧データを含んでいる可能性があります。';
+
+  @override
+  String get errLocalStreamUnreadable =>
+      'ローカル動画ストリームを読み取れませんでした。Usenet セグメントが欠けているか、接続が切れた可能性があります。';
+
+  @override
+  String get errDecoderFailed => '映像または音声のデコーダーがストリームを開けませんでした。';
+
+  @override
+  String get errPlayerGeneric => 'プレーヤーがストリームを開けませんでした。';
+
+  @override
+  String get errNoMpvDetail => 'libmpv から詳細は返されませんでした。';
+
+  @override
+  String get errNoEngineDetail => 'ストリーミングエンジンから詳細は返されませんでした。';
+
+  @override
+  String technicalDetail(String detail) {
+    return '技術的な詳細: $detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      'Usenet プロバイダーの同時接続数の上限に達しました。他のアクティブなセッションを閉じるか、しばらくしてから再試行してください。解決しない場合は、アプリの接続数をプランの上限まで下げてください。';
+
+  @override
+  String get errAuthFailed => 'Usenet 認証に失敗しました。プロバイダー設定のユーザー名とパスワードを確認してください。';
+
+  @override
+  String get errRarEncrypted =>
+      'RAR アーカイブは暗号化されています。パスワード保護された RAR リリースはサポートされていません。暗号化せずにパックされたリリース（STORE）を選んでください。';
+
+  @override
+  String get err7zPassword =>
+      '7z アーカイブのパスワードがないか無効です。メタデータにパスワードを含む NZB を選んでください。';
+
+  @override
+  String get errArchiveCompressed =>
+      'このアーカイブは圧縮されています。即時再生には非圧縮（COPY/STORE、7z/RAR）でパックされたリリースが必要です。';
+
+  @override
+  String get errArchiveSolid =>
+      'このアーカイブは solid 構造です。ランダムシークには非 solid の STORE でパックされたリリースが必要です。';
+
+  @override
+  String get errRar4 =>
+      'この RAR アーカイブは旧形式（RAR4 以前）を使っています。再生できるのは RAR5 STORE リリースのみです。';
+
+  @override
+  String get errSplitArchiveBroken =>
+      'マルチパートアーカイブ（7z/RAR）が不完全か破損しています。すべてのボリュームとセグメントを含む完全な NZB を選んでください。';
+
+  @override
+  String get errMissingSegments =>
+      'NZB が不完全か破損しています：必要な Usenet セグメントのすべてが見つかりません。このリリースには別の完全な NZB を選んでください。';
+
+  @override
+  String get errConnectionFailed =>
+      'Usenet プロバイダーに接続できませんでした。インターネット接続、サーバーアドレス、ポート、プロバイダーの到達可能性を確認してください。';
+
+  @override
+  String get errNzbUnreadable =>
+      'NZB ファイルを読み取れないか破損しています。有効で完全な NZB ファイルを選んでください。';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'NZB 内のアーカイブ（7z/RAR）は再生できないか、構造が破損しています。完全な STORE リリースを選んでください。';
+
+  @override
+  String get errNoPlayableMedia =>
+      'NZB に対応する動画ストリームが見つかりませんでした。直接メディアまたは対応する STORE アーカイブを含むリリースを選んでください。';
+
+  @override
+  String get errStreamStartupGeneric =>
+      'ストリームを開始できませんでした。NZB の内容とプロバイダー接続を確認してください。';
 }

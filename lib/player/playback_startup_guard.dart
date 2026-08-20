@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:zanzibarr/l10n/app_localizations.dart';
+
 /// Oynatıcının medya yapısını tanımasını sonsuza kadar beklememek için
 /// yeniden kurulabilir, dispose-güvenli bir zaman aşımı bekçisi.
 class PlaybackStartupGuard {
@@ -33,11 +35,11 @@ class PlaybackStartupGuard {
 
 /// libmpv'nin teknik hata metnini kullanıcıya yol gösteren kısa bir açıklamaya
 /// çevirir. Ham ayrıntı tanılama için korunur, fakat arayüzü taşırmaması için
-/// sınırlanır.
-String describePlayerError(String raw) {
+/// sınırlanır. Açıklamalar uygulamanın yerelleştirmesine uyar.
+String describePlayerError(String raw, AppLocalizations l10n) {
   final normalized = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
   final detail = normalized.isEmpty
-      ? 'libmpv ayrıntı vermedi.'
+      ? l10n.errNoMpvDetail
       : normalized.length > 400
       ? '${normalized.substring(0, 400)}…'
       : normalized;
@@ -46,33 +48,32 @@ String describePlayerError(String raw) {
   if (lower.contains('failed to recognize file format') ||
       lower.contains('could not detect file format') ||
       lower.contains('no video or audio streams selected')) {
-    return 'Medya biçimi tanınamadı. NZB doğrudan bir video yerine arşiv veya '
-        'PAR2 kurtarma verisi içeriyor olabilir. Teknik ayrıntı: $detail';
+    return '${l10n.errFormatNotRecognized} ${l10n.technicalDetail(detail)}';
   }
   if (lower.startsWith('tcp:') ||
       lower.contains('http error') ||
       lower.contains('connection refused') ||
       lower.contains('connection reset')) {
-    return 'Yerel video akışı okunamadı. Bir Usenet segmenti eksik olabilir '
-        'veya bağlantı kesilmiş olabilir. Teknik ayrıntı: $detail';
+    return '${l10n.errLocalStreamUnreadable} ${l10n.technicalDetail(detail)}';
   }
   if (lower.contains('decoder') || lower.contains('codec')) {
-    return 'Video veya ses çözücüsü akışı açamadı. Teknik ayrıntı: $detail';
+    return '${l10n.errDecoderFailed} ${l10n.technicalDetail(detail)}';
   }
-  return 'Oynatıcı akışı açamadı. Teknik ayrıntı: $detail';
+  return '${l10n.errPlayerGeneric} ${l10n.technicalDetail(detail)}';
 }
 
 /// Rust akış motorunun başlangıç hatasını, kullanıcıya ne yapabileceğini
-/// söyleyen güvenli bir Türkçe açıklamaya dönüştürür.
+/// söyleyen güvenli bir açıklamaya dönüştürür. Açıklamalar uygulamanın
+/// yerelleştirmesine uyar.
 ///
 /// Köprü katmanının eklediği exception sarmalayıcıları ham ayrıntıda korunur;
 /// ancak kimlik bilgileri ayıklanır ve gösterilen teknik metin 400 karakterle
 /// sınırlandırılır.
-String describeStreamStartupError(Object raw) {
+String describeStreamStartupError(Object raw, AppLocalizations l10n) {
   final normalized = _sanitizeStreamError(raw);
   final lower = normalized.toLowerCase();
   final detail = normalized.isEmpty
-      ? 'Akış motoru ayrıntı vermedi.'
+      ? l10n.errNoEngineDetail
       : normalized.length > 400
       ? '${normalized.substring(0, 400)}…'
       : normalized;
@@ -83,11 +84,7 @@ String describeStreamStartupError(Object raw) {
   // kullanıcı adı/parola anlamına gelmez; bu nedenle auth kontrolünden önce
   // sınıflandırılmalıdır.
   if (_isProviderConnectionLimit(lower)) {
-    explanation =
-        'Usenet sağlayıcısının eşzamanlı bağlantı sınırına ulaşıldı. Diğer '
-        'aktif oturumları kapatın veya kısa süre bekleyip yeniden deneyin. '
-        'Sorun sürerse uygulamadaki bağlantı sayısını plan limitinize göre '
-        'düşürün.';
+    explanation = l10n.errProviderConnectionLimit;
   } else if (_containsAny(lower, const <String>[
     'kimlik doğrulama başarısız',
     'authentication failed',
@@ -96,15 +93,13 @@ String describeStreamStartupError(Object raw) {
     'authinfo',
     'invalid credentials',
   ])) {
-    explanation =
-        'Usenet kimlik doğrulaması başarısız. Sağlayıcı ayarlarındaki '
-        'kullanıcı adı ve parolayı kontrol edin.';
+    explanation = l10n.errAuthFailed;
   } else if (_containsAny(lower, const <String>[
     'rar arşivi şifreli',
+    'rar archive is password-protected',
+    'password-protected rar',
   ])) {
-    explanation =
-        'RAR arşivi şifreli. Parola korumalı RAR yayınları desteklenmiyor; '
-        'şifresiz hazırlanmış bir STORE yayını seçin.';
+    explanation = l10n.errRarEncrypted;
   } else if (_containsAny(lower, const <String>[
     'parola korumalı 7z',
     'password metası yok',
@@ -112,43 +107,36 @@ String describeStreamStartupError(Object raw) {
     'missing password',
     'wrong password',
     'incorrect password',
+    'no password metadata',
+    'password-protected 7z',
+    'does not match the rar archive',
   ])) {
-    explanation =
-        '7z arşivinin parolası eksik veya geçersiz. Parola bilgisini '
-        'metadata içinde taşıyan doğru NZB dosyasını seçin.';
+    explanation = l10n.err7zPassword;
   } else if (_containsAny(lower, const <String>[
     'yalnız copy/store',
     'unsupported compression',
     'unsupportedcompression',
     '7z arşivi sıkıştırılmış',
     'rar arşivi sıkıştırılmış',
+    'archive is compressed',
+    'only store archives',
   ])) {
-    explanation =
-        'Bu arşiv sıkıştırılmış. Anlık oynatma için sıkıştırmasız '
-        'COPY/STORE (7z/RAR) biçiminde hazırlanmış bir yayın gerekir.';
+    explanation = l10n.errArchiveCompressed;
   } else if (_containsAny(lower, const <String>[
     '7z arşivi solid',
     'solid archive',
     'solidarchive',
     'non-solid store',
   ])) {
-    explanation =
-        'Bu arşiv solid yapıda. Rastgele ileri-geri sarma için '
-        'non-solid STORE biçiminde hazırlanmış bir yayın gerekir.';
+    explanation = l10n.errArchiveSolid;
   } else if (_containsAny(lower, const <String>[
     'rar4',
   ])) {
-    explanation =
-        'Bu RAR arşivi eski (RAR4 veya öncesi) biçimde. Yalnız RAR5 STORE '
-        'yayınları oynatılabilir.';
+    explanation = l10n.errRar4;
   } else if (_isMissingSplitArchive(lower)) {
-    explanation =
-        'Çok parçalı arşiv (7z/RAR) eksik veya bozuk. Tüm ciltleri ve '
-        'segmentleri içeren eksiksiz bir NZB dosyası seçin.';
+    explanation = l10n.errSplitArchiveBroken;
   } else if (_isMissingSegment(lower)) {
-    explanation =
-        'NZB eksik veya bozuk: gerekli Usenet segmentlerinin tamamı '
-        'bulunamıyor. Bu yayın için eksiksiz başka bir NZB dosyası seçin.';
+    explanation = l10n.errMissingSegments;
   } else if (_containsAny(lower, const <String>[
     'connection refused',
     'connection reset',
@@ -165,19 +153,22 @@ String describeStreamStartupError(Object raw) {
     'bağlantı reddedildi',
     'bağlantı sıfırlandı',
     'g/ç hatası',
+    'server closed the connection',
+    'i/o error',
   ])) {
-    explanation =
-        'Usenet sağlayıcısına bağlanılamadı. İnternet bağlantısını, sunucu '
-        'adresini, portu ve sağlayıcının erişilebilirliğini kontrol edin.';
+    explanation = l10n.errConnectionFailed;
   } else if (_containsAny(lower, const <String>[
     'nzb okunamadı',
     'bozuk nzb',
     'nzb kök öğesi',
     'malformed nzb',
+    'could not read nzb',
+    'not a regular file',
+    'not valid utf-8',
+    'not utf-8',
+    'size limit',
   ])) {
-    explanation =
-        'NZB dosyası okunamadı veya yapısı bozuk. Geçerli ve eksiksiz bir '
-        'NZB dosyası seçin.';
+    explanation = l10n.errNzbUnreadable;
   } else if (_containsAny(lower, const <String>[
     '7z başlığı okunamadı',
     'geçersiz 7z yerleşimi',
@@ -187,24 +178,23 @@ String describeStreamStartupError(Object raw) {
     'rar arşivinde oynatılabilir medya dosyası yok',
     'doğrudan video veya desteklenen split 7z/rar',
     'doğrudan video veya desteklenen split 7z',
+    'could not read 7z header',
+    'invalid 7z layout',
+    'could not read rar header',
+    'invalid rar layout',
+    'no direct video or supported split',
   ])) {
-    explanation =
-        'NZB içindeki arşiv (7z/RAR) oynatmaya uygun değil veya arşiv yapısı '
-        'bozuk. Eksiksiz bir STORE yayını seçin.';
+    explanation = l10n.errArchiveNotPlayable;
   } else if (_containsAny(lower, const <String>[
     'oynatılabilir medya dosyası yok',
     'no playable media',
   ])) {
-    explanation =
-        'NZB içinde desteklenen bir video akışı bulunamadı. Doğrudan medya '
-        'veya desteklenen STORE arşivi içeren bir yayın seçin.';
+    explanation = l10n.errNoPlayableMedia;
   } else {
-    explanation =
-        'Akış başlatılamadı. NZB içeriğini ve sağlayıcı bağlantısını kontrol '
-        'edin.';
+    explanation = l10n.errStreamStartupGeneric;
   }
 
-  return '$explanation Teknik ayrıntı: $detail';
+  return '$explanation ${l10n.technicalDetail(detail)}';
 }
 
 bool _isMissingSplitArchive(String lower) {
@@ -220,6 +210,8 @@ bool _isMissingSplitArchive(String lower) {
     'rar volume',
     'rar yerleşimi',
     '.rar',
+    'invalid rar layout',
+    'invalid 7z layout',
   ]);
   final missingOrInvalid = _containsAny(lower, const <String>[
     'eksik',
@@ -230,6 +222,11 @@ bool _isMissingSplitArchive(String lower) {
     'segment bildiriyor',
     'segment var',
     'arşiv dışı',
+    'incomplete',
+    'more than once',
+    'expected volume',
+    'but found',
+    'declares',
   ]);
   return archiveContext && missingOrInvalid;
 }
@@ -237,6 +234,7 @@ bool _isMissingSplitArchive(String lower) {
 bool _isMissingSegment(String lower) {
   if (_containsAny(lower, const <String>[
     'article bulunamadı',
+    'article not found',
     'no such article',
     'unmapped offset',
   ])) {
@@ -249,8 +247,11 @@ bool _isMissingSegment(String lower) {
     'bulunamadı',
     'sırası bozuk',
     'missing',
+    'not found',
+    'out of order',
     'segment bildiriyor',
     'segment var',
+    'declares',
   ]);
 }
 

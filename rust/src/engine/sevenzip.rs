@@ -46,21 +46,21 @@ type Aes256CbcDec = cbc::Decryptor<Aes256>;
 
 #[derive(Debug, Error)]
 pub enum SevenZipError {
-    #[error("7z ciltleri hazırlanamadı: {0}")]
+    #[error("could not prepare 7z volumes: {0}")]
     Io(#[from] io::Error),
-    #[error("7z başlığı okunamadı: {0}")]
+    #[error("could not read 7z header: {0}")]
     Header(String),
-    #[error("7z arşivinde oynatılabilir medya dosyası yok")]
+    #[error("no playable media file in the 7z archive")]
     NoPlayableMedia,
-    #[error("7z arşivi desteklenmeyen codec/yerleşim içeriyor (BCJ, PPMd, çok-pack folder vb.); COPY, AES, LZMA ve LZMA2 desteklenir")]
+    #[error("7z archive uses an unsupported codec/layout (BCJ, PPMd, multi-pack folder, etc.); COPY, AES, LZMA and LZMA2 are supported")]
     UnsupportedCompression,
-    #[error("parola korumalı 7z arşivinde NZB password metası yok")]
+    #[error("password-protected 7z archive but the NZB has no password metadata")]
     MissingPassword,
-    #[error("geçersiz 7z yerleşimi: {0}")]
+    #[error("invalid 7z layout: {0}")]
     InvalidLayout(String),
-    #[error("7z hazırlama görevi tamamlanamadı: {0}")]
+    #[error("7z prepare task failed to complete: {0}")]
     Task(String),
-    #[error("7z hazırlama iptal edildi")]
+    #[error("7z preparation cancelled")]
     Cancelled,
 }
 
@@ -95,7 +95,7 @@ fn checked_pack_sum(values: &[u64]) -> Result<u64, SevenZipError> {
     values.iter().try_fold(0u64, |total, &value| {
         total
             .checked_add(value)
-            .ok_or_else(|| SevenZipError::InvalidLayout("pack boyut toplamı taştı".into()))
+            .ok_or_else(|| SevenZipError::InvalidLayout("pack size total overflow".into()))
     })
 }
 
@@ -103,7 +103,7 @@ fn aes_packed_size(decoded_size: u64) -> Result<u64, SevenZipError> {
     decoded_size
         .div_ceil(AES_BLOCK_SIZE)
         .checked_mul(AES_BLOCK_SIZE)
-        .ok_or_else(|| SevenZipError::InvalidLayout("AES pack boyutu taştı".into()))
+        .ok_or_else(|| SevenZipError::InvalidLayout("AES pack size overflow".into()))
 }
 
 struct AesPlan {
@@ -226,7 +226,7 @@ impl SevenZipEntrySource {
     where
         W: AsyncWrite + Unpin + Send,
     {
-        let aes = self.plan.aes.as_ref().expect("AES planı mevcut");
+        let aes = self.plan.aes.as_ref().expect("AES plan present");
         let mut cursor = range.start;
 
         while cursor < range.end {
@@ -245,7 +245,7 @@ impl SevenZipEntrySource {
                     .await?;
                 previous
                     .try_into()
-                    .map_err(|_| io::Error::other("AES önceki blok boyutu geçersiz"))?
+                    .map_err(|_| io::Error::other("invalid AES previous block size"))?
             };
 
             let mut ciphertext = self
@@ -329,7 +329,7 @@ fn read_standard_archive_header<R: Read + Seek>(
     }
     if start_header.next_header_size > limits.max_header_bytes {
         return Err(SevenZipError::InvalidLayout(format!(
-            "next header {} bayt; güvenli başlık sınırı {} bayt",
+            "next header is {} bytes; safe header limit is {} bytes",
             start_header.next_header_size, limits.max_header_bytes
         )));
     }
@@ -337,15 +337,15 @@ fn read_standard_archive_header<R: Read + Seek>(
     let header_position = start_header.next_header_position();
     let header_end = header_position
         .checked_add(start_header.next_header_size)
-        .ok_or_else(|| SevenZipError::InvalidLayout("next header sonu taştı".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("next header end overflow".into()))?;
     if header_end > archive_len {
         return Err(SevenZipError::InvalidLayout(
-            "next header mevcut 7z ciltlerinin dışında; set eksik".into(),
+            "next header is outside available 7z volumes; set is incomplete".into(),
         ));
     }
 
     let header_size = usize::try_from(start_header.next_header_size)
-        .map_err(|_| SevenZipError::InvalidLayout("next header belleğe sığmıyor".into()))?;
+        .map_err(|_| SevenZipError::InvalidLayout("next header does not fit in memory".into()))?;
     reader.seek(SeekFrom::Start(header_position))?;
     let mut header_data = vec![0u8; header_size];
     reader.read_exact(&mut header_data)?;
@@ -354,7 +354,7 @@ fn read_standard_archive_header<R: Read + Seek>(
     let marker = header_data
         .first()
         .copied()
-        .ok_or_else(|| SevenZipError::InvalidLayout("7z next header verisi boş".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("7z next header data is empty".into()))?;
     match marker {
         property_id::HEADER => {
             let mut parser = HeaderParser::with_limits(limits.clone());
@@ -376,7 +376,7 @@ fn read_standard_archive_header<R: Read + Seek>(
             let decoded = decode_encoded_header(reader, archive_len, &streams, limits, password)?;
             if decoded.first().copied() != Some(property_id::HEADER) {
                 return Err(SevenZipError::InvalidLayout(
-                    "çözülen 7z başlığı HEADER işaretçisiyle başlamıyor".into(),
+                    "decoded 7z header does not start with the HEADER marker".into(),
                 ));
             }
 
@@ -388,7 +388,7 @@ fn read_standard_archive_header<R: Read + Seek>(
             Ok(header)
         }
         other => Err(SevenZipError::InvalidLayout(format!(
-            "tanınmayan 7z başlık işaretçisi: {other:#x}"
+            "unrecognized 7z header marker: {other:#x}"
         ))),
     }
 }
@@ -406,7 +406,7 @@ fn parse_encoded_streams_info<R: Read>(
             property_id::PACK_INFO => {
                 if streams.pack_info.is_some() {
                     return Err(SevenZipError::InvalidLayout(
-                        "encoded header birden fazla PackInfo içeriyor".into(),
+                        "encoded header contains multiple PackInfo".into(),
                     ));
                 }
                 streams.pack_info = Some(
@@ -417,7 +417,7 @@ fn parse_encoded_streams_info<R: Read>(
             property_id::UNPACK_INFO => {
                 if streams.unpack_info.is_some() {
                     return Err(SevenZipError::InvalidLayout(
-                        "encoded header birden fazla UnpackInfo içeriyor".into(),
+                        "encoded header contains multiple UnpackInfo".into(),
                     ));
                 }
                 streams.unpack_info = Some(
@@ -428,7 +428,7 @@ fn parse_encoded_streams_info<R: Read>(
             property_id::SUBSTREAMS_INFO => {
                 if streams.substreams_info.is_some() {
                     return Err(SevenZipError::InvalidLayout(
-                        "encoded header birden fazla SubStreamsInfo içeriyor".into(),
+                        "encoded header contains multiple SubStreamsInfo".into(),
                     ));
                 }
                 let folders = streams
@@ -436,7 +436,7 @@ fn parse_encoded_streams_info<R: Read>(
                     .as_ref()
                     .ok_or_else(|| {
                         SevenZipError::InvalidLayout(
-                            "SubStreamsInfo, UnpackInfo'dan önce geldi".into(),
+                            "SubStreamsInfo came before UnpackInfo".into(),
                         )
                     })?
                     .folders
@@ -448,7 +448,7 @@ fn parse_encoded_streams_info<R: Read>(
             }
             other => {
                 return Err(SevenZipError::InvalidLayout(format!(
-                    "encoded header StreamsInfo içinde tanınmayan özellik: {other:#x}"
+                    "unrecognized property in encoded header StreamsInfo: {other:#x}"
                 )));
             }
         }
@@ -468,13 +468,13 @@ fn decode_encoded_header<R: Read + Seek>(
     let pack_info = streams
         .pack_info
         .as_ref()
-        .ok_or_else(|| SevenZipError::InvalidLayout("encoded header PackInfo içermiyor".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("encoded header contains no PackInfo".into()))?;
     let unpack_info = streams.unpack_info.as_ref().ok_or_else(|| {
-        SevenZipError::InvalidLayout("encoded header UnpackInfo içermiyor".into())
+        SevenZipError::InvalidLayout("encoded header contains no UnpackInfo".into())
     })?;
     if pack_info.pack_sizes.len() != 1 || unpack_info.folders.len() != 1 {
         return Err(SevenZipError::InvalidLayout(
-            "encoded header yalnız tek folder ve tek pack stream ile destekleniyor".into(),
+            "encoded header is only supported with a single folder and single pack stream".into(),
         ));
     }
 
@@ -482,7 +482,7 @@ fn decode_encoded_header<R: Read + Seek>(
     let coder_order = simple_coder_order(folder)?;
     if folder.unpack_sizes.len() != folder.coders.len() {
         return Err(SevenZipError::InvalidLayout(format!(
-            "encoded header {} coder için {} unpack boyutu taşıyor",
+            "encoded header carries {} unpack size for coder {}",
             folder.coders.len(),
             folder.unpack_sizes.len()
         )));
@@ -491,7 +491,7 @@ fn decode_encoded_header<R: Read + Seek>(
     if let Some(substreams) = streams.substreams_info.as_ref() {
         if substreams.num_unpack_streams_in_folders.as_slice() != [1] {
             return Err(SevenZipError::InvalidLayout(
-                "encoded header birden fazla unpack substream içeriyor".into(),
+                "encoded header contains multiple unpack substreams".into(),
             ));
         }
     }
@@ -499,24 +499,24 @@ fn decode_encoded_header<R: Read + Seek>(
     let pack_size = pack_info.pack_sizes[0];
     if pack_size > limits.max_header_bytes {
         return Err(SevenZipError::InvalidLayout(format!(
-            "encoded header pack stream'i {pack_size} bayt; güvenli başlık sınırı {} bayt",
+            "encoded header pack stream is {pack_size} bytes; safe header limit is {} bytes",
             limits.max_header_bytes
         )));
     }
     let pack_start = SIGNATURE_HEADER_SIZE
         .checked_add(pack_info.pack_pos)
-        .ok_or_else(|| SevenZipError::InvalidLayout("encoded header pack ofseti taştı".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("encoded header pack offset overflow".into()))?;
     let pack_end = pack_start
         .checked_add(pack_size)
-        .ok_or_else(|| SevenZipError::InvalidLayout("encoded header pack sonu taştı".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("encoded header pack end overflow".into()))?;
     if pack_end > archive_len {
         return Err(SevenZipError::InvalidLayout(
-            "encoded header pack aralığı mevcut 7z ciltlerinin dışında; set eksik".into(),
+            "encoded header pack range is outside available 7z volumes; set is incomplete".into(),
         ));
     }
 
     let pack_len = usize::try_from(pack_size)
-        .map_err(|_| SevenZipError::InvalidLayout("encoded header pack belleğe sığmıyor".into()))?;
+        .map_err(|_| SevenZipError::InvalidLayout("encoded header pack does not fit in memory".into()))?;
     reader.seek(SeekFrom::Start(pack_start))?;
     let mut packed = vec![0u8; pack_len];
     reader.read_exact(&mut packed)?;
@@ -530,7 +530,7 @@ fn decode_encoded_header<R: Read + Seek>(
         let decoded_size = folder.unpack_sizes[coder_index];
         if decoded_size > limits.max_header_bytes {
             return Err(SevenZipError::InvalidLayout(format!(
-                "encoded header coder çıktısı {decoded_size} bayt; güvenli başlık sınırı {} bayt",
+                "encoded header coder output is {decoded_size} bytes; safe header limit is {} bytes",
                 limits.max_header_bytes
             )));
         }
@@ -554,7 +554,7 @@ fn decode_encoded_header<R: Read + Seek>(
             ),
             unsupported => {
                 return Err(SevenZipError::InvalidLayout(format!(
-                    "encoded header desteklenmeyen coder içeriyor: {}",
+                    "encoded header contains an unsupported coder: {}",
                     method::name(unsupported)
                 )));
             }
@@ -563,21 +563,21 @@ fn decode_encoded_header<R: Read + Seek>(
 
     let final_coder = *coder_order
         .last()
-        .ok_or_else(|| SevenZipError::InvalidLayout("encoded header coder zinciri boş".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("encoded header coder chain is empty".into()))?;
     let expected_size = folder.unpack_sizes[final_coder];
     let capacity = usize::try_from(expected_size)
-        .map_err(|_| SevenZipError::InvalidLayout("çözülen başlık belleğe sığmıyor".into()))?;
+        .map_err(|_| SevenZipError::InvalidLayout("decoded header does not fit in memory".into()))?;
     let mut decoded = Vec::with_capacity(capacity);
     decoder.read_to_end(&mut decoded)?;
     if decoded.len() as u64 != expected_size {
         return Err(SevenZipError::InvalidLayout(format!(
-            "çözülen başlık {} bayt, beklenen {expected_size} bayt",
+            "decoded header is {} bytes, expected {expected_size} bytes",
             decoded.len()
         )));
     }
 
     if let Some(expected_crc) = folder.unpack_crc {
-        verify_header_crc("çözülen encoded header", &decoded, expected_crc)?;
+        verify_header_crc("decoded encoded header", &decoded, expected_crc)?;
     }
     if let Some(expected_crc) = streams
         .substreams_info
@@ -586,7 +586,7 @@ fn decode_encoded_header<R: Read + Seek>(
         .copied()
         .flatten()
     {
-        verify_header_crc("çözülen encoded header substream", &decoded, expected_crc)?;
+        verify_header_crc("decoded encoded header substream", &decoded, expected_crc)?;
     }
     Ok(decoded)
 }
@@ -597,7 +597,7 @@ fn decode_encoded_header<R: Read + Seek>(
 fn simple_coder_order(folder: &Folder) -> Result<Vec<usize>, SevenZipError> {
     if folder.coders.is_empty() {
         return Err(SevenZipError::InvalidLayout(
-            "encoded header coder zinciri boş".into(),
+            "encoded header coder chain is empty".into(),
         ));
     }
     if folder
@@ -606,12 +606,12 @@ fn simple_coder_order(folder: &Folder) -> Result<Vec<usize>, SevenZipError> {
         .any(|coder| coder.num_in_streams != 1 || coder.num_out_streams != 1)
     {
         return Err(SevenZipError::InvalidLayout(
-            "encoded header yalnız tek giriş/tek çıkışlı coder zincirlerini destekliyor".into(),
+            "encoded header only supports single-input/single-output coder chains".into(),
         ));
     }
     if folder.packed_streams.len() != 1 || folder.bind_pairs.len() + 1 != folder.coders.len() {
         return Err(SevenZipError::InvalidLayout(
-            "encoded header coder graph'ı basit bir zincir değil".into(),
+            "encoded header coder graph is not a simple chain".into(),
         ));
     }
 
@@ -624,17 +624,17 @@ fn simple_coder_order(folder: &Folder) -> Result<Vec<usize>, SevenZipError> {
             .ok()
             .filter(|&index| index < coder_count)
             .ok_or_else(|| {
-                SevenZipError::InvalidLayout("encoded header bind input indeksi geçersiz".into())
+                SevenZipError::InvalidLayout("encoded header bind input index invalid".into())
             })?;
         let output = usize::try_from(pair.out_index)
             .ok()
             .filter(|&index| index < coder_count)
             .ok_or_else(|| {
-                SevenZipError::InvalidLayout("encoded header bind output indeksi geçersiz".into())
+                SevenZipError::InvalidLayout("encoded header bind output index invalid".into())
             })?;
         if incoming_bound[input] || outgoing_bound[output] {
             return Err(SevenZipError::InvalidLayout(
-                "encoded header coder graph'ında yinelenen bind stream'i var".into(),
+                "encoded header coder graph has a duplicate bind stream".into(),
             ));
         }
         incoming_bound[input] = true;
@@ -646,11 +646,11 @@ fn simple_coder_order(folder: &Folder) -> Result<Vec<usize>, SevenZipError> {
         .ok()
         .filter(|&index| index < coder_count)
         .ok_or_else(|| {
-            SevenZipError::InvalidLayout("encoded header packed stream indeksi geçersiz".into())
+            SevenZipError::InvalidLayout("encoded header packed stream index invalid".into())
         })?;
     if incoming_bound[current] {
         return Err(SevenZipError::InvalidLayout(
-            "encoded header packed stream'i aynı zamanda bind girdisi".into(),
+            "encoded header packed stream is also a bind input".into(),
         ));
     }
 
@@ -659,7 +659,7 @@ fn simple_coder_order(folder: &Folder) -> Result<Vec<usize>, SevenZipError> {
     loop {
         if visited[current] {
             return Err(SevenZipError::InvalidLayout(
-                "encoded header coder graph'ında döngü var".into(),
+                "encoded header coder graph has a cycle".into(),
             ));
         }
         visited[current] = true;
@@ -671,7 +671,7 @@ fn simple_coder_order(folder: &Folder) -> Result<Vec<usize>, SevenZipError> {
     }
     if order.len() != coder_count {
         return Err(SevenZipError::InvalidLayout(
-            "encoded header coder graph'ı bağlantısız".into(),
+            "encoded header coder graph is disconnected".into(),
         ));
     }
     Ok(order)
@@ -681,7 +681,7 @@ fn verify_header_crc(label: &str, data: &[u8], expected_crc: u32) -> Result<(), 
     let actual_crc = crc32fast::hash(data);
     if actual_crc != expected_crc {
         return Err(SevenZipError::Header(format!(
-            "{label} CRC uyuşmazlığı: beklenen {expected_crc:#x}, bulunan {actual_crc:#x}"
+            "{label} CRC mismatch: expected {expected_crc:#x}, got {actual_crc:#x}"
         )));
     }
     Ok(())
@@ -701,11 +701,11 @@ fn preflight_archive_size<R: Read + Seek>(
     let required_len = SIGNATURE_HEADER_SIZE
         .checked_add(start_header.next_header_offset)
         .and_then(|value| value.checked_add(start_header.next_header_size))
-        .ok_or_else(|| SevenZipError::InvalidLayout("7z başlığındaki toplam boyut taştı".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("total size overflow in 7z header".into()))?;
 
     if required_len > archive_len {
         return Err(SevenZipError::InvalidLayout(format!(
-            "7z başlığı {required_len} baytlık fiziksel arşiv bekliyor, NZB ciltleri yalnız {archive_len} bayt sağlıyor; set eksik"
+            "7z header expects {required_len} bytes of physical archive but NZB volumes only provide {archive_len} bytes; set is incomplete"
         )));
     }
 
@@ -740,7 +740,7 @@ fn plan_from_header(
         .unwrap_or_else(|| vec![1; folders.len()]);
     if streams_per_folder.len() != folders.len() {
         return Err(SevenZipError::InvalidLayout(
-            "folder/substream sayısı uyuşmuyor".into(),
+            "folder/substream count mismatch".into(),
         ));
     }
 
@@ -760,7 +760,7 @@ fn plan_from_header(
         }
         if folder_index >= folders.len() {
             return Err(SevenZipError::InvalidLayout(
-                "dosya stream'i için folder bulunamadı".into(),
+                "no folder found for file stream".into(),
             ));
         }
 
@@ -771,7 +771,7 @@ fn plan_from_header(
         }
         folder_prefix = folder_prefix
             .checked_add(entry.size)
-            .ok_or_else(|| SevenZipError::InvalidLayout("folder içi ofset taştı".into()))?;
+            .ok_or_else(|| SevenZipError::InvalidLayout("folder-internal offset overflow".into()))?;
         remaining_in_folder -= 1;
     }
 
@@ -820,7 +820,7 @@ fn plan_from_header(
         .try_fold(0usize, |total, folder| {
             total.checked_add(folder.packed_streams.len())
         })
-        .ok_or_else(|| SevenZipError::InvalidLayout("pack stream indeksi taştı".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("pack stream index overflow".into()))?;
     let packed_size = *pack_info
         .pack_sizes
         .get(pack_index)
@@ -828,18 +828,18 @@ fn plan_from_header(
     let previous_sizes = pack_info
         .pack_sizes
         .get(..pack_index)
-        .ok_or_else(|| SevenZipError::InvalidLayout("önceki pack stream'leri yok".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("no previous pack streams".into()))?;
     let previous_packed = checked_pack_sum(previous_sizes)?;
     let packed_start = SIGNATURE_HEADER_SIZE
         .checked_add(pack_info.pack_pos)
         .and_then(|value| value.checked_add(previous_packed))
-        .ok_or_else(|| SevenZipError::InvalidLayout("pack ofseti taştı".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("pack offset overflow".into()))?;
     let packed_end = packed_start
         .checked_add(packed_size)
-        .ok_or_else(|| SevenZipError::InvalidLayout("pack sonu taştı".into()))?;
+        .ok_or_else(|| SevenZipError::InvalidLayout("pack end overflow".into()))?;
     if packed_end > archive_len {
         return Err(SevenZipError::InvalidLayout(
-            "medya pack aralığı mevcut 7z ciltlerinin dışında; set eksik".into(),
+            "media pack range is outside available 7z volumes; set is incomplete".into(),
         ));
     }
 
@@ -880,7 +880,7 @@ fn plan_from_header(
             let properties = coder
                 .properties
                 .as_deref()
-                .ok_or_else(|| SevenZipError::InvalidLayout("AES coder özellikleri yok".into()))?;
+                .ok_or_else(|| SevenZipError::InvalidLayout("no AES coder properties".into()))?;
             let properties = AesProperties::parse(properties)
                 .map_err(|error| SevenZipError::Header(error.to_string()))?;
             let expected_packed = aes_packed_size(entry.size)?;
@@ -894,7 +894,7 @@ fn plan_from_header(
             let iv: [u8; 16] = properties
                 .iv
                 .try_into()
-                .map_err(|_| SevenZipError::InvalidLayout("AES IV boyutu 16 değil".into()))?;
+                .map_err(|_| SevenZipError::InvalidLayout("AES IV size is not 16".into()))?;
             Some(AesPlan {
                 key: Zeroizing::new(key),
                 iv,
@@ -934,7 +934,7 @@ fn build_chain_decoder(
             m if m == method::COPY => Box::new(CopyDecoder::new(decoder, step.unpack_size)),
             m if m == method::AES => {
                 let password = password
-                    .ok_or_else(|| io::Error::other("AES zinciri için parola yok"))?;
+                    .ok_or_else(|| io::Error::other("no password for the AES chain"))?;
                 let aes = Aes256Decoder::new(decoder, &step.properties, password)
                     .map_err(|error| io::Error::other(error.to_string()))?;
                 Box::new(aes.take(step.unpack_size))
@@ -993,13 +993,13 @@ fn build_decode_facade(
 fn decrypt_blocks(key: &[u8; 32], iv: &[u8; 16], ciphertext: &mut [u8]) -> io::Result<()> {    if !ciphertext.len().is_multiple_of(AES_BLOCK_SIZE as usize) {
         return Err(io::Error::new(
             io::ErrorKind::InvalidData,
-            "AES ciphertext 16 bayt hizalı değil",
+            "AES ciphertext is not 16-byte aligned",
         ));
     }
     Aes256CbcDec::new_from_slices(key, iv)
-        .map_err(|_| io::Error::other("AES key/IV boyutu geçersiz"))?
+        .map_err(|_| io::Error::other("invalid AES key/IV size"))?
         .decrypt_padded_mut::<NoPadding>(ciphertext)
-        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "AES çözme başarısız"))?;
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "AES decryption failed"))?;
     Ok(())
 }
 
@@ -1076,7 +1076,7 @@ mod tests {
         let plan = plan_from_header(&header, 200, None).unwrap();
         assert_eq!(plan.packed_range, 132..164);
         let PackingPlan::Compressed(compressed) = &plan.packing else {
-            panic!("LZMA2 zinciri Compressed plan üretmeli");
+            panic!("LZMA2 chain must produce a Compressed plan");
         };
         assert_eq!(compressed.prefix_skip, 0);
         assert_eq!(compressed.steps.len(), 1);
@@ -1112,7 +1112,7 @@ mod tests {
         assert_eq!(plan.filename, "movie2.mkv");
         assert_eq!(plan.decoded_size, 200);
         let PackingPlan::Compressed(compressed) = &plan.packing else {
-            panic!("solid folder Compressed plan üretmeli");
+            panic!("solid folder must produce a Compressed plan");
         };
         assert_eq!(compressed.prefix_skip, 100);
     }
@@ -1154,7 +1154,7 @@ mod tests {
         let packed = lzma2_compress(&original);
         assert!(
             packed.len() < original.len() / 2,
-            "desen gerçekten sıkışmalı"
+            "pattern must actually compress"
         );
 
         let steps = vec![lzma2_step(original.len() as u64)];
@@ -1280,7 +1280,7 @@ mod tests {
         let error = preflight_archive_size(&mut Cursor::new(bytes), 140).unwrap_err();
         assert_eq!(
             error.to_string(),
-            "geçersiz 7z yerleşimi: 7z başlığı 172 baytlık fiziksel arşiv bekliyor, NZB ciltleri yalnız 140 bayt sağlıyor; set eksik"
+            "invalid 7z layout: 7z header expects 172 bytes of physical archive but NZB volumes only provide 140 bytes; set is incomplete"
         );
     }
 

@@ -1105,6 +1105,132 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'No engine log lines were captured for the filter.'**
   String get dvReshapeDiagnosticsEmpty;
+
+  /// No description provided for @errFormatNotRecognized.
+  ///
+  /// In en, this message translates to:
+  /// **'The media format could not be recognized. The NZB may contain an archive or PAR2 recovery data instead of a direct video.'**
+  String get errFormatNotRecognized;
+
+  /// No description provided for @errLocalStreamUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'The local video stream could not be read. A Usenet segment may be missing or the connection dropped.'**
+  String get errLocalStreamUnreadable;
+
+  /// No description provided for @errDecoderFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'The video or audio decoder could not open the stream.'**
+  String get errDecoderFailed;
+
+  /// No description provided for @errPlayerGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'The player could not open the stream.'**
+  String get errPlayerGeneric;
+
+  /// No description provided for @errNoMpvDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'libmpv gave no details.'**
+  String get errNoMpvDetail;
+
+  /// No description provided for @errNoEngineDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'The streaming engine gave no details.'**
+  String get errNoEngineDetail;
+
+  /// No description provided for @technicalDetail.
+  ///
+  /// In en, this message translates to:
+  /// **'Technical detail: {detail}'**
+  String technicalDetail(String detail);
+
+  /// No description provided for @errProviderConnectionLimit.
+  ///
+  /// In en, this message translates to:
+  /// **'The Usenet provider\'s simultaneous connection limit was reached. Close other active sessions or wait a moment and try again. If it persists, lower the connection count in the app to your plan\'s limit.'**
+  String get errProviderConnectionLimit;
+
+  /// No description provided for @errAuthFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Usenet authentication failed. Check the username and password in the provider settings.'**
+  String get errAuthFailed;
+
+  /// No description provided for @errRarEncrypted.
+  ///
+  /// In en, this message translates to:
+  /// **'The RAR archive is encrypted. Password-protected RAR releases are not supported; choose a release packed unencrypted (STORE).'**
+  String get errRarEncrypted;
+
+  /// No description provided for @err7zPassword.
+  ///
+  /// In en, this message translates to:
+  /// **'The 7z archive\'s password is missing or invalid. Choose the NZB that carries the password in its metadata.'**
+  String get err7zPassword;
+
+  /// No description provided for @errArchiveCompressed.
+  ///
+  /// In en, this message translates to:
+  /// **'This archive is compressed. Instant playback requires a release packed uncompressed (COPY/STORE, 7z/RAR).'**
+  String get errArchiveCompressed;
+
+  /// No description provided for @errArchiveSolid.
+  ///
+  /// In en, this message translates to:
+  /// **'This archive is solid. Random seeking requires a release packed as non-solid STORE.'**
+  String get errArchiveSolid;
+
+  /// No description provided for @errRar4.
+  ///
+  /// In en, this message translates to:
+  /// **'This RAR archive uses the legacy RAR4 (or older) format. Only RAR5 STORE releases are playable.'**
+  String get errRar4;
+
+  /// No description provided for @errSplitArchiveBroken.
+  ///
+  /// In en, this message translates to:
+  /// **'The multi-part archive (7z/RAR) is incomplete or corrupt. Choose a complete NZB that includes all volumes and segments.'**
+  String get errSplitArchiveBroken;
+
+  /// No description provided for @errMissingSegments.
+  ///
+  /// In en, this message translates to:
+  /// **'The NZB is incomplete or corrupt: not all required Usenet segments can be found. Choose another, complete NZB for this release.'**
+  String get errMissingSegments;
+
+  /// No description provided for @errConnectionFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Could not connect to the Usenet provider. Check your internet connection, the server address, the port and the provider\'s reachability.'**
+  String get errConnectionFailed;
+
+  /// No description provided for @errNzbUnreadable.
+  ///
+  /// In en, this message translates to:
+  /// **'The NZB file could not be read or is corrupt. Choose a valid, complete NZB file.'**
+  String get errNzbUnreadable;
+
+  /// No description provided for @errArchiveNotPlayable.
+  ///
+  /// In en, this message translates to:
+  /// **'The archive (7z/RAR) inside the NZB is not playable or its structure is corrupt. Choose a complete STORE release.'**
+  String get errArchiveNotPlayable;
+
+  /// No description provided for @errNoPlayableMedia.
+  ///
+  /// In en, this message translates to:
+  /// **'No supported video stream was found in the NZB. Choose a release with direct media or a supported STORE archive.'**
+  String get errNoPlayableMedia;
+
+  /// No description provided for @errStreamStartupGeneric.
+  ///
+  /// In en, this message translates to:
+  /// **'The stream could not be started. Check the NZB content and the provider connection.'**
+  String get errStreamStartupGeneric;
 }
 
 class _AppLocalizationsDelegate

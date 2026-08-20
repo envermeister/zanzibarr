@@ -568,4 +568,87 @@ class AppLocalizationsDe extends AppLocalizations {
   @override
   String get dvReshapeDiagnosticsEmpty =>
       'Keine Engine-Logzeilen für den Filter erfasst.';
+
+  @override
+  String get errFormatNotRecognized =>
+      'Das Medienformat wurde nicht erkannt. Das NZB enthält möglicherweise ein Archiv oder PAR2-Wiederherstellungsdaten statt eines direkten Videos.';
+
+  @override
+  String get errLocalStreamUnreadable =>
+      'Der lokale Videostream konnte nicht gelesen werden. Möglicherweise fehlt ein Usenet-Segment oder die Verbindung wurde unterbrochen.';
+
+  @override
+  String get errDecoderFailed =>
+      'Der Video- oder Audio-Decoder konnte den Stream nicht öffnen.';
+
+  @override
+  String get errPlayerGeneric => 'Der Player konnte den Stream nicht öffnen.';
+
+  @override
+  String get errNoMpvDetail => 'libmpv lieferte keine Details.';
+
+  @override
+  String get errNoEngineDetail =>
+      'Die Streaming-Engine lieferte keine Details.';
+
+  @override
+  String technicalDetail(String detail) {
+    return 'Technisches Detail: $detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      'Das Limit für gleichzeitige Verbindungen des Usenet-Anbieters wurde erreicht. Schließe andere aktive Sitzungen oder warte kurz und versuche es erneut. Wenn es weiterhin auftritt, senke die Verbindungsanzahl in der App auf das Limit deines Tarifs.';
+
+  @override
+  String get errAuthFailed =>
+      'Usenet-Authentifizierung fehlgeschlagen. Prüfe Benutzername und Passwort in den Anbieter-Einstellungen.';
+
+  @override
+  String get errRarEncrypted =>
+      'Das RAR-Archiv ist verschlüsselt. Passwortgeschützte RAR-Releases werden nicht unterstützt; wähle ein unverschlüsselt gepacktes Release (STORE).';
+
+  @override
+  String get err7zPassword =>
+      'Das Passwort des 7z-Archivs fehlt oder ist ungültig. Wähle das NZB, das das Passwort in seinen Metadaten trägt.';
+
+  @override
+  String get errArchiveCompressed =>
+      'Dieses Archiv ist komprimiert. Sofortige Wiedergabe erfordert ein unkomprimiert gepacktes Release (COPY/STORE, 7z/RAR).';
+
+  @override
+  String get errArchiveSolid =>
+      'Dieses Archiv ist solid. Zufälliges Springen erfordert ein als nicht-solid STORE gepacktes Release.';
+
+  @override
+  String get errRar4 =>
+      'Dieses RAR-Archiv nutzt das alte RAR4-Format (oder älter). Nur RAR5-STORE-Releases sind abspielbar.';
+
+  @override
+  String get errSplitArchiveBroken =>
+      'Das mehrteilige Archiv (7z/RAR) ist unvollständig oder beschädigt. Wähle ein vollständiges NZB mit allen Volumes und Segmenten.';
+
+  @override
+  String get errMissingSegments =>
+      'Das NZB ist unvollständig oder beschädigt: nicht alle benötigten Usenet-Segmente können gefunden werden. Wähle ein anderes, vollständiges NZB für dieses Release.';
+
+  @override
+  String get errConnectionFailed =>
+      'Verbindung zum Usenet-Anbieter fehlgeschlagen. Prüfe deine Internetverbindung, die Serveradresse, den Port und die Erreichbarkeit des Anbieters.';
+
+  @override
+  String get errNzbUnreadable =>
+      'Die NZB-Datei konnte nicht gelesen werden oder ist beschädigt. Wähle eine gültige, vollständige NZB-Datei.';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'Das Archiv (7z/RAR) im NZB ist nicht abspielbar oder seine Struktur ist beschädigt. Wähle ein vollständiges STORE-Release.';
+
+  @override
+  String get errNoPlayableMedia =>
+      'Im NZB wurde kein unterstützter Videostream gefunden. Wähle ein Release mit direkten Medien oder einem unterstützten STORE-Archiv.';
+
+  @override
+  String get errStreamStartupGeneric =>
+      'Der Stream konnte nicht gestartet werden. Prüfe den NZB-Inhalt und die Anbieterverbindung.';
 }

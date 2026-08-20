@@ -349,7 +349,12 @@ class _PlayerScreenState extends State<PlayerScreen>
       _startupActive = false;
       _startupFailed = true;
       if (!mounted) return;
-      setState(() => _error = describeStreamStartupError(error));
+      setState(
+        () => _error = describeStreamStartupError(
+          error,
+          AppLocalizations.of(context),
+        ),
+      );
     }
   }
 
@@ -477,7 +482,10 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void _onPlayerError(String message) {
     if (!_startupActive && !_playbackReady) return;
-    final description = describePlayerError(message);
+    final description = describePlayerError(
+      message,
+      AppLocalizations.of(context),
+    );
     if (!_playbackReady) {
       _failStartup(description);
       return;

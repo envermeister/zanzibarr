@@ -81,7 +81,7 @@ impl<C: Connect> NntpPool<C> {
         let permit = Arc::clone(&self.semaphore)
             .acquire_owned()
             .await
-            .expect("havuz semaforu kapatılmaz");
+            .expect("pool semaphore must not close");
         if let Some(conn) = self.take_idle() {
             return Ok(self.pooled(conn, permit));
         }
@@ -170,13 +170,13 @@ impl<C: Connect> PooledConnection<C> {
 impl<C: Connect> Deref for PooledConnection<C> {
     type Target = C::Conn;
     fn deref(&self) -> &C::Conn {
-        self.conn.as_ref().expect("bağlantı drop'a kadar hep var")
+        self.conn.as_ref().expect("connection must live until drop")
     }
 }
 
 impl<C: Connect> DerefMut for PooledConnection<C> {
     fn deref_mut(&mut self) -> &mut C::Conn {
-        self.conn.as_mut().expect("bağlantı drop'a kadar hep var")
+        self.conn.as_mut().expect("connection must live until drop")
     }
 }
 
@@ -215,13 +215,13 @@ impl Connect for TlsNntpConnector {
 
     async fn connect(&self) -> Result<TlsNntpConnection, NntpError> {
         let mut conn = with_operation_timeout(
-            "NNTP TLS bağlantısı",
+            "NNTP TLS connection",
             CONNECT_TIMEOUT,
             connect_tls(&self.config.host, self.config.port),
         )
         .await?;
         with_operation_timeout(
-            "NNTP kimlik doğrulaması",
+            "NNTP authentication",
             AUTH_TIMEOUT,
             conn.authenticate(&self.config.username, &self.config.password),
         )
@@ -387,7 +387,7 @@ mod tests {
         drop(held);
         tokio::time::timeout(Duration::from_secs(1), waiter)
             .await
-            .expect("bağlantı bırakılınca bekleyen açılmalı")
+            .expect("pending waiter must unblock when the connection is dropped")
             .unwrap();
     }
 
@@ -418,7 +418,7 @@ mod tests {
         assert_eq!(
             pool.connector.peak_connecting.load(Ordering::SeqCst),
             1,
-            "TLS+AUTH kurulumları aynı anda başlatılmamalı"
+            "TLS+AUTH setups must not be started concurrently"
         );
     }
 
@@ -442,13 +442,13 @@ mod tests {
             }
         })
         .await
-        .expect("ikinci bağlantı denemesi başlamalı");
+        .expect("second connection attempt must start");
         first.mark_reusable();
         drop(first);
 
         let mut reused = tokio::time::timeout(Duration::from_secs(1), waiter)
             .await
-            .expect("idle bağlantı backoff beklemeden kullanılmalı")
+            .expect("idle connection must be used before backoff")
             .unwrap()
             .unwrap();
         reused.mark_reusable();
@@ -493,7 +493,7 @@ mod tests {
     #[tokio::test]
     async fn operasyon_timeout_acik_hata_dondurur() {
         let result = with_operation_timeout::<()>(
-            "test işlemi",
+            "test operation",
             Duration::from_millis(5),
             std::future::pending(),
         )
@@ -501,7 +501,7 @@ mod tests {
         assert!(matches!(
             result,
             Err(NntpError::Timeout {
-                operation: "test işlemi"
+                operation: "test operation"
             })
         ));
     }

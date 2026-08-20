@@ -568,4 +568,88 @@ class AppLocalizationsIt extends AppLocalizations {
   @override
   String get dvReshapeDiagnosticsEmpty =>
       'Nessuna riga di log del motore catturata per il filtro.';
+
+  @override
+  String get errFormatNotRecognized =>
+      'Impossibile riconoscere il formato del media. L\'NZB potrebbe contenere un archivio o dati di recupero PAR2 anziché un video diretto.';
+
+  @override
+  String get errLocalStreamUnreadable =>
+      'Impossibile leggere lo stream video locale. Potrebbe mancare un segmento Usenet o la connessione è caduta.';
+
+  @override
+  String get errDecoderFailed =>
+      'Il decodificatore video o audio non è riuscito ad aprire lo stream.';
+
+  @override
+  String get errPlayerGeneric =>
+      'Il lettore non è riuscito ad aprire lo stream.';
+
+  @override
+  String get errNoMpvDetail => 'libmpv non ha fornito dettagli.';
+
+  @override
+  String get errNoEngineDetail =>
+      'Il motore di streaming non ha fornito dettagli.';
+
+  @override
+  String technicalDetail(String detail) {
+    return 'Dettaglio tecnico: $detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      'È stato raggiunto il limite di connessioni simultanee del provider Usenet. Chiudi le altre sessioni attive o attendi un momento e riprova. Se persiste, riduci il numero di connessioni nell\'app al limite del tuo piano.';
+
+  @override
+  String get errAuthFailed =>
+      'Autenticazione Usenet non riuscita. Controlla nome utente e password nelle impostazioni del provider.';
+
+  @override
+  String get errRarEncrypted =>
+      'L\'archivio RAR è cifrato. Le release RAR protette da password non sono supportate; scegli una release impacchettata non cifrata (STORE).';
+
+  @override
+  String get err7zPassword =>
+      'La password dell\'archivio 7z manca o non è valida. Scegli l\'NZB che porta la password nei suoi metadati.';
+
+  @override
+  String get errArchiveCompressed =>
+      'Questo archivio è compresso. La riproduzione istantanea richiede una release impacchettata non compressa (COPY/STORE, 7z/RAR).';
+
+  @override
+  String get errArchiveSolid =>
+      'Questo archivio è solido. La ricerca casuale richiede una release impacchettata come STORE non solido.';
+
+  @override
+  String get errRar4 =>
+      'Questo archivio RAR usa il vecchio formato RAR4 (o precedente). Solo le release RAR5 STORE sono riproducibili.';
+
+  @override
+  String get errSplitArchiveBroken =>
+      'L\'archivio multiparte (7z/RAR) è incompleto o corrotto. Scegli un NZB completo che includa tutti i volumi e i segmenti.';
+
+  @override
+  String get errMissingSegments =>
+      'L\'NZB è incompleto o corrotto: non tutti i segmenti Usenet necessari sono stati trovati. Scegli un altro NZB completo per questa release.';
+
+  @override
+  String get errConnectionFailed =>
+      'Impossibile connettersi al provider Usenet. Controlla la connessione internet, l\'indirizzo del server, la porta e la raggiungibilità del provider.';
+
+  @override
+  String get errNzbUnreadable =>
+      'Il file NZB non può essere letto o è corrotto. Scegli un file NZB valido e completo.';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'L\'archivio (7z/RAR) dentro l\'NZB non è riproducibile o la sua struttura è corrotta. Scegli una release STORE completa.';
+
+  @override
+  String get errNoPlayableMedia =>
+      'Nell\'NZB non è stato trovato alcuno stream video supportato. Scegli una release con media diretti o un archivio STORE supportato.';
+
+  @override
+  String get errStreamStartupGeneric =>
+      'Impossibile avviare lo stream. Controlla il contenuto dell\'NZB e la connessione del provider.';
 }

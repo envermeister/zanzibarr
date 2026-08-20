@@ -68,10 +68,10 @@ fn fetch_checked(url: &str, max_bytes: usize, timeout: Duration) -> Result<Strin
             .await
             .map_err(map_http_error)?;
         if !(200..300).contains(&response.status) {
-            return Err(format!("indexer HTTP {} döndürdü", response.status));
+            return Err(format!("indexer returned HTTP {}", response.status));
         }
         String::from_utf8(response.body)
-            .map_err(|_| "indexer yanıtı UTF-8 değil".to_string())
+            .map_err(|_| "indexer response is not UTF-8".to_string())
     })
 }
 
@@ -170,11 +170,11 @@ pub fn newznab_download_nzb(
         .get(..4096)
         .is_some_and(|head| head.contains("<nzb") || head.contains("<!DOCTYPE nzb"));
     if !looks_nzb {
-        return Err("indirilen içerik NZB değil".to_string());
+        return Err("downloaded content is not an NZB".to_string());
     }
 
     let dir = std::env::temp_dir().join("zanzibarr-nzb");
-    std::fs::create_dir_all(&dir).map_err(|error| format!("geçici dizin açılamadı: {error}"))?;
+    std::fs::create_dir_all(&dir).map_err(|error| format!("could not create temp directory: {error}"))?;
     let filename = format!(
         "{}-{}.nzb",
         sanitize_filename(&suggested_name),
@@ -184,7 +184,7 @@ pub fn newznab_download_nzb(
             .unwrap_or(0)
     );
     let path = dir.join(filename);
-    std::fs::write(&path, body).map_err(|error| format!("NZB yazılamadı: {error}"))?;
+    std::fs::write(&path, body).map_err(|error| format!("could not write NZB: {error}"))?;
     Ok(path.to_string_lossy().into_owned())
 }
 

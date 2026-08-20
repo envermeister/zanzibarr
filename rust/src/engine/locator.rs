@@ -30,22 +30,22 @@ use super::yenc::YencPart;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum LocatorError {
-    #[error("boş byte aralığı")]
+    #[error("empty byte range")]
     EmptyRange,
-    #[error("aralık dosya sınırının dışında (istenen {requested:?}, dosya boyutu {file_size:?})")]
+    #[error("range out of file bounds (requested {requested:?}, file size {file_size:?})")]
     OutOfBounds {
         requested: Range<u64>,
         file_size: Option<u64>,
     },
     /// Aralığı çözmek için önce bu segmentlerin çekilip [`SegmentLocator::record_part`]
     /// ile kaydedilmesi gerekir (NZB sırasındaki indeksler).
-    #[error("önce şu segmentlerin konumu öğrenilmeli: {0:?}")]
+    #[error("location of these segments must be learned first: {0:?}")]
     NeedSegments(Vec<usize>),
-    #[error("segment indeksi aralık dışında: {0}")]
+    #[error("segment index out of range: {0}")]
     BadIndex(usize),
-    #[error("kaydedilen parça dosya boyutu ({new}) öncekiyle ({existing}) çelişiyor")]
+    #[error("recorded part file size ({new}) conflicts with previous ({existing})")]
     FileSizeConflict { existing: u64, new: u64 },
-    #[error("dosya ofseti {offset} hiçbir NZB segmentiyle eşlenmedi")]
+    #[error("file offset {offset} does not map to any NZB segment")]
     UnmappedOffset { offset: u64 },
 }
 

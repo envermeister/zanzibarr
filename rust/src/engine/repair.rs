@@ -10,7 +10,7 @@
 //!    yakalanan hasar burada da zaten yakalanır — ayrı bir taramaya gerek yok.
 //! 2. **Onarım turu:** [`par2::plan_repair`] ile matris çözülür, sağlam
 //!    dilimler ikinci kez okunarak yalnız eksik dilimlerin akümülatörleri
-//!    beslenir (bellekte tüm set tutulmaz). Tur sırasında "sağlam" sanılan
+//!    beslenir (bellekte tüm set tutulmaz). Tur sırasında "healthy" sanılan
 //!    bir dilim de bozuk çıkarsa plan genişletilip yeniden çözülür.
 //!
 //! Onarılan dilimler diske katman olarak yazılır; sonraki oynatmalarda
@@ -39,13 +39,13 @@ const MAX_RESOLVE: usize = 2;
 
 #[derive(Debug, Error)]
 pub enum RepairError {
-    #[error("onarım okuması başarısız: {0}")]
+    #[error("repair read failed: {0}")]
     Io(#[from] io::Error),
     #[error("{0}")]
     Par2(#[from] Par2Error),
-    #[error("NZB'de ana PAR2 dizin dosyası yok")]
+    #[error("no main PAR2 index file in the NZB")]
     NoPar2Index,
-    #[error("onarım iptal edildi")]
+    #[error("repair cancelled")]
     Cancelled,
 }
 
@@ -268,7 +268,7 @@ pub async fn repair_release<F: RepairFetcher + 'static>(
     let done_bytes = AtomicU64::new(0);
 
     // 2. Doğrulama turu: tüm dilimler IFSC ile karşılaştırılır.
-    emit(progress, RepairPhase::Verifying, 0, total_bytes, "dilimler doğrulanıyor");
+    emit(progress, RepairPhase::Verifying, 0, total_bytes, "verifying slices");
     let mut damaged: Vec<u64> = Vec::new();
     let mut verified_files = 0u32;
     for file in &set.files {
@@ -327,7 +327,7 @@ pub async fn repair_release<F: RepairFetcher + 'static>(
     let mut attempt = 0usize;
     let repaired = loop {
         ensure_active(&cancellation)?;
-        emit(progress, RepairPhase::Solving, 0, 0, "matris çözülüyor");
+        emit(progress, RepairPhase::Solving, 0, 0, "solving matrix");
         let plan = par2::plan_repair(&set, &damaged)?;
         match run_repair_pass(
             fetcher,
@@ -360,7 +360,7 @@ pub async fn repair_release<F: RepairFetcher + 'static>(
     };
 
     // 5. Katmanı yaz.
-    emit(progress, RepairPhase::Writing, 0, 0, "katman yazılıyor");
+    emit(progress, RepairPhase::Writing, 0, 0, "writing layer");
     let mut overlay = RepairOverlay::default();
     let map = set.global_slice_map();
     let mut per_file: HashMap<usize, FileOverlay> = HashMap::new();
@@ -386,7 +386,7 @@ pub async fn repair_release<F: RepairFetcher + 'static>(
     }
     overlay.save(overlay_dir)?;
 
-    emit(progress, RepairPhase::Done, 0, 0, "onarım tamam");
+    emit(progress, RepairPhase::Done, 0, 0, "repair complete");
     Ok(RepairReport {
         verified_files,
         damaged_slices: damaged.len() as u32,
@@ -401,7 +401,7 @@ enum RepairPassFailure {
     Io(io::Error),
 }
 
-/// Onarım turu: sağlam dilimleri okuyup akümülatörleri besler. "Sağlam"
+/// Onarım turu: sağlam dilimleri okuyup akümülatörleri besler. "Healthy"
 /// sanılan dilim okunamazsa [`RepairPassFailure::NewDamage`] ile döner.
 async fn run_repair_pass<F: RepairFetcher + 'static>(
     fetcher: &Arc<F>,
@@ -417,7 +417,7 @@ async fn run_repair_pass<F: RepairFetcher + 'static>(
         RepairPhase::Repairing,
         0,
         total_bytes,
-        "sağlam dilimler okunarak onarım hesaplanıyor",
+        "computing repair from healthy slices",
     );
     done_bytes.store(0, Ordering::SeqCst);
     let map = set.global_slice_map();
@@ -459,7 +459,7 @@ async fn run_repair_pass<F: RepairFetcher + 'static>(
             break;
         };
         let (column, global, result) = joined.map_err(|error| {
-            RepairPassFailure::Io(io::Error::other(format!("dilim görevi düştü: {error}")))
+            RepairPassFailure::Io(io::Error::other(format!("slice task panicked: {error}")))
         })?;
         match result {
             Ok(data) => {
@@ -471,7 +471,7 @@ async fn run_repair_pass<F: RepairFetcher + 'static>(
                     done_bytes.fetch_add(padded.len() as u64, Ordering::SeqCst)
                         + padded.len() as u64,
                     total_bytes,
-                    "onarım hesaplanıyor",
+                    "computing repair",
                 );
             }
             Err(_) => newly_damaged.push(global),
@@ -536,7 +536,7 @@ async fn verify_file<F: RepairFetcher + 'static>(
             break;
         };
         let (index, result, checksum) = joined
-            .map_err(|error| RepairError::Io(io::Error::other(format!("doğrulama düştü: {error}"))))?;
+            .map_err(|error| RepairError::Io(io::Error::other(format!("verification panicked: {error}"))))?;
         health[index as usize] = match result {
             Ok(data) => {
                 let padded = pad_to_slice(set, data);
@@ -557,7 +557,7 @@ async fn verify_file<F: RepairFetcher + 'static>(
             RepairPhase::Verifying,
             done_bytes.fetch_add(set.slice_size, Ordering::SeqCst) + set.slice_size,
             total_bytes,
-            "dilimler doğrulanıyor",
+            "verifying slices",
         );
     }
     Ok(health)
@@ -775,7 +775,7 @@ mod tests {
         assert!(progress_calls.load(Ordering::SeqCst) > 10);
 
         // Katman diskten yüklenip orijinal baytlar doğrulanır.
-        let overlay = RepairOverlay::load(&dir).unwrap().expect("katman yazıldı");
+        let overlay = RepairOverlay::load(&dir).unwrap().expect("layer written");
         let original0 = std::fs::read(format!("{FIXTURE_DIR}/test-0.data")).unwrap();
         let file0 = overlay.for_file("test-0.data").expect("test-0 katmanı");
         let slice2 = file0.slice_covering(2 * 5376).expect("dilim 2");
@@ -874,7 +874,7 @@ mod tests {
         );
         overlay.save(&dir).unwrap();
         let loaded = RepairOverlay::load(&dir).unwrap().expect("katman var");
-        let file = loaded.for_file("movie.part01.rar").expect("küçük harf eşleşme");
+        let file = loaded.for_file("movie.part01.rar").expect("lowercase match");
         assert_eq!(file.file_len, 10_000);
         assert_eq!(file.slices.len(), 2);
         assert_eq!(file.slices[&5].as_slice(), vec![0xBB; 1000].as_slice());

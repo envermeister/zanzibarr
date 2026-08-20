@@ -565,4 +565,85 @@ class AppLocalizationsHi extends AppLocalizations {
   @override
   String get dvReshapeDiagnosticsEmpty =>
       'फ़िल्टर के लिए कोई इंजन लॉग पंक्ति कैप्चर नहीं हुई।';
+
+  @override
+  String get errFormatNotRecognized =>
+      'मीडिया फ़ॉर्मैट पहचाना नहीं जा सका। हो सकता है NZB में सीधा वीडियो के बजाय कोई आर्काइव या PAR2 रिकवरी डेटा हो।';
+
+  @override
+  String get errLocalStreamUnreadable =>
+      'लोकल वीडियो स्ट्रीम नहीं पढ़ी जा सकी। हो सकता है कोई Usenet सेगमेंट गायब हो या कनेक्शन टूट गया हो।';
+
+  @override
+  String get errDecoderFailed => 'वीडियो या ऑडियो डिकोडर स्ट्रीम नहीं खोल सका।';
+
+  @override
+  String get errPlayerGeneric => 'प्लेयर स्ट्रीम नहीं खोल सका।';
+
+  @override
+  String get errNoMpvDetail => 'libmpv ने कोई विवरण नहीं दिया।';
+
+  @override
+  String get errNoEngineDetail => 'स्ट्रीमिंग इंजन ने कोई विवरण नहीं दिया।';
+
+  @override
+  String technicalDetail(String detail) {
+    return 'तकनीकी विवरण: $detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      'Usenet प्रदाता की एक साथ कनेक्शन सीमा पहुँच गई। अन्य सक्रिय सत्र बंद करें या थोड़ी देर बाद फिर कोशिश करें। समस्या बनी रहे तो ऐप में कनेक्शन संख्या अपने प्लान की सीमा तक घटाएँ।';
+
+  @override
+  String get errAuthFailed =>
+      'Usenet प्रमाणीकरण असफल। प्रदाता सेटिंग्स में उपयोगकर्ता नाम और पासवर्ड जाँचें।';
+
+  @override
+  String get errRarEncrypted =>
+      'RAR आर्काइव एन्क्रिप्टेड है। पासवर्ड-संरक्षित RAR रिलीज़ समर्थित नहीं हैं; बिना एन्क्रिप्शन पैक किया गया रिलीज़ (STORE) चुनें।';
+
+  @override
+  String get err7zPassword =>
+      '7z आर्काइव का पासवर्ड गायब है या अमान्य है। वह NZB चुनें जो अपने मेटाडेटा में पासवर्ड रखता है।';
+
+  @override
+  String get errArchiveCompressed =>
+      'यह आर्काइव संपीड़ित है। तुरंत चलाने के लिए बिना संपीड़न (COPY/STORE, 7z/RAR) पैक किया गया रिलीज़ चाहिए।';
+
+  @override
+  String get errArchiveSolid =>
+      'यह आर्काइव सॉलिड संरचना का है। यादृच्छिक सीक के लिए non-solid STORE में पैक किया गया रिलीज़ चाहिए।';
+
+  @override
+  String get errRar4 =>
+      'यह RAR आर्काइव पुराना (RAR4 या पहले) फ़ॉर्मैट है। केवल RAR5 STORE रिलीज़ ही चलाए जा सकते हैं।';
+
+  @override
+  String get errSplitArchiveBroken =>
+      'मल्टी-पार्ट आर्काइव (7z/RAR) अधूरा या दूषित है। सभी वॉल्यूम और सेगमेंट वाला पूरा NZB चुनें।';
+
+  @override
+  String get errMissingSegments =>
+      'NZB अधूरा या दूषित है: ज़रूरी Usenet सेगमेंट नहीं मिल पा रहे। इस रिलीज़ के लिए कोई और पूरा NZB चुनें।';
+
+  @override
+  String get errConnectionFailed =>
+      'Usenet प्रदाता से कनेक्ट नहीं हो सका। अपना इंटरनेट कनेक्शन, सर्वर पता, पोर्ट और प्रदाता की पहुँच जाँचें।';
+
+  @override
+  String get errNzbUnreadable =>
+      'NZB फ़ाइल नहीं पढ़ी जा सकी या दूषित है। कोई मान्य, पूरी NZB फ़ाइल चुनें।';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'NZB के अंदर का आर्काइव (7z/RAR) चलाने योग्य नहीं है या उसकी संरचना दूषित है। कोई पूरा STORE रिलीज़ चुनें।';
+
+  @override
+  String get errNoPlayableMedia =>
+      'NZB में कोई समर्थित वीडियो स्ट्रीम नहीं मिली। सीधे मीडिया या समर्थित STORE आर्काइव वाला रिलीज़ चुनें।';
+
+  @override
+  String get errStreamStartupGeneric =>
+      'स्ट्रीम शुरू नहीं हो सकी। NZB सामग्री और प्रदाता कनेक्शन जाँचें।';
 }

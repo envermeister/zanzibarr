@@ -550,4 +550,78 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get dvReshapeDiagnosticsEmpty => '未捕获到该滤镜的引擎日志。';
+
+  @override
+  String get errFormatNotRecognized =>
+      '无法识别媒体格式。该 NZB 可能包含压缩包或 PAR2 恢复数据，而不是直接的视频。';
+
+  @override
+  String get errLocalStreamUnreadable => '无法读取本地视频流。可能缺少某个 Usenet 分段，或连接已断开。';
+
+  @override
+  String get errDecoderFailed => '视频或音频解码器无法打开该流。';
+
+  @override
+  String get errPlayerGeneric => '播放器无法打开该流。';
+
+  @override
+  String get errNoMpvDetail => 'libmpv 未提供详细信息。';
+
+  @override
+  String get errNoEngineDetail => '流媒体引擎未提供详细信息。';
+
+  @override
+  String technicalDetail(String detail) {
+    return '技术细节：$detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      '已达到 Usenet 提供商的并发连接数上限。请关闭其他活动会话或稍等片刻后重试。如果仍然出现，请将应用内的连接数降低到套餐上限。';
+
+  @override
+  String get errAuthFailed => 'Usenet 身份验证失败。请检查提供商设置中的用户名和密码。';
+
+  @override
+  String get errRarEncrypted =>
+      '该 RAR 压缩包已加密。不支持带密码的 RAR 发布；请选择以未加密方式打包的发布（STORE）。';
+
+  @override
+  String get err7zPassword => '7z 压缩包的密码缺失或无效。请选择元数据中带有该密码的 NZB。';
+
+  @override
+  String get errArchiveCompressed =>
+      '此压缩包已压缩。即时播放需要以未压缩方式（COPY/STORE，7z/RAR）打包的发布。';
+
+  @override
+  String get errArchiveSolid => '此压缩包为 solid 结构。随机跳转需要以非 solid STORE 方式打包的发布。';
+
+  @override
+  String get errRar4 => '该 RAR 压缩包使用旧版 RAR4（或更早）格式。只有 RAR5 STORE 发布可播放。';
+
+  @override
+  String get errSplitArchiveBroken =>
+      '多卷压缩包（7z/RAR）不完整或已损坏。请选择包含所有卷和分段的完整 NZB。';
+
+  @override
+  String get errMissingSegments =>
+      'NZB 不完整或已损坏：找不到全部所需的 Usenet 分段。请为该发布选择另一个完整的 NZB。';
+
+  @override
+  String get errConnectionFailed =>
+      '无法连接到 Usenet 提供商。请检查网络连接、服务器地址、端口以及提供商的可达性。';
+
+  @override
+  String get errNzbUnreadable => '无法读取 NZB 文件或文件已损坏。请选择有效、完整的 NZB 文件。';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'NZB 内的压缩包（7z/RAR）无法播放或其结构已损坏。请选择完整的 STORE 发布。';
+
+  @override
+  String get errNoPlayableMedia =>
+      '在 NZB 中找不到受支持的视频流。请选择带有直接媒体或受支持 STORE 压缩包的发布。';
+
+  @override
+  String get errStreamStartupGeneric => '无法启动该流。请检查 NZB 内容和提供商连接。';
 }

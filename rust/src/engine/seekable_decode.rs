@@ -110,7 +110,7 @@ impl DecodeState {
 fn unexpected_decode_eof(cursor: u64, expected_end: u64) -> io::Error {
     io::Error::new(
         io::ErrorKind::UnexpectedEof,
-        format!("decoder {cursor} baytta bitti, {expected_end} bekleniyordu (akış bozuk)"),
+        format!("decoder ended at {cursor} bytes, expected {expected_end} (stream corrupt)"),
     )
 }
 
@@ -131,7 +131,7 @@ impl Inner {
             .map_err(|_| io::Error::other("decoder durumu zehirlendi"))?;
         let end = start
             .checked_add(len as u64)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "okuma ofseti taştı"))?;
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "read offset overflow"))?;
 
         // Pencereden düşmüş baytlar decoder'dan geri alınamaz; baştan aç.
         // (Koşul `end`'den bağımsız: tamamı geçmişte kalan bir okuma bile
@@ -157,7 +157,7 @@ impl Inner {
             let read = state
                 .decoder
                 .as_mut()
-                .expect("decoder az önce açıldı")
+                .expect("decoder was just opened")
                 .read(&mut scratch)?;
             if read == 0 {
                 return Err(unexpected_decode_eof(state.cursor, end));
@@ -181,7 +181,7 @@ impl Inner {
             let read = state
                 .decoder
                 .as_mut()
-                .expect("decoder az önce açıldı")
+                .expect("decoder was just opened")
                 .read(&mut scratch)?;
             if read == 0 {
                 return Err(unexpected_decode_eof(state.cursor, end));
@@ -227,7 +227,7 @@ impl SeekableDecodeSource {
             let inner = Arc::clone(&self.inner);
             let bytes = tokio::task::spawn_blocking(move || inner.read_decoded(position, take))
                 .await
-                .map_err(|error| io::Error::other(format!("çözüm görevi düştü: {error}")))??;
+                .map_err(|error| io::Error::other(format!("decode task panicked: {error}")))??;
             out.write_all(&bytes).await?;
             position += take as u64;
         }
@@ -240,7 +240,7 @@ mod tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    /// Test codec'i: kaynağı XOR 0xFF ile "çözülen" akışa çevirir.
+    /// Test codec'i: kaynağı XOR 0xFF ile "decoded" akışa çevirir.
     struct XorReader {
         data: Vec<u8>,
         position: usize,
@@ -289,7 +289,7 @@ mod tests {
         source
             .write_range(range, &mut out)
             .await
-            .expect("aralık okunabilmeli");
+            .expect("range must be readable");
         out
     }
 
@@ -339,7 +339,7 @@ mod tests {
             read_range(&source, 1000..1032).await,
             decoded_pattern(&raw)[1000..1032]
         );
-        assert_eq!(counter.load(Ordering::SeqCst), 2, "decoder baştan açılmalı");
+        assert_eq!(counter.load(Ordering::SeqCst), 2, "decoder must be reopened");
         // Yeniden açılıştan sonra akış tutarlı kalır.
         assert_eq!(
             read_range(&source, 95_000..95_016).await,

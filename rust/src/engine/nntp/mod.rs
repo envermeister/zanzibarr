@@ -23,29 +23,29 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NntpError {
-    #[error("G/Ç hatası: {0}")]
+    #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
-    #[error("geçersiz argüman: {0}")]
+    #[error("invalid argument: {0}")]
     InvalidArgument(String),
-    #[error("sunucu bağlantıyı kapattı")]
+    #[error("server closed the connection")]
     ConnectionClosed,
-    #[error("bozuk sunucu yanıtı: {0}")]
+    #[error("malformed server response: {0}")]
     Malformed(String),
-    #[error("beklenmeyen yanıt ({context}): {code} {text}")]
+    #[error("unexpected response ({context}): {code} {text}")]
     UnexpectedResponse {
         context: &'static str,
         code: u16,
         text: String,
     },
-    #[error("kimlik doğrulama başarısız: {code} {text}")]
+    #[error("authentication failed: {code} {text}")]
     AuthFailed { code: u16, text: String },
-    #[error("sağlayıcının eşzamanlı bağlantı sınırına ulaşıldı: {code} {text}")]
+    #[error("provider's concurrent connection limit reached: {code} {text}")]
     ConnectionLimit { code: u16, text: String },
-    #[error("{operation} zaman aşımı")]
+    #[error("{operation} timed out")]
     Timeout { operation: &'static str },
-    #[error("article bulunamadı")]
+    #[error("article not found")]
     NoSuchArticle,
-    #[error("yanıt çok büyük (sınır {limit} bayt)")]
+    #[error("response too large (limit {limit} bytes)")]
     TooLarge { limit: usize },
 }
 

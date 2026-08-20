@@ -27,7 +27,7 @@ use crate::engine::sevenzip::SevenZipEntrySource;
 /// Tüm ağ/stream işleri bu global çok-iş-parçacıklı runtime'da yürür.
 /// Server görevleri, başlatan çağrı bitse de burada yaşamaya devam eder.
 pub(crate) static RUNTIME: Lazy<Runtime> =
-    Lazy::new(|| Runtime::new().expect("tokio runtime kurulamadı"));
+    Lazy::new(|| Runtime::new().expect("could not create tokio runtime"));
 
 /// Uygulama şu anda tek oynatıcı oturumu çalıştırır. Önceki localhost server
 /// kaydedilmeden bırakılırsa taşıdığı NNTP havuzu ve boşta TLS bağlantıları
@@ -134,11 +134,11 @@ async fn wait_for_stream_ready(
         // artık dinlemeyen localhost URL'sini kesinlikle döndürmeyiz.
         biased;
         _ = wait_for_cancellation(cancellation) => {
-            Err("akış başlatma iptal edildi".into())
+            Err("stream startup cancelled".into())
         }
         result = ready => {
             result.unwrap_or_else(|_| {
-                Err("akış başlatma görevi beklenmedik biçimde sonlandı".into())
+                Err("stream startup task ended unexpectedly".into())
             })
         }
     }
@@ -253,7 +253,7 @@ async fn prepare_stream_source(
             let source = tokio::select! {
                 biased;
                 _ = wait_for_cancellation(cancellation.clone()) => {
-                    return Err("akış başlatma iptal edildi".into());
+                    return Err("stream startup cancelled".into());
                 }
                 result = NntpByteSource::with_options(
                     pool,
@@ -282,7 +282,7 @@ async fn prepare_stream_source(
 
 fn ensure_stream_not_cancelled(cancellation: &watch::Receiver<bool>) -> Result<(), String> {
     if cancellation_requested(cancellation) {
-        Err("akış başlatma iptal edildi".into())
+        Err("stream startup cancelled".into())
     } else {
         Ok(())
     }
@@ -299,17 +299,17 @@ fn read_nzb_bytes<R: Read>(
         ensure_stream_not_cancelled(cancellation)?;
         let count = reader
             .read(&mut chunk)
-            .map_err(|error| format!("NZB okunamadı: {error}"))?;
+            .map_err(|error| format!("could not read NZB: {error}"))?;
         if count == 0 {
             break;
         }
         let new_len = bytes
             .len()
             .checked_add(count)
-            .ok_or_else(|| "NZB boyutu taştı".to_string())?;
+            .ok_or_else(|| "NZB size overflow".to_string())?;
         if new_len > max_bytes {
             return Err(format!(
-                "NZB dosyası güvenli boyut sınırını aşıyor ({max_bytes} bayt)"
+                "NZB file exceeds the safe size limit ({max_bytes} bytes)"
             ));
         }
         bytes.extend_from_slice(&chunk[..count]);
@@ -324,20 +324,20 @@ fn load_stream_selection_blocking(
 ) -> Result<StreamSelection, String> {
     ensure_stream_not_cancelled(&cancellation)?;
     let metadata =
-        std::fs::metadata(&nzb_path).map_err(|error| format!("NZB okunamadı: {error}"))?;
+        std::fs::metadata(&nzb_path).map_err(|error| format!("could not read NZB: {error}"))?;
     if !metadata.is_file() {
-        return Err("Seçilen NZB yolu normal bir dosya değil".into());
+        return Err("the selected NZB path is not a regular file".into());
     }
     if metadata.len() > MAX_NZB_FILE_BYTES as u64 {
         return Err(format!(
-            "NZB dosyası güvenli boyut sınırını aşıyor ({MAX_NZB_FILE_BYTES} bayt)"
+            "NZB file exceeds the safe size limit ({MAX_NZB_FILE_BYTES} bytes)"
         ));
     }
 
     let mut file =
-        std::fs::File::open(&nzb_path).map_err(|error| format!("NZB okunamadı: {error}"))?;
+        std::fs::File::open(&nzb_path).map_err(|error| format!("could not read NZB: {error}"))?;
     let bytes = read_nzb_bytes(&mut file, &cancellation, MAX_NZB_FILE_BYTES)?;
-    let xml = String::from_utf8(bytes).map_err(|_| "NZB geçerli UTF-8 metni değil".to_string())?;
+    let xml = String::from_utf8(bytes).map_err(|_| "NZB is not valid UTF-8 text".to_string())?;
     ensure_stream_not_cancelled(&cancellation)?;
     let parsed = nzb::parse_nzb(&xml).map_err(|error| error.to_string())?;
     ensure_stream_not_cancelled(&cancellation)?;
@@ -361,13 +361,13 @@ async fn load_stream_selection(
             // sinyalini görür; handle'ı sonuna kadar bekleyerek detached dosya
             // okuyucusu/parser bırakmayız.
             match task.await {
-                Ok(_) => Err("akış başlatma iptal edildi".into()),
-                Err(error) => Err(format!("NZB hazırlama görevi tamamlanamadı: {error}")),
+                Ok(_) => Err("stream startup cancelled".into()),
+                Err(error) => Err(format!("NZB prepare task failed to complete: {error}")),
             }
         }
         result = &mut task => {
             result
-                .map_err(|error| format!("NZB hazırlama görevi tamamlanamadı: {error}"))?
+                .map_err(|error| format!("NZB prepare task failed to complete: {error}"))?
         }
     }
 }
@@ -387,7 +387,7 @@ async fn run_stream_session(
     }
 
     if cancellation_requested(&cancellation) {
-        let _ = ready.send(Err("akış başlatma iptal edildi".into()));
+        let _ = ready.send(Err("stream startup cancelled".into()));
         return;
     }
 
@@ -397,7 +397,7 @@ async fn run_stream_session(
     let selection = match load_stream_selection(nzb_path.clone(), cancellation.clone()).await {
         Ok(selection) if !cancellation_requested(&cancellation) => selection,
         Ok(_) => {
-            let _ = ready.send(Err("akış başlatma iptal edildi".into()));
+            let _ = ready.send(Err("stream startup cancelled".into()));
             return;
         }
         Err(error) => {
@@ -429,7 +429,7 @@ async fn run_stream_session(
     }
 
     if cancellation_requested(&cancellation) {
-        let _ = ready.send(Err("akış başlatma iptal edildi".into()));
+        let _ = ready.send(Err("stream startup cancelled".into()));
         return;
     }
 
@@ -440,7 +440,7 @@ async fn run_stream_session(
     let listener = match server::bind_local(0).await {
         Ok(listener) => listener,
         Err(error) => {
-            let _ = ready.send(Err(format!("port bağlanamadı: {error}")));
+            let _ = ready.send(Err(format!("could not bind port: {error}")));
             return;
         }
     };
@@ -504,7 +504,7 @@ fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
                     })
                 })
                 .ok_or_else(|| {
-                    "NZB'de doğrudan video veya desteklenen split 7z/RAR STORE seti yok".to_string()
+                    "no direct video or supported split 7z/RAR STORE set in the NZB".to_string()
                 })?;
             Ok(StreamSelection::Rar {
                 volumes: set
@@ -561,11 +561,11 @@ pub fn await_stream(session_id: u64) -> Result<StreamInfo, String> {
         let stream = active
             .as_mut()
             .filter(|stream| stream.session_id == session_id)
-            .ok_or_else(|| "akış oturumu artık etkin değil".to_string())?;
+            .ok_or_else(|| "stream session is no longer active".to_string())?;
         let ready = stream
             .ready
             .take()
-            .ok_or_else(|| "akış oturumu sonucu zaten bekleniyor".to_string())?;
+            .ok_or_else(|| "stream session result already expected".to_string())?;
         (ready, stream.cancel.subscribe())
     };
 
@@ -680,7 +680,7 @@ mod tests {
             .expect("aktif stream test kilidi")
             .is_some());
 
-        let active = take_active_stream(Some(42)).expect("doğru session alınmalı");
+        let active = take_active_stream(Some(42)).expect("expected the correct session");
         RUNTIME.block_on(terminate_stream(active));
         assert!(ACTIVE_STREAM
             .lock()
@@ -706,9 +706,9 @@ mod tests {
 
         let result = RUNTIME.block_on(wait_for_stream_ready(ready, cancellation));
         let Err(error) = result else {
-            panic!("durdurulmuş oturum eski URL'yi döndürmemeli");
+            panic!("stopped session must not return the old URL");
         };
-        assert!(error.contains("iptal"));
+        assert!(error.contains("cancel"));
     }
 
     #[test]
@@ -716,13 +716,13 @@ mod tests {
         let (_cancel_guard, cancellation) = watch::channel(false);
         let mut oversized = std::io::Cursor::new(b"123456".as_slice());
         let error = read_nzb_bytes(&mut oversized, &cancellation, 5).unwrap_err();
-        assert!(error.contains("boyut sınırını"));
+        assert!(error.contains("size limit"));
 
         let (cancel, cancellation) = watch::channel(false);
         assert!(cancel.send(true).is_ok());
         let mut input = std::io::Cursor::new(b"<nzb/>".as_slice());
         let error = read_nzb_bytes(&mut input, &cancellation, 1024).unwrap_err();
-        assert!(error.contains("iptal"));
+        assert!(error.contains("cancel"));
     }
 
     #[test]
@@ -749,7 +749,7 @@ mod tests {
         };
         let selection = select_stream(&parsed).unwrap();
         let StreamSelection::SevenZip { volumes, password } = selection else {
-            panic!("7z seçimi bekleniyordu");
+            panic!("expected 7z selection");
         };
         assert_eq!(volumes[0].filename(), Some("archive.7z.001"));
         assert_eq!(volumes[1].filename(), Some("archive.7z.002"));
@@ -768,7 +768,7 @@ mod tests {
         };
 
         let StreamSelection::SevenZip { volumes, .. } = select_stream(&parsed).unwrap() else {
-            panic!("7z seçimi bekleniyordu");
+            panic!("expected 7z selection");
         };
         assert_eq!(volumes.len(), 2);
         assert_eq!(volumes[0].filename(), Some("large.7z.001"));
@@ -785,7 +785,7 @@ mod tests {
         };
         let selection = select_stream(&parsed).unwrap();
         let StreamSelection::Rar { volumes, password } = selection else {
-            panic!("RAR seçimi bekleniyordu");
+            panic!("expected RAR selection");
         };
         assert_eq!(volumes[0].filename(), Some("movie.part01.rar"));
         assert_eq!(volumes[1].filename(), Some("movie.part02.rar"));
@@ -804,7 +804,7 @@ mod tests {
             ],
         };
         let StreamSelection::Rar { volumes, password } = select_stream(&parsed).unwrap() else {
-            panic!("RAR seçimi bekleniyordu");
+            panic!("expected RAR selection");
         };
         assert_eq!(volumes.len(), 2);
         assert_eq!(volumes[0].filename(), Some("large.part01.rar"));

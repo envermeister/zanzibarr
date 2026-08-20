@@ -27,19 +27,19 @@ const USER_AGENT: &str = "zanzibarr/1.1 (+https://zanzibarr.app)";
 
 #[derive(Debug, Error)]
 pub enum HttpError {
-    #[error("geçersiz URL: {0}")]
+    #[error("invalid URL: {0}")]
     InvalidUrl(&'static str),
-    #[error("ağ hatası: {0}")]
+    #[error("network error: {0}")]
     Io(#[from] io::Error),
-    #[error("TLS el sıkışması başarısız: {0}")]
+    #[error("TLS handshake failed: {0}")]
     Tls(String),
-    #[error("bozuk HTTP yanıtı: {0}")]
+    #[error("malformed HTTP response: {0}")]
     Malformed(&'static str),
-    #[error("yanıt boyutu sınırı aşıldı (sınır {limit} bayt)")]
+    #[error("response size limit exceeded (limit {limit} bytes)")]
     TooLarge { limit: usize },
-    #[error("çok fazla yönlendirme")]
+    #[error("too many redirects")]
     TooManyRedirects,
-    #[error("istek zaman aşımına uğradı")]
+    #[error("request timed out")]
     Timeout,
 }
 
@@ -73,7 +73,7 @@ fn parse_url(url: &str) -> Result<ParsedUrl<'_>, HttpError> {
     } else if let Some(rest) = url.strip_prefix("http://") {
         (false, rest)
     } else {
-        return Err(HttpError::InvalidUrl("şema http/https olmalı"));
+        return Err(HttpError::InvalidUrl("scheme must be http/https"));
     };
     let (authority, target) = match rest.find('/') {
         Some(idx) => (&rest[..idx], &rest[idx..]),
@@ -85,13 +85,13 @@ fn parse_url(url: &str) -> Result<ParsedUrl<'_>, HttpError> {
         Some((host, port)) => {
             let port: u16 = port
                 .parse()
-                .map_err(|_| HttpError::InvalidUrl("port geçersiz"))?;
+                .map_err(|_| HttpError::InvalidUrl("invalid port"))?;
             (host, port)
         }
         None => (authority, if https { 443 } else { 80 }),
     };
     if host.is_empty() {
-        return Err(HttpError::InvalidUrl("host boş"));
+        return Err(HttpError::InvalidUrl("host is empty"));
     }
     Ok(ParsedUrl {
         https,
@@ -106,7 +106,7 @@ fn parse_url(url: &str) -> Result<ParsedUrl<'_>, HttpError> {
 fn resolve_redirect(base: &ParsedUrl, location: &str) -> Result<String, HttpError> {
     let location = location.trim();
     if location.is_empty() {
-        return Err(HttpError::Malformed("boş Location başlığı"));
+        return Err(HttpError::Malformed("empty Location header"));
     }
     if location.starts_with("http://") || location.starts_with("https://") {
         return Ok(location.to_string());
@@ -170,7 +170,7 @@ async fn http_get_inner(url: &str, max_bytes: usize) -> Result<HttpResponse, Htt
         tcp.set_nodelay(true).ok();
         let response = if parsed.https {
             let server_name = ServerName::try_from(parsed.host.to_string())
-                .map_err(|_| HttpError::InvalidUrl("geçersiz sunucu adı"))?;
+                .map_err(|_| HttpError::InvalidUrl("invalid server name"))?;
             let mut tls = tls_connector()
                 .connect(server_name, tcp)
                 .await
@@ -185,7 +185,7 @@ async fn http_get_inner(url: &str, max_bytes: usize) -> Result<HttpResponse, Htt
             301 | 302 | 303 | 307 | 308 => {
                 let location = response
                     .header("location")
-                    .ok_or(HttpError::Malformed("yönlendirmede Location yok"))?;
+                    .ok_or(HttpError::Malformed("redirect has no Location"))?;
                 current = resolve_redirect(&parsed, location)?;
             }
             _ => return Ok(response),
@@ -222,7 +222,7 @@ where
         let line = read_line(&mut reader, MAX_HEADER_BYTES).await?;
         header_bytes += line.len();
         if header_bytes > MAX_HEADER_BYTES {
-            return Err(HttpError::Malformed("başlık bloğu çok uzun"));
+            return Err(HttpError::Malformed("header block too long"));
         }
         let trimmed = trim_line(&line);
         if trimmed.is_empty() {
@@ -246,12 +246,12 @@ fn parse_status_line(line: &[u8]) -> Result<u16, HttpError> {
     let mut parts = text.split_whitespace();
     let version = parts.next().unwrap_or_default();
     if !version.starts_with("HTTP/") {
-        return Err(HttpError::Malformed("durum satırı HTTP ile başlamıyor"));
+        return Err(HttpError::Malformed("status line does not start with HTTP"));
     }
     parts
         .next()
         .and_then(|code| code.parse().ok())
-        .ok_or(HttpError::Malformed("durum kodu okunamadı"))
+        .ok_or(HttpError::Malformed("could not read status code"))
 }
 
 /// `\n` ile biten satırı (sınır aşımına karşı korumalı) okur; EOF'ta eldeki
@@ -264,7 +264,7 @@ where
     let mut byte = [0u8; 1];
     loop {
         if line.len() >= cap {
-            return Err(HttpError::Malformed("satır çok uzun"));
+            return Err(HttpError::Malformed("line too long"));
         }
         let read = reader.read(&mut byte).await?;
         if read == 0 {
@@ -309,7 +309,7 @@ where
         let len: usize = value
             .trim()
             .parse()
-            .map_err(|_| HttpError::Malformed("Content-Length okunamadı"))?;
+            .map_err(|_| HttpError::Malformed("could not read Content-Length"))?;
         if len > max_bytes {
             return Err(HttpError::TooLarge { limit: max_bytes });
         }
@@ -368,7 +368,7 @@ where
         let mut crlf = [0u8; 2];
         reader.read_exact(&mut crlf).await?;
         if &crlf != b"\r\n" {
-            return Err(HttpError::Malformed("chunk sonu CRLF değil"));
+            return Err(HttpError::Malformed("chunk end is not CRLF"));
         }
     }
 }
@@ -390,7 +390,7 @@ mod tests {
         assert_eq!(
             String::from_utf8_lossy(&request),
             expected_prefix,
-            "istemci beklenmeyen istek gönderdi"
+            "client sent an unexpected request"
         );
         server.write_all(response.as_bytes()).await.unwrap();
         server.shutdown().await.unwrap();

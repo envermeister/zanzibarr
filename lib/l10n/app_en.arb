@@ -276,5 +276,31 @@
   "dvReshapeFailed": "Dolby Vision color correction could not be started on this device. Tap for details.",
   "dvReshapeFailedShort": "Dolby Vision color correction could not be started — details in advanced settings.",
   "dvReshapeDiagnosticsTitle": "DV correction diagnostics",
-  "dvReshapeDiagnosticsEmpty": "No engine log lines were captured for the filter."
+  "dvReshapeDiagnosticsEmpty": "No engine log lines were captured for the filter.",
+  "errFormatNotRecognized": "The media format could not be recognized. The NZB may contain an archive or PAR2 recovery data instead of a direct video.",
+  "errLocalStreamUnreadable": "The local video stream could not be read. A Usenet segment may be missing or the connection dropped.",
+  "errDecoderFailed": "The video or audio decoder could not open the stream.",
+  "errPlayerGeneric": "The player could not open the stream.",
+  "errNoMpvDetail": "libmpv gave no details.",
+  "errNoEngineDetail": "The streaming engine gave no details.",
+  "technicalDetail": "Technical detail: {detail}",
+  "@technicalDetail": {
+    "placeholders": {
+      "detail": { "type": "String" }
+    }
+  },
+  "errProviderConnectionLimit": "The Usenet provider's simultaneous connection limit was reached. Close other active sessions or wait a moment and try again. If it persists, lower the connection count in the app to your plan's limit.",
+  "errAuthFailed": "Usenet authentication failed. Check the username and password in the provider settings.",
+  "errRarEncrypted": "The RAR archive is encrypted. Password-protected RAR releases are not supported; choose a release packed unencrypted (STORE).",
+  "err7zPassword": "The 7z archive's password is missing or invalid. Choose the NZB that carries the password in its metadata.",
+  "errArchiveCompressed": "This archive is compressed. Instant playback requires a release packed uncompressed (COPY/STORE, 7z/RAR).",
+  "errArchiveSolid": "This archive is solid. Random seeking requires a release packed as non-solid STORE.",
+  "errRar4": "This RAR archive uses the legacy RAR4 (or older) format. Only RAR5 STORE releases are playable.",
+  "errSplitArchiveBroken": "The multi-part archive (7z/RAR) is incomplete or corrupt. Choose a complete NZB that includes all volumes and segments.",
+  "errMissingSegments": "The NZB is incomplete or corrupt: not all required Usenet segments can be found. Choose another, complete NZB for this release.",
+  "errConnectionFailed": "Could not connect to the Usenet provider. Check your internet connection, the server address, the port and the provider's reachability.",
+  "errNzbUnreadable": "The NZB file could not be read or is corrupt. Choose a valid, complete NZB file.",
+  "errArchiveNotPlayable": "The archive (7z/RAR) inside the NZB is not playable or its structure is corrupt. Choose a complete STORE release.",
+  "errNoPlayableMedia": "No supported video stream was found in the NZB. Choose a release with direct media or a supported STORE archive.",
+  "errStreamStartupGeneric": "The stream could not be started. Check the NZB content and the provider connection."
 }

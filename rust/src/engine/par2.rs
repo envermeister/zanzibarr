@@ -19,15 +19,15 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum Par2Error {
-    #[error("PAR2 paketi bozuk: {0}")]
+    #[error("malformed PAR2 packet: {0}")]
     Format(String),
-    #[error("PAR2 paket MD5'i uyuşmuyor")]
+    #[error("PAR2 packet MD5 mismatch")]
     PacketHashMismatch,
-    #[error("yetersiz kurtarma dilimi: {needed} gerekli, {available} mevcut")]
+    #[error("insufficient recovery slices: {needed} needed, {available} available")]
     NotEnoughRecovery { needed: usize, available: usize },
-    #[error("Reed-Solomon matrisi çözülemedi")]
+    #[error("could not solve Reed-Solomon matrix")]
     SingularMatrix,
-    #[error("onarılan dilim sağlama ile uyuşmuyor (global dilim {0})")]
+    #[error("repaired slice checksum mismatch (global slice {0})")]
     RepairMismatch(u64),
 }
 
@@ -56,20 +56,20 @@ fn parse_packets(data: &[u8]) -> Result<Vec<Packet<'_>>, Par2Error> {
     while cursor < data.len() {
         if data.len() - cursor < PACKET_HEADER_SIZE {
             return Err(Par2Error::Format(format!(
-                "{cursor} ofsetinde artık {} bayt paket başlığından kısa",
+                "fewer than {} bytes left at offset {cursor} for a packet header",
                 data.len() - cursor
             )));
         }
         let header = &data[cursor..cursor + PACKET_HEADER_SIZE];
         if &header[..8] != PACKET_MAGIC {
             return Err(Par2Error::Format(format!(
-                "{cursor} ofsetinde PAR2 imzası yok"
+                "no PAR2 signature at offset {cursor}"
             )));
         }
         let length = u64::from_le_bytes(header[8..16].try_into().expect("8 bayt")) as usize;
         if length < PACKET_HEADER_SIZE || !length.is_multiple_of(4) || cursor + length > data.len() {
             return Err(Par2Error::Format(format!(
-                "{cursor} ofsetinde geçersiz paket boyutu {length}"
+                "invalid packet size {length} at offset {cursor}"
             )));
         }
         let expected_hash: [u8; 16] = header[16..32].try_into().expect("16 bayt");
@@ -140,7 +140,7 @@ impl Par2Set {
                 match packet.packet_type {
                     t if t == TYPE_MAIN => {
                         if packet.body.len() < 12 {
-                            return Err(Par2Error::Format("Main paketi kısa".into()));
+                            return Err(Par2Error::Format("Main packet is short".into()));
                         }
                         let this_slice_size = u64::from_le_bytes(
                             packet.body[0..8].try_into().expect("8 bayt"),
@@ -149,7 +149,7 @@ impl Par2Set {
                             packet.body[8..12].try_into().expect("4 bayt"),
                         ) as usize;
                         if packet.body.len() < 12 + count * 16 {
-                            return Err(Par2Error::Format("Main dosya listesi kısa".into()));
+                            return Err(Par2Error::Format("Main file list is short".into()));
                         }
                         let mut ids = Vec::with_capacity(count);
                         for index in 0..count {
@@ -170,7 +170,7 @@ impl Par2Set {
                             Some(existing) => {
                                 if *existing != this_slice_size || file_order != ids {
                                     return Err(Par2Error::Format(
-                                        "çelişkili Main paketleri".into(),
+                                        "conflicting Main packets".into(),
                                     ));
                                 }
                             }
@@ -178,7 +178,7 @@ impl Par2Set {
                     }
                     t if t == TYPE_FILEDESC => {
                         if packet.body.len() < 56 {
-                            return Err(Par2Error::Format("FileDesc paketi kısa".into()));
+                            return Err(Par2Error::Format("FileDesc packet is short".into()));
                         }
                         let id: FileId = packet.body[0..16].try_into().expect("16 bayt");
                         let hash_full: [u8; 16] =
@@ -202,7 +202,7 @@ impl Par2Set {
                         id_input.extend_from_slice(name_plain);
                         if md5::compute(&id_input).0 != id {
                             return Err(Par2Error::Format(format!(
-                                "`{name}` dosyasının file id'si sağlamasıyla uyuşmuyor"
+                                "file id of `{name}` does not match its checksum"
                             )));
                         }
                         files.insert(
@@ -218,7 +218,7 @@ impl Par2Set {
                     }
                     t if t == TYPE_IFSC => {
                         if packet.body.len() < 16 || (packet.body.len() - 16) % 20 != 0 {
-                            return Err(Par2Error::Format("IFSC paketi kısa/hizasız".into()));
+                            return Err(Par2Error::Format("IFSC packet is short/misaligned".into()));
                         }
                         let id: FileId = packet.body[0..16].try_into().expect("16 bayt");
                         // Yinelenen IFSC paketi (vol kopyaları) atlanır.
@@ -236,7 +236,7 @@ impl Par2Set {
                     }
                     t if t == TYPE_RECVSLIC => {
                         if packet.body.len() < 4 {
-                            return Err(Par2Error::Format("RecvSlic paketi kısa".into()));
+                            return Err(Par2Error::Format("RecvSlic packet is short".into()));
                         }
                         recovery.push(RecoverySlice {
                             exponent: u32::from_le_bytes(
@@ -253,7 +253,7 @@ impl Par2Set {
         let slice_size = slice_size.ok_or_else(|| Par2Error::Format("Main paketi yok".into()))?;
         if slice_size == 0 || slice_size % 4 != 0 {
             return Err(Par2Error::Format(format!(
-                "dilim boyutu {slice_size} geçersiz"
+                "invalid slice size {slice_size}"
             )));
         }
         for slice in &recovery {
@@ -271,7 +271,7 @@ impl Par2Set {
         for id in &file_order {
             let file = files
                 .remove(id)
-                .ok_or_else(|| Par2Error::Format("Main'deki dosya için FileDesc yok".into()))?;
+                .ok_or_else(|| Par2Error::Format("no FileDesc for file in Main".into()))?;
             ordered_files.push(file);
         }
 
@@ -451,7 +451,7 @@ fn input_bases(count: u64) -> Result<Vec<u16>, Par2Error> {
         logbase += 1;
         if logbase as usize >= GF_LIMIT {
             return Err(Par2Error::Format(
-                "girdi dilim sayısı Reed-Solomon matris sınırını aşıyor".into(),
+                "input slice count exceeds the Reed-Solomon matrix limit".into(),
             ));
         }
     }
@@ -532,7 +532,7 @@ pub fn plan_repair(set: &Par2Set, missing: &[u64]) -> Result<RepairPlan, Par2Err
     for &index in &missing_sorted {
         if index >= total {
             return Err(Par2Error::Format(format!(
-                "eksik dilim {index} toplam {total} dilimin dışında"
+                "missing slice {index} is outside total {total} slices"
             )));
         }
     }
@@ -633,7 +633,7 @@ impl RepairAccumulators {
                 .iter()
                 .find(|(_, first, count)| missing >= *first && missing < first + count)
                 .copied()
-                .expect("global dilim haritası toplamı kapsar");
+                .expect("global slice map covers the total");
             let file = &set.files[file_index];
             if let Some(checksum) = set.slice_checksum(file, missing - first_slice) {
                 if md5::compute(&bytes).0 != checksum.md5 {
@@ -672,7 +672,7 @@ pub fn repair(
     for (column, &present) in plan.present_indices.iter().enumerate() {
         let data = input_slices[present as usize]
             .as_ref()
-            .expect("sağlam dilim");
+            .expect("healthy slice");
         accumulators.add_present(&plan, column, data);
     }
     accumulators.finish(set, &plan)
@@ -771,7 +771,7 @@ mod tests {
 
     fn fixture(name: &str) -> Vec<u8> {
         std::fs::read(PathBuf::from(FIXTURE_DIR).join(name))
-            .unwrap_or_else(|error| panic!("fixture okunamadı ({name}): {error}"))
+            .unwrap_or_else(|error| panic!("could not read fixture ({name}): {error}"))
     }
 
     /// Referans flatdata seti: testdata.par2 + tüm vol dosyaları.
@@ -790,7 +790,7 @@ mod tests {
         .collect();
         let mut parts: Vec<&[u8]> = vec![index.as_slice()];
         parts.extend(vols.iter().map(Vec::as_slice));
-        Par2Set::from_parts(&parts).expect("referans set ayrışabilmeli")
+        Par2Set::from_parts(&parts).expect("reference set must parse")
     }
 
     fn reference_files(set: &Par2Set) -> Vec<Vec<u8>> {
@@ -852,7 +852,7 @@ mod tests {
             let health = check_file(&set, file, Some(data));
             assert!(
                 health.iter().all(|h| *h == SliceHealth::Ok),
-                "`{}` temiz çıkmalı: {:?}",
+                "`{}` should parse cleanly: {:?}",
                 file.name,
                 health
             );
@@ -883,11 +883,11 @@ mod tests {
 
         for (position, expected) in set.recovery.iter().enumerate() {
             let computed = compute_recovery_slice(expected.exponent, &refs, set.slice_size)
-                .expect("kurtarma dilimi üretilebilmeli");
+                .expect("recovery slice must be producible");
             assert_eq!(
                 computed,
                 expected.data,
-                "{}. kurtarma dilimi (üs {}) referansla uyuşmuyor",
+                "{}. recovery slice (exponent {}) does not match the reference",
                 position,
                 expected.exponent
             );
@@ -913,7 +913,7 @@ mod tests {
             .enumerate()
             .map(|(index, slice)| (index as u64 != damaged_global).then(|| slice.clone()))
             .collect();
-        let repaired = repair(&set, &input).expect("tek dilim onarılabilmeli");
+        let repaired = repair(&set, &input).expect("a single slice must be repairable");
         assert_eq!(repaired.len(), 1);
         assert_eq!(repaired[0].0, damaged_global);
         assert_eq!(repaired[0].1, original);
@@ -942,7 +942,7 @@ mod tests {
                 (!(global >= first && global < first + count)).then(|| slice.clone())
             })
             .collect();
-        let repaired = repair(&set, &input).expect("dosya onarılabilmeli");
+        let repaired = repair(&set, &input).expect("file must be repairable");
         assert_eq!(repaired.len() as u64, count);
 
         // Dosyayı yeniden kur ve orijinaliyle karşılaştır.

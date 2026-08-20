@@ -38,7 +38,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
         match greeting.code {
             200 => conn.posting_allowed = true,
             201 => conn.posting_allowed = false,
-            code => return Err(unexpected_response("karşılama", code, greeting.text)),
+            code => return Err(unexpected_response("greeting", code, greeting.text)),
         }
         Ok(conn)
     }
@@ -49,13 +49,13 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
     pub async fn authenticate(&mut self, username: &str, password: &str) -> Result<(), NntpError> {
         if username.contains(['\r', '\n']) || username.is_empty() {
             return Err(NntpError::InvalidArgument(
-                "kullanıcı adı boş veya satır sonu içeriyor".into(),
+                "username is empty or contains a newline".into(),
             ));
         }
         if password.contains(['\r', '\n']) {
             // Değeri hata metnine bilerek koymuyoruz.
             return Err(NntpError::InvalidArgument(
-                "parola satır sonu içeremez".into(),
+                "password must not contain a newline".into(),
             ));
         }
 
@@ -100,7 +100,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin> NntpConnection<S> {
             .trim_start_matches('<')
             .trim_end_matches('>');
         if id.is_empty() || id.contains(['\r', '\n', '<', '>']) {
-            return Err(NntpError::InvalidArgument("geçersiz message-ID".into()));
+            return Err(NntpError::InvalidArgument("invalid message-ID".into()));
         }
         let resp = self.command(&format!("BODY <{id}>")).await?;
         match resp.code {
@@ -206,7 +206,7 @@ pub async fn connect_tls(host: &str, port: u16) -> Result<TlsNntpConnection, Nnt
     let connector = TlsConnector::from(Arc::new(config));
 
     let server_name = ServerName::try_from(host.to_string())
-        .map_err(|_| NntpError::InvalidArgument(format!("geçersiz sunucu adı: {host}")))?;
+        .map_err(|_| NntpError::InvalidArgument(format!("invalid server name: {host}")))?;
     let tcp = TcpStream::connect((host, port)).await?;
     tcp.set_nodelay(true).ok();
     let tls = connector.connect(server_name, tcp).await?;
@@ -235,7 +235,7 @@ mod tests {
             for (expected, reply) in script {
                 let mut line = String::new();
                 stream.read_line(&mut line).await.unwrap();
-                assert_eq!(line, expected, "istemci beklenmeyen komut gönderdi");
+                assert_eq!(line, expected, "client sent an unexpected command");
                 stream.get_mut().write_all(reply.as_bytes()).await.unwrap();
             }
         })

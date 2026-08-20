@@ -488,7 +488,7 @@ mod tests {
             assert_ne!(
                 content_type_for(&filename),
                 "application/octet-stream",
-                "{extension} uzantısının MIME eşlemesi yok"
+                "no MIME mapping for extension {extension}"
             );
         }
     }
@@ -540,7 +540,7 @@ mod tests {
         let split = buf
             .windows(4)
             .position(|w| w == b"\r\n\r\n")
-            .expect("başlık sonu");
+            .expect("end of header");
         let head = String::from_utf8_lossy(&buf[..split]).to_string();
         let body = buf[split + 4..].to_vec();
         (head, body)
@@ -626,7 +626,7 @@ mod tests {
         .await;
         assert!(head.contains("206 Partial Content"));
         assert!(head.contains("Content-Length: 1024"));
-        assert!(body.is_empty(), "HEAD gövde döndürmemeli");
+        assert!(body.is_empty(), "HEAD must not return a body");
     }
 
     #[tokio::test]
@@ -690,7 +690,7 @@ mod tests {
         server.await.unwrap().unwrap();
         assert!(
             weak_source.upgrade().is_none(),
-            "graceful shutdown döndüğünde child GET görevi kaynağı tutmamalı"
+            "child GET task must not hold resources after graceful shutdown"
         );
     }
 }

@@ -564,4 +564,85 @@ class AppLocalizationsTr extends AppLocalizations {
   @override
   String get dvReshapeDiagnosticsEmpty =>
       'Filtre için motor günlüğü satırı yakalanamadı.';
+
+  @override
+  String get errFormatNotRecognized =>
+      'Medya biçimi tanınamadı. NZB doğrudan bir video yerine arşiv veya PAR2 kurtarma verisi içeriyor olabilir.';
+
+  @override
+  String get errLocalStreamUnreadable =>
+      'Yerel video akışı okunamadı. Bir Usenet segmenti eksik olabilir veya bağlantı kesilmiş olabilir.';
+
+  @override
+  String get errDecoderFailed => 'Video veya ses çözücüsü akışı açamadı.';
+
+  @override
+  String get errPlayerGeneric => 'Oynatıcı akışı açamadı.';
+
+  @override
+  String get errNoMpvDetail => 'libmpv ayrıntı vermedi.';
+
+  @override
+  String get errNoEngineDetail => 'Akış motoru ayrıntı vermedi.';
+
+  @override
+  String technicalDetail(String detail) {
+    return 'Teknik ayrıntı: $detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      'Usenet sağlayıcısının eşzamanlı bağlantı sınırına ulaşıldı. Diğer aktif oturumları kapatın veya kısa süre bekleyip yeniden deneyin. Sorun sürerse uygulamadaki bağlantı sayısını plan limitinize göre düşürün.';
+
+  @override
+  String get errAuthFailed =>
+      'Usenet kimlik doğrulaması başarısız. Sağlayıcı ayarlarındaki kullanıcı adı ve parolayı kontrol edin.';
+
+  @override
+  String get errRarEncrypted =>
+      'RAR arşivi şifreli. Parola korumalı RAR yayınları desteklenmiyor; şifresiz hazırlanmış bir STORE yayını seçin.';
+
+  @override
+  String get err7zPassword =>
+      '7z arşivinin parolası eksik veya geçersiz. Parola bilgisini metadata içinde taşıyan doğru NZB dosyasını seçin.';
+
+  @override
+  String get errArchiveCompressed =>
+      'Bu arşiv sıkıştırılmış. Anlık oynatma için sıkıştırmasız COPY/STORE (7z/RAR) biçiminde hazırlanmış bir yayın gerekir.';
+
+  @override
+  String get errArchiveSolid =>
+      'Bu arşiv solid yapıda. Rastgele ileri-geri sarma için non-solid STORE biçiminde hazırlanmış bir yayın gerekir.';
+
+  @override
+  String get errRar4 =>
+      'Bu RAR arşivi eski (RAR4 veya öncesi) biçimde. Yalnız RAR5 STORE yayınları oynatılabilir.';
+
+  @override
+  String get errSplitArchiveBroken =>
+      'Çok parçalı arşiv (7z/RAR) eksik veya bozuk. Tüm ciltleri ve segmentleri içeren eksiksiz bir NZB dosyası seçin.';
+
+  @override
+  String get errMissingSegments =>
+      'NZB eksik veya bozuk: gerekli Usenet segmentlerinin tamamı bulunamıyor. Bu yayın için eksiksiz başka bir NZB dosyası seçin.';
+
+  @override
+  String get errConnectionFailed =>
+      'Usenet sağlayıcısına bağlanılamadı. İnternet bağlantısını, sunucu adresini, portu ve sağlayıcının erişilebilirliğini kontrol edin.';
+
+  @override
+  String get errNzbUnreadable =>
+      'NZB dosyası okunamadı veya yapısı bozuk. Geçerli ve eksiksiz bir NZB dosyası seçin.';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'NZB içindeki arşiv (7z/RAR) oynatmaya uygun değil veya arşiv yapısı bozuk. Eksiksiz bir STORE yayını seçin.';
+
+  @override
+  String get errNoPlayableMedia =>
+      'NZB içinde desteklenen bir video akışı bulunamadı. Doğrudan medya veya desteklenen STORE arşivi içeren bir yayın seçin.';
+
+  @override
+  String get errStreamStartupGeneric =>
+      'Akış başlatılamadı. NZB içeriğini ve sağlayıcı bağlantısını kontrol edin.';
 }

@@ -567,4 +567,86 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get dvReshapeDiagnosticsEmpty =>
       'Строки журнала движка для фильтра не зафиксированы.';
+
+  @override
+  String get errFormatNotRecognized =>
+      'Не удалось распознать формат медиа. Возможно, NZB содержит архив или данные восстановления PAR2 вместо прямого видео.';
+
+  @override
+  String get errLocalStreamUnreadable =>
+      'Не удалось прочитать локальный видеопоток. Возможно, отсутствует сегмент Usenet или соединение прервалось.';
+
+  @override
+  String get errDecoderFailed =>
+      'Видео- или аудиодекодер не смог открыть поток.';
+
+  @override
+  String get errPlayerGeneric => 'Плеер не смог открыть поток.';
+
+  @override
+  String get errNoMpvDetail => 'libmpv не дал подробностей.';
+
+  @override
+  String get errNoEngineDetail => 'Потоковый движок не дал подробностей.';
+
+  @override
+  String technicalDetail(String detail) {
+    return 'Техническая деталь: $detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      'Достигнут лимит одновременных подключений провайдера Usenet. Закройте другие активные сессии или подождите и повторите. Если не поможет, уменьшите число подключений в приложении до лимита вашего тарифа.';
+
+  @override
+  String get errAuthFailed =>
+      'Ошибка аутентификации Usenet. Проверьте имя пользователя и пароль в настройках провайдера.';
+
+  @override
+  String get errRarEncrypted =>
+      'RAR-архив зашифрован. Защищённые паролем RAR-релизы не поддерживаются; выберите релиз, упакованный без шифрования (STORE).';
+
+  @override
+  String get err7zPassword =>
+      'Пароль 7z-архива отсутствует или неверен. Выберите NZB, который несёт пароль в своих метаданных.';
+
+  @override
+  String get errArchiveCompressed =>
+      'Этот архив сжат. Для мгновенного воспроизведения нужен релиз, упакованный без сжатия (COPY/STORE, 7z/RAR).';
+
+  @override
+  String get errArchiveSolid =>
+      'Этот архив сплошной (solid). Для произвольного перематывания нужен релиз, упакованный как non-solid STORE.';
+
+  @override
+  String get errRar4 =>
+      'Этот RAR-архив использует устаревший формат RAR4 (или старше). Воспроизводятся только релизы RAR5 STORE.';
+
+  @override
+  String get errSplitArchiveBroken =>
+      'Многотомный архив (7z/RAR) неполный или повреждён. Выберите полный NZB, включающий все тома и сегменты.';
+
+  @override
+  String get errMissingSegments =>
+      'NZB неполный или повреждён: не удаётся найти все нужные сегменты Usenet. Выберите другой, полный NZB для этого релиза.';
+
+  @override
+  String get errConnectionFailed =>
+      'Не удалось подключиться к провайдеру Usenet. Проверьте интернет-соединение, адрес сервера, порт и доступность провайдера.';
+
+  @override
+  String get errNzbUnreadable =>
+      'Файл NZB не удалось прочитать или он повреждён. Выберите действительный, полный файл NZB.';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'Архив (7z/RAR) в NZB не воспроизводится или его структура повреждена. Выберите полный STORE-релиз.';
+
+  @override
+  String get errNoPlayableMedia =>
+      'В NZB не найден поддерживаемый видеопоток. Выберите релиз с прямым видео или поддерживаемым STORE-архивом.';
+
+  @override
+  String get errStreamStartupGeneric =>
+      'Не удалось запустить поток. Проверьте содержимое NZB и подключение провайдера.';
 }

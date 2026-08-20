@@ -11,11 +11,11 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NewznabError {
-    #[error("XML ayrıştırılamadı: {0}")]
+    #[error("could not parse XML: {0}")]
     Xml(#[from] quick_xml::Error),
-    #[error("indexer yanıtı bozuk: {0}")]
+    #[error("malformed indexer response: {0}")]
     Malformed(&'static str),
-    #[error("indexer API hatası {code}: {description}")]
+    #[error("indexer API error {code}: {description}")]
     Api { code: u32, description: String },
 }
 
@@ -100,7 +100,7 @@ pub fn parse_caps(xml: &str) -> Result<IndexerCaps, NewznabError> {
     }
 
     if !saw_caps {
-        return Err(NewznabError::Malformed("<caps> kök öğesi yok"));
+        return Err(NewznabError::Malformed("no <caps> root element"));
     }
     Ok(caps)
 }
@@ -268,7 +268,7 @@ pub fn parse_search_response(xml: &str) -> Result<SearchPage, NewznabError> {
             Event::Text(t) => {
                 let piece = t
                     .xml10_content()
-                    .map_err(|_| NewznabError::Malformed("bozuk metin içeriği"))?;
+                    .map_err(|_| NewznabError::Malformed("malformed text content"))?;
                 text.push_str(&piece);
             }
             Event::CData(c) => {
@@ -323,7 +323,7 @@ pub fn parse_search_response(xml: &str) -> Result<SearchPage, NewznabError> {
     }
 
     if !saw_rss {
-        return Err(NewznabError::Malformed("<rss> kök öğesi yok"));
+        return Err(NewznabError::Malformed("no <rss> root element"));
     }
     Ok(page)
 }
@@ -346,11 +346,11 @@ fn attr_value(
     name: &[u8],
 ) -> Result<Option<String>, NewznabError> {
     for attr in e.attributes() {
-        let attr = attr.map_err(|_| NewznabError::Malformed("bozuk öznitelik"))?;
+        let attr = attr.map_err(|_| NewznabError::Malformed("malformed attribute"))?;
         if attr.key.local_name().as_ref().eq_ignore_ascii_case(name) {
             let value = attr
                 .normalized_value(quick_xml::XmlVersion::Implicit1_0)
-                .map_err(|_| NewznabError::Malformed("bozuk öznitelik değeri"))?;
+                .map_err(|_| NewznabError::Malformed("malformed attribute value"))?;
             return Ok(Some(value.into_owned()));
         }
     }
@@ -1001,10 +1001,10 @@ mod tests {
         let caps = parse_caps(CAPS_FIXTURE).unwrap();
         assert_eq!(caps.server_title.as_deref(), Some("Miatrix"));
         assert!(caps.supports_text_search());
-        let tv = caps.tv_search.expect("tv-search desteği");
+        let tv = caps.tv_search.expect("tv-search support");
         assert!(tv.available);
         assert!(tv.supported_params.contains(&"tvdbid".to_string()));
-        let movie = caps.movie_search.expect("movie desteği");
+        let movie = caps.movie_search.expect("movie support");
         assert!(movie.supported_params.contains(&"imdbid".to_string()));
     }
 
@@ -1259,7 +1259,7 @@ mod tests {
         assert_eq!(parse_rfc2822_date("01 Jan 2000 02:00:00 +0200"), Some(946_684_800));
         // -0530: yerel saat UTC-5:30 → UTC = 11:00.
         assert_eq!(parse_rfc2822_date("Sat, 01 Jan 2000 05:30:00 -0530"), Some(946_724_400));
-        assert_eq!(parse_rfc2822_date("tarih değil"), None);
+        assert_eq!(parse_rfc2822_date("not a date"), None);
         assert_eq!(parse_rfc2822_date("32 Foo 9999 99:99:99 +0000"), None);
     }
 }

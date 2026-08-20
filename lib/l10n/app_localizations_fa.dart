@@ -564,4 +564,86 @@ class AppLocalizationsFa extends AppLocalizations {
   @override
   String get dvReshapeDiagnosticsEmpty =>
       'هیچ خط گزارشی از موتور برای فیلتر ثبت نشد.';
+
+  @override
+  String get errFormatNotRecognized =>
+      'قالب رسانه شناسایی نشد. ممکن است NZB به‌جای ویدیوی مستقیم، آرشیو یا دادهٔ بازیابی PAR2 در بر داشته باشد.';
+
+  @override
+  String get errLocalStreamUnreadable =>
+      'جریان ویدیوی محلی خوانده نشد. ممکن است یک بخش Usenet گم باشد یا اتصال قطع شده باشد.';
+
+  @override
+  String get errDecoderFailed =>
+      'رمزگشای ویدیو یا صوت نتوانست جریان را باز کند.';
+
+  @override
+  String get errPlayerGeneric => 'پخش‌کننده نتوانست جریان را باز کند.';
+
+  @override
+  String get errNoMpvDetail => 'libmpv هیچ جزئیاتی ارائه نداد.';
+
+  @override
+  String get errNoEngineDetail => 'موتور پخش جریانی هیچ جزئیاتی ارائه نداد.';
+
+  @override
+  String technicalDetail(String detail) {
+    return 'جزئیات فنی: $detail';
+  }
+
+  @override
+  String get errProviderConnectionLimit =>
+      'به حد اتصال‌های هم‌زمان ارائه‌دهندهٔ Usenet رسیدید. سایر جلسات فعال را ببندید یا کمی بعد دوباره تلاش کنید. اگر ادامه یافت، تعداد اتصال‌ها را در برنامه تا حد بسته‌تان کم کنید.';
+
+  @override
+  String get errAuthFailed =>
+      'احراز هویت Usenet ناموفق بود. نام کاربری و رمز عبور را در تنظیمات ارائه‌دهنده بررسی کنید.';
+
+  @override
+  String get errRarEncrypted =>
+      'آرشیو RAR رمزنگاری‌شده است. انتشارهای RAR محافظت‌شده با رمز پشتیبانی نمی‌شوند؛ انتشاری را انتخاب کنید که بدون رمزنگاری بسته‌بندی شده باشد (STORE).';
+
+  @override
+  String get err7zPassword =>
+      'رمز آرشیو 7z وجود ندارد یا نامعتبر است. NZB‌ای را انتخاب کنید که رمز را در فراداده‌های خود دارد.';
+
+  @override
+  String get errArchiveCompressed =>
+      'این آرشیو فشرده است. پخش فوری به انتشاری نیاز دارد که بدون فشرده‌سازی (COPY/STORE، 7z/RAR) بسته‌بندی شده باشد.';
+
+  @override
+  String get errArchiveSolid =>
+      'این آرشیو ساختار solid دارد. جابه‌جایی تصادفی به انتشاری با بسته‌بندی STORE غیر-solid نیاز دارد.';
+
+  @override
+  String get errRar4 =>
+      'این آرشیو RAR از قالب قدیمی (RAR4 یا قدیمی‌تر) استفاده می‌کند. فقط انتشارهای RAR5 STORE قابل پخش‌اند.';
+
+  @override
+  String get errSplitArchiveBroken =>
+      'آرشیو چندبخشی (7z/RAR) ناقص یا خراب است. NZB کاملی را انتخاب کنید که همهٔ مجلدها و بخش‌ها را داشته باشد.';
+
+  @override
+  String get errMissingSegments =>
+      'NZB ناقص یا خراب است: همهٔ بخش‌های لازم Usenet یافت نمی‌شوند. برای این انتشار یک NZB کامل دیگر انتخاب کنید.';
+
+  @override
+  String get errConnectionFailed =>
+      'اتصال به ارائه‌دهندهٔ Usenet ممکن نشد. اتصال اینترنت، نشانی سرور، درگاه و دسترس‌پذیری ارائه‌دهنده را بررسی کنید.';
+
+  @override
+  String get errNzbUnreadable =>
+      'فایل NZB خوانده نشد یا خراب است. یک فایل NZB معتبر و کامل انتخاب کنید.';
+
+  @override
+  String get errArchiveNotPlayable =>
+      'آرشیو (7z/RAR) داخل NZB قابل پخش نیست یا ساختارش خراب است. یک انتشار STORE کامل انتخاب کنید.';
+
+  @override
+  String get errNoPlayableMedia =>
+      'هیچ جریان ویدیویی پشتیبانی‌شده‌ای در NZB یافت نشد. انتشاری با رسانهٔ مستقیم یا آرشیو STORE پشتیبانی‌شده انتخاب کنید.';
+
+  @override
+  String get errStreamStartupGeneric =>
+      'جریان آغاز نشد. محتوای NZB و اتصال ارائه‌دهنده را بررسی کنید.';
 }

@@ -97,25 +97,25 @@ const MAX_CIPHER_WINDOW: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Error)]
 pub enum RarError {
-    #[error("RAR ciltleri hazırlanamadı: {0}")]
+    #[error("could not prepare RAR volumes: {0}")]
     Io(#[from] io::Error),
-    #[error("RAR başlığı okunamadı: {0}")]
+    #[error("could not read RAR header: {0}")]
     Header(String),
-    #[error("RAR arşivinde oynatılabilir medya dosyası yok")]
+    #[error("no playable media file in the RAR archive")]
     NoPlayableMedia,
-    #[error("RAR arşivi sıkıştırılmış; yalnız STORE arşivleri seek edilerek oynatılabilir")]
+    #[error("RAR archive is compressed; only STORE archives are playable with seeking")]
     UnsupportedCompression,
-    #[error("RAR4 parola koruması desteklenmiyor (RAR5 -hp kapsamı dışında); şifresiz veya RAR5 set gerekli")]
+    #[error("RAR4 password protection is unsupported (outside RAR5 -hp scope); unencrypted or RAR5 set required")]
     UnsupportedRar4Encryption,
-    #[error("RAR arşivi parola korumalı ve NZB parola içermiyor")]
+    #[error("RAR archive is password-protected and the NZB carries no password")]
     Encrypted,
-    #[error("NZB'deki parola RAR arşivine uymuyor")]
+    #[error("password does not match the RAR archive")]
     WrongPassword,
-    #[error("geçersiz RAR yerleşimi: {0}")]
+    #[error("invalid RAR layout: {0}")]
     InvalidLayout(String),
-    #[error("RAR hazırlama görevi tamamlanamadı: {0}")]
+    #[error("RAR prepare task failed to complete: {0}")]
     Task(String),
-    #[error("RAR hazırlama iptal edildi")]
+    #[error("RAR preparation cancelled")]
     Cancelled,
 }
 
@@ -375,7 +375,7 @@ impl RarEntrySource {
     where
         W: AsyncWrite + Unpin + Send,
     {
-        let crypt = self.map.crypt.as_ref().expect("şifreli okuma planı mevcut");
+        let crypt = self.map.crypt.as_ref().expect("encrypted read plan present");
         for window in self.map.cipher_windows(range) {
             let iv: [u8; INITV_SIZE] = match window.iv {
                 None => crypt.initv,
@@ -390,13 +390,13 @@ impl RarEntrySource {
             if !rarcrypt::decrypt_cbc(&crypt.key, &iv, &mut buffer) {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "RAR şifreli veri çözülemedi",
+                    "could not decrypt RAR data",
                 ));
             }
             let skip = usize::try_from(window.skip)
-                .map_err(|_| io::Error::other("RAR çözüm ofseti taştı"))?;
+                .map_err(|_| io::Error::other("RAR decode offset overflow"))?;
             let take = usize::try_from(window.take)
-                .map_err(|_| io::Error::other("RAR çözüm boyutu taştı"))?;
+                .map_err(|_| io::Error::other("RAR decode size overflow"))?;
             out.write_all(&buffer[skip..skip + take]).await?;
         }
         out.flush().await
@@ -443,7 +443,7 @@ impl<R: Read + Seek> VolumeParser<'_, R> {
     }
 
     fn unexpected_eof(&self) -> RarError {
-        RarError::Header("cilt sonu blok ortasında bitti; set eksik".into())
+        RarError::Header("volume ended mid-block; set is incomplete".into())
     }
 
     fn map_io(error: io::Error) -> RarError {
@@ -491,7 +491,7 @@ impl<R: Read + Seek> HashingReader<'_, '_, R> {
             if index == 9 && byte[0] & 0x7E != 0 {
                 return Err(io::Error::new(
                     io::ErrorKind::InvalidData,
-                    "vint u64 sınırını aşıyor",
+                    "vint exceeds u64 range",
                 ));
             }
             value |= u64::from(byte[0] & 0x7F) << (7 * index);
@@ -499,7 +499,7 @@ impl<R: Read + Seek> HashingReader<'_, '_, R> {
                 return Ok(value);
             }
         }
-        Err(io::Error::new(io::ErrorKind::InvalidData, "vint çok uzun"))
+        Err(io::Error::new(io::ErrorKind::InvalidData, "vint too long"))
     }
 }
 
@@ -510,7 +510,7 @@ impl<R: Read + Seek> Read for HashingReader<'_, '_, R> {
         if buffer.len() as u64 > self.inner.remaining() {
             return Err(io::Error::new(
                 io::ErrorKind::UnexpectedEof,
-                "cilt sonu blok ortasında bitti; set eksik",
+                "volume ended mid-block; set is incomplete",
             ));
         }
         let count = self.inner.reader.read(buffer)?;
@@ -543,22 +543,22 @@ fn read_plain_block<R: Read + Seek>(
     };
     let header_size = hashing
         .read_vint()
-        .map_err(|error| io_to_header("HEAD_SIZE okunamadı", error))?;
+        .map_err(|error| io_to_header("could not read HEAD_SIZE", error))?;
     if header_size == 0 || header_size > MAX_BLOCK_HEADER_SIZE {
         return Err(RarError::Header(format!(
-            "blok başlığı {header_size} bayt; güvenli sınır {MAX_BLOCK_HEADER_SIZE}"
+            "block header is {header_size} bytes; safe limit {MAX_BLOCK_HEADER_SIZE}"
         )));
     }
     let header_len = usize::try_from(header_size)
-        .map_err(|_| RarError::Header("blok başlığı belleğe sığmıyor".into()))?;
+        .map_err(|_| RarError::Header("block header does not fit in memory".into()))?;
     let mut header = vec![0u8; header_len];
     hashing
         .read_exact(&mut header)
-        .map_err(|error| io_to_header("blok başlığı okunamadı", error))?;
+        .map_err(|error| io_to_header("could not read block header", error))?;
     let actual_crc = hashing.hasher.finalize();
     if actual_crc != expected_crc {
         return Err(RarError::Header(format!(
-            "blok CRC uyuşmazlığı: beklenen {expected_crc:#x}, bulunan {actual_crc:#x}"
+            "block CRC mismatch: expected {expected_crc:#x}, got {actual_crc:#x}"
         )));
     }
     parse_block_header(&header)
@@ -571,7 +571,7 @@ fn decrypted_header_len(buffer: &[u8]) -> Result<(u64, u64), RarError> {
     let header_size = read_vint_slice(&mut cursor)?;
     if header_size == 0 || header_size > MAX_BLOCK_HEADER_SIZE {
         return Err(RarError::Header(format!(
-            "blok başlığı {header_size} bayt; güvenli sınır {MAX_BLOCK_HEADER_SIZE}"
+            "block header is {header_size} bytes; safe limit {MAX_BLOCK_HEADER_SIZE}"
         )));
     }
     Ok((cursor.position(), header_size))
@@ -592,21 +592,21 @@ fn read_encrypted_block<R: Read + Seek>(
     parser.read_exact(&mut first)?;
     let first_cipher = first;
     if !rarcrypt::decrypt_cbc(key, &iv, &mut first) {
-        return Err(RarError::Header("şifreli blok çözülemedi".into()));
+        return Err(RarError::Header("could not decrypt block".into()));
     }
     let expected_crc = u32::from_le_bytes([first[0], first[1], first[2], first[3]]);
     let (size_vint_len, header_size) = decrypted_header_len(&first[4..])?;
     let plain_len = 4 + size_vint_len + header_size;
     let encrypted_len = rarcrypt::round_up_block(plain_len)
-        .ok_or_else(|| RarError::Header("şifreli blok boyutu taştı".into()))?;
+        .ok_or_else(|| RarError::Header("encrypted block size overflow".into()))?;
     if encrypted_len > parser.remaining() + AES_BLOCK_SIZE {
         return Err(RarError::Header(
-            "şifreli blok cilt sonunu aşıyor; set eksik veya bozuk".into(),
+            "encrypted block exceeds volume end; set is incomplete or corrupt".into(),
         ));
     }
 
     let rest_len = usize::try_from(encrypted_len - AES_BLOCK_SIZE)
-        .map_err(|_| RarError::Header("şifreli blok belleğe sığmıyor".into()))?;
+        .map_err(|_| RarError::Header("encrypted block does not fit in memory".into()))?;
     let mut plain = Vec::with_capacity(encrypted_len as usize);
     plain.extend_from_slice(&first);
     if rest_len > 0 {
@@ -615,7 +615,7 @@ fn read_encrypted_block<R: Read + Seek>(
         // CBC zinciri: devam bloklarının IV'si ilk şifreli blok.
         let chain_iv: &[u8; INITV_SIZE] = &first_cipher;
         if !rarcrypt::decrypt_cbc(key, chain_iv, &mut rest) {
-            return Err(RarError::Header("şifreli blok çözülemedi".into()));
+            return Err(RarError::Header("could not decrypt block".into()));
         }
         plain.extend_from_slice(&rest);
     }
@@ -624,7 +624,7 @@ fn read_encrypted_block<R: Read + Seek>(
     let actual_crc = crc32fast::hash(&plain[4..]);
     if actual_crc != expected_crc {
         return Err(RarError::Header(format!(
-            "şifreli blok CRC uyuşmazlığı: beklenen {expected_crc:#x}, bulunan {actual_crc:#x}"
+            "encrypted block CRC mismatch: expected {expected_crc:#x}, got {actual_crc:#x}"
         )));
     }
     parse_block_header(&plain[(4 + size_vint_len) as usize..])
@@ -657,7 +657,7 @@ fn parse_volume<R: Read + Seek>(
     let mut version_byte = [0u8; 1];
     parser.read_exact(&mut version_byte)?;
     if signature.as_slice() != &RAR5_SIGNATURE[..7] || version_byte[0] != RAR5_SIGNATURE[7] {
-        return Err(RarError::Header("RAR imzası bulunamadı".into()));
+        return Err(RarError::Header("RAR signature not found".into()));
     }
 
     let mut header_key: Option<Zeroizing<[u8; 32]>> = None;
@@ -687,7 +687,7 @@ fn parse_volume<R: Read + Seek>(
             Block::Encryption(encryption) => {
                 if header_key.is_some() {
                     return Err(RarError::InvalidLayout(
-                        "ENCRYPTION bloğu yalnız cildin ilk bloğu olabilir".into(),
+                        "ENCRYPTION block may only be the volume's first block".into(),
                     ));
                 }
                 let password = password.ok_or(RarError::Encrypted)?;
@@ -705,7 +705,7 @@ fn parse_volume<R: Read + Seek>(
                         )
                         .ok_or_else(|| {
                             RarError::Header(format!(
-                                "RAR KDF tur sayısı (2^{}) güvenli sınırı aşıyor",
+                                "RAR KDF round count (2^{}) exceeds the safe limit",
                                 encryption.lg2_count
                             ))
                         })?;
@@ -740,7 +740,7 @@ fn parse_volume<R: Read + Seek>(
             Block::Unknown { head_type, skippable } => {
                 if !skippable {
                     return Err(RarError::Header(format!(
-                        "bilinmeyen zorunlu blok türü: {head_type}"
+                        "unknown required block type: {head_type}"
                     )));
                 }
                 parser.skip(data_size)?;
@@ -776,7 +776,7 @@ fn parse_volume_rar4<R: Read + Seek>(
         let head_size = u64::from(u16::from_le_bytes([head[5], head[6]]));
         if head_size < 7 {
             return Err(RarError::InvalidLayout(format!(
-                "RAR4 blok boyutu {head_size} geçersiz"
+                "RAR4 block size {head_size} is invalid"
             )));
         }
         if head_size - 7 > parser.remaining() {
@@ -799,7 +799,7 @@ fn parse_volume_rar4<R: Read + Seek>(
         parser.read_exact(&mut body)?;
         crc_input.extend_from_slice(&body);
         if crc32fast::hash(&crc_input) as u16 != expected_crc {
-            return Err(RarError::Header("RAR4 blok CRC'si uyuşmuyor".into()));
+            return Err(RarError::Header("RAR4 block CRC mismatch".into()));
         }
 
         match head_type {
@@ -813,7 +813,7 @@ fn parse_volume_rar4<R: Read + Seek>(
                 let mut entry = parse_rar4_file_body(&body, head_flags)?;
                 if entry.data_size != add_size {
                     return Err(RarError::InvalidLayout(format!(
-                        "RAR4 FILE başlığındaki pack boyutu {}, ADD_SIZE {add_size} ile uyuşmuyor",
+                        "RAR4 FILE header pack size {} does not match ADD_SIZE {add_size}",
                         entry.data_size
                     )));
                 }
@@ -835,7 +835,7 @@ fn parse_rar4_file_body(body: &[u8], head_flags: u16) -> Result<FileEntry, RarEr
     // pack(4) unp(4) host_os(1) file_crc(4) ftime(4) unp_ver(1) method(1)
     // name_size(2) attr(4) = 25 bayt sabit bölüm.
     if body.len() < 25 {
-        return Err(RarError::Header("RAR4 FILE başlığı kısa".into()));
+        return Err(RarError::Header("RAR4 FILE header is short".into()));
     }
     if head_flags & RAR4_LHD_PASSWORD != 0 {
         return Err(RarError::UnsupportedRar4Encryption);
@@ -850,7 +850,7 @@ fn parse_rar4_file_body(body: &[u8], head_flags: u16) -> Result<FileEntry, RarEr
     let mut position = 25;
     let (pack_size, unpacked_size) = if head_flags & RAR4_LHD_LARGE != 0 {
         if body.len() < position + 8 {
-            return Err(RarError::Header("RAR4 LARGE alanları kısa".into()));
+            return Err(RarError::Header("RAR4 LARGE fields are short".into()));
         }
         let high_pack = u64::from(u32::from_le_bytes(
             body[position..position + 4].try_into().expect("4 bayt"),
@@ -865,11 +865,11 @@ fn parse_rar4_file_body(body: &[u8], head_flags: u16) -> Result<FileEntry, RarEr
     };
 
     if body.len() < position + name_size {
-        return Err(RarError::Header("RAR4 dosya adı başlığı taşıyor".into()));
+        return Err(RarError::Header("RAR4 filename header overflow".into()));
     }
     let name = decode_rar4_name(&body[position..position + name_size], head_flags);
     if name.is_empty() {
-        return Err(RarError::Header("RAR4 dosya adı çözülemedi".into()));
+        return Err(RarError::Header("could not decode RAR4 filename".into()));
     }
     // RAR4'te dizin bayrağı yok; host özniteliği veya ad sondan anlaşılır.
     let is_dir = (host_os == 3 && attr & 0x10 != 0)
@@ -955,20 +955,20 @@ fn parse_encryption_header(cursor: &mut io::Cursor<&[u8]>) -> Result<EncryptionH
     let crypt_version = read_vint_slice(cursor)?;
     if crypt_version != 0 {
         return Err(RarError::Header(format!(
-            "desteklenmeyen RAR şifreleme sürümü: {crypt_version}"
+            "unsupported RAR encryption version: {crypt_version}"
         )));
     }
     let crypt_flags = read_vint_slice(cursor)?;
     let mut lg2_count = [0u8; 1];
-    read_slice(cursor, &mut lg2_count, "KDF tur sayısı")?;
+    read_slice(cursor, &mut lg2_count, "KDF round count")?;
     let mut salt = [0u8; SALT_SIZE];
-    read_slice(cursor, &mut salt, "şifreleme tuzu")?;
+    read_slice(cursor, &mut salt, "encryption salt")?;
 
     let psw_check = if crypt_flags & 0x01 != 0 {
         let mut check = [0u8; PSW_CHECK_SIZE];
-        read_slice(cursor, &mut check, "parola doğrulama değeri")?;
+        read_slice(cursor, &mut check, "password verification value")?;
         let mut csum = [0u8; 4];
-        read_slice(cursor, &mut csum, "parola doğrulama sağlaması")?;
+        read_slice(cursor, &mut csum, "password verification checksum")?;
         // Sağlama bozuksa unrar'ın yaptığı gibi doğrulama değeri yok sayılır;
         // yanlış parola bu durumda başlık CRC hatasıyla yakalanır.
         use sha2::Digest;
@@ -992,7 +992,7 @@ fn read_slice(
 ) -> Result<(), RarError> {
     cursor
         .read_exact(buffer)
-        .map_err(|_| RarError::Header(format!("{label} alanı başlık sonunu aşıyor")))
+        .map_err(|_| RarError::Header(format!("{label} field exceeds end of header")))
 }
 
 fn parse_file_header(
@@ -1016,19 +1016,19 @@ fn parse_file_header(
 
     let extra_start = header_len
         .checked_sub(extra_size)
-        .ok_or_else(|| RarError::Header("extra alanı başlık boyutunu aşıyor".into()))?;
+        .ok_or_else(|| RarError::Header("extra field exceeds header size".into()))?;
     if name_size > extra_start.saturating_sub(cursor.position()) {
-        return Err(RarError::Header("dosya adı başlık sınırını aşıyor".into()));
+        return Err(RarError::Header("filename exceeds header limit".into()));
     }
     let name_len = usize::try_from(name_size)
-        .map_err(|_| RarError::Header("dosya adı belleğe sığmıyor".into()))?;
+        .map_err(|_| RarError::Header("filename does not fit in memory".into()))?;
     let name_start = cursor.position() as usize;
     let name_bytes = &cursor.get_ref()[name_start..name_start + name_len];
     let name = String::from_utf8(name_bytes.to_vec())
-        .map_err(|_| RarError::Header("dosya adı geçerli UTF-8 değil".into()))?;
+        .map_err(|_| RarError::Header("filename is not valid UTF-8".into()))?;
     cursor.set_position(cursor.position() + name_size);
     if cursor.position() > extra_start {
-        return Err(RarError::Header("dosya başlığı alanları çakışıyor".into()));
+        return Err(RarError::Header("file header fields overlap".into()));
     }
 
     // Extra kayıtları başlığın sonundadır: SIZE(vint, ID vint'i + DATA),
@@ -1041,23 +1041,23 @@ fn parse_file_header(
         let id_len = vint_len(record_id);
         let payload = record_size
             .checked_sub(id_len)
-            .ok_or_else(|| RarError::Header("extra kayıt boyutu geçersiz".into()))?;
+            .ok_or_else(|| RarError::Header("invalid extra record size".into()))?;
         if record_id == EXTRA_RECORD_CRYPT {
             if crypt.is_some() {
-                return Err(RarError::Header("birden fazla crypt extra kaydı".into()));
+                return Err(RarError::Header("multiple crypt extra records".into()));
             }
             let payload_len = usize::try_from(payload)
-                .map_err(|_| RarError::Header("crypt extra kaydı belleğe sığmıyor".into()))?;
+                .map_err(|_| RarError::Header("crypt extra record does not fit in memory".into()))?;
             let payload_start = cursor.position() as usize;
             if payload_start + payload_len > cursor.get_ref().len() {
-                return Err(RarError::Header("crypt extra kaydı başlık sonunu aşıyor".into()));
+                return Err(RarError::Header("crypt extra record exceeds end of header".into()));
             }
             let mut record_cursor = io::Cursor::new(
                 &cursor.get_ref()[payload_start..payload_start + payload_len],
             );
             crypt = Some(parse_crypt_record(&mut record_cursor)?);
         }
-        skip_slice(cursor, payload, "extra kayıt verisi")?;
+        skip_slice(cursor, payload, "extra record data")?;
     }
 
     Ok(FileEntry {
@@ -1081,22 +1081,22 @@ fn parse_crypt_record(cursor: &mut io::Cursor<&[u8]>) -> Result<FileCrypt, RarEr
     let enc_version = read_vint_slice(cursor)?;
     if enc_version != 0 {
         return Err(RarError::Header(format!(
-            "desteklenmeyen dosya şifreleme sürümü: {enc_version}"
+            "unsupported file encryption version: {enc_version}"
         )));
     }
     let flags = read_vint_slice(cursor)?;
     let mut lg2_count = [0u8; 1];
-    read_slice(cursor, &mut lg2_count, "KDF tur sayısı")?;
+    read_slice(cursor, &mut lg2_count, "KDF round count")?;
     let mut salt = [0u8; SALT_SIZE];
-    read_slice(cursor, &mut salt, "dosya şifreleme tuzu")?;
+    read_slice(cursor, &mut salt, "file encryption salt")?;
     let mut initv = [0u8; INITV_SIZE];
-    read_slice(cursor, &mut initv, "dosya başlatma vektörü")?;
+    read_slice(cursor, &mut initv, "file initialization vector")?;
 
     let psw_check = if flags & 0x01 != 0 {
         let mut check = [0u8; PSW_CHECK_SIZE];
-        read_slice(cursor, &mut check, "parola doğrulama değeri")?;
+        read_slice(cursor, &mut check, "password verification value")?;
         let mut csum = [0u8; 4];
-        read_slice(cursor, &mut csum, "parola doğrulama sağlaması")?;
+        read_slice(cursor, &mut csum, "password verification checksum")?;
         use sha2::Digest;
         let digest = sha2::Sha256::digest(check);
         (digest[..4] == csum).then_some(check)
@@ -1119,16 +1119,16 @@ fn read_vint_slice(cursor: &mut io::Cursor<&[u8]>) -> Result<u64, RarError> {
         let mut byte = [0u8; 1];
         cursor
             .read_exact(&mut byte)
-            .map_err(|_| RarError::Header("vint başlık sonunu aşıyor".into()))?;
+            .map_err(|_| RarError::Header("vint exceeds end of header".into()))?;
         if index == 9 && byte[0] & 0x7E != 0 {
-            return Err(RarError::Header("vint u64 sınırını aşıyor".into()));
+            return Err(RarError::Header("vint exceeds u64 range".into()));
         }
         value |= u64::from(byte[0] & 0x7F) << (7 * index);
         if byte[0] & 0x80 == 0 {
             return Ok(value);
         }
     }
-    Err(RarError::Header("vint çok uzun".into()))
+    Err(RarError::Header("vint too long".into()))
 }
 
 fn vint_len(mut value: u64) -> u64 {
@@ -1145,7 +1145,7 @@ fn skip_slice(cursor: &mut io::Cursor<&[u8]>, count: u64, label: &str) -> Result
         .position()
         .checked_add(count)
         .filter(|&target| target <= cursor.get_ref().len() as u64)
-        .ok_or_else(|| RarError::Header(format!("{label} alanı başlık sonunu aşıyor")))?;
+        .ok_or_else(|| RarError::Header(format!("{label} field exceeds end of header")))?;
     cursor.set_position(target);
     Ok(())
 }
@@ -1167,7 +1167,7 @@ fn build_fragment_map<R: Read + Seek>(
     for (volume_index, &(volume_start, volume_len)) in volumes.iter().enumerate() {
         let volume_end = volume_start
             .checked_add(volume_len)
-            .ok_or_else(|| RarError::InvalidLayout("cilt ofseti taştı".into()))?;
+            .ok_or_else(|| RarError::InvalidLayout("volume offset overflow".into()))?;
         reader.seek(SeekFrom::Start(volume_start))?;
         for entry in parse_volume(reader, volume_start, volume_end, password, &mut kdf_cache)? {
             if entry.is_dir {
@@ -1177,7 +1177,7 @@ fn build_fragment_map<R: Read + Seek>(
                 volume_index,
                 set_offset: volume_start
                     .checked_add(entry.data_offset)
-                    .ok_or_else(|| RarError::InvalidLayout("parça ofseti taştı".into()))?,
+                    .ok_or_else(|| RarError::InvalidLayout("part offset overflow".into()))?,
                 entry,
             };
             let key = part.entry.name.to_ascii_lowercase();
@@ -1217,7 +1217,7 @@ fn derive_data_crypt(parts: &[FragmentPart], password: Option<&str>) -> Result<O
     let Some(first) = &parts[0].entry.crypt else {
         if parts.iter().any(|part| part.entry.crypt.is_some()) {
             return Err(RarError::InvalidLayout(format!(
-                "`{}` parçalarının bir kısmı şifreli, bir kısmı değil",
+                "`{}` is partially encrypted, partially not",
                 parts[0].entry.name
             )));
         }
@@ -1230,7 +1230,7 @@ fn derive_data_crypt(parts: &[FragmentPart], password: Option<&str>) -> Result<O
     for part in parts {
         if part.entry.crypt.as_ref() != Some(first) {
             return Err(RarError::InvalidLayout(format!(
-                "`{}` split parçaları farklı şifreleme parametreleri taşıyor",
+                "`{}` split parts carry different encryption parameters",
                 part.entry.name
             )));
         }
@@ -1240,7 +1240,7 @@ fn derive_data_crypt(parts: &[FragmentPart], password: Option<&str>) -> Result<O
     let derived = rarcrypt::kdf5(password.as_bytes(), &first.salt, first.lg2_count)
         .ok_or_else(|| {
             RarError::Header(format!(
-                "RAR KDF tur sayısı (2^{}) güvenli sınırı aşıyor",
+                "RAR KDF round count (2^{}) exceeds the safe limit",
                 first.lg2_count
             ))
         })?;
@@ -1270,7 +1270,7 @@ fn validate_and_build(parts: &[FragmentPart], password: Option<&str>) -> Result<
         let entry = &parts[0].entry;
         if entry.split_before || entry.split_after {
             return Err(RarError::InvalidLayout(format!(
-                "`{}` tek ciltte ama split bayrağı taşıyor; set eksik",
+                "`{}` is in a single volume but carries a split flag; set is incomplete",
                 entry.name
             )));
         }
@@ -1287,7 +1287,7 @@ fn validate_and_build(parts: &[FragmentPart], password: Option<&str>) -> Result<
             };
             if !flags_ok {
                 return Err(RarError::InvalidLayout(format!(
-                    "`{}` split zinciri bayrakları bozuk (parça {}/{})",
+                    "`{}` split chain flags are corrupt (part {}/{})",
                     part.entry.name,
                     index + 1,
                     parts.len()
@@ -1297,7 +1297,7 @@ fn validate_and_build(parts: &[FragmentPart], password: Option<&str>) -> Result<
         for window in parts.windows(2) {
             if window[1].volume_index != window[0].volume_index + 1 {
                 return Err(RarError::InvalidLayout(format!(
-                    "`{}` split parçaları ardışık ciltlerde değil; set eksik",
+                    "`{}` split parts are not in consecutive volumes; set is incomplete",
                     window[0].entry.name
                 )));
             }
@@ -1307,7 +1307,7 @@ fn validate_and_build(parts: &[FragmentPart], password: Option<&str>) -> Result<
     let cipher_total = parts.iter().try_fold(0u64, |total, part| {
         total
             .checked_add(part.entry.data_size)
-            .ok_or_else(|| RarError::InvalidLayout("parça boyut toplamı taştı".into()))
+            .ok_or_else(|| RarError::InvalidLayout("part size total overflow".into()))
     })?;
     let declared = parts[0].entry.unpacked_size;
     if crypt.is_some() {
@@ -1316,20 +1316,20 @@ fn validate_and_build(parts: &[FragmentPart], password: Option<&str>) -> Result<
         for part in parts {
             if part.entry.data_size % AES_BLOCK_SIZE != 0 {
                 return Err(RarError::InvalidLayout(format!(
-                    "`{}` şifreli parça boyutu 16 bayt hizalı değil; set bozuk",
+                    "`{}` encrypted part size is not 16-byte aligned; set is corrupt",
                     part.entry.name
                 )));
             }
         }
         if cipher_total < declared || cipher_total - declared >= AES_BLOCK_SIZE {
             return Err(RarError::InvalidLayout(format!(
-                "`{}` şifreli parça toplamı {cipher_total} bayt, başlık {declared} bayt bildiriyor; set eksik veya bozuk",
+                "`{}` encrypted parts total {cipher_total} bytes but the header declares {declared}; set is incomplete or corrupt",
                 parts[0].entry.name
             )));
         }
     } else if cipher_total != declared {
         return Err(RarError::InvalidLayout(format!(
-            "`{}` parça toplamı {cipher_total} bayt, başlık {declared} bayt bildiriyor; set eksik veya bozuk",
+            "`{}` parts total {cipher_total} bytes but the header declares {declared}; set is incomplete or corrupt",
             parts[0].entry.name
         )));
     }
@@ -1818,7 +1818,7 @@ mod tests {
         let error = build_fragment_map(&mut Cursor::new(bytes), &layout(&[volume]), None)
             .unwrap_err();
         assert!(matches!(error, RarError::Encrypted));
-        assert!(error.to_string().contains("parola korumalı ve NZB parola içermiyor"));
+        assert!(error.to_string().contains("password-protected and the NZB carries no password"));
     }
 
     #[test]
@@ -1846,7 +1846,7 @@ mod tests {
         )
         .unwrap_err();
         assert!(matches!(error, RarError::WrongPassword));
-        assert!(error.to_string().contains("parola RAR arşivine uymuyor"));
+        assert!(error.to_string().contains("password does not match the RAR archive"));
     }
 
     #[test]
@@ -2128,7 +2128,7 @@ mod tests {
         };
 
         let windows = map.cipher_windows(0..total);
-        assert_eq!(windows.len(), 4, "3 tam pencere + 123 baytlık kalan");
+        assert_eq!(windows.len(), 4, "3 full windows + 123 bytes remainder");
         assert!(windows.iter().all(|w| w.take <= MAX_CIPHER_WINDOW));
         // Her pencerenin şifreli okuma aralığı 16 hizalı ve zincir IV'si bir
         // önceki şifreli bloğa işaret eder.
@@ -2136,7 +2136,7 @@ mod tests {
             assert_eq!(window.data.start % AES_BLOCK_SIZE, 0);
             assert_eq!((window.data.end - window.data.start) % AES_BLOCK_SIZE, 0);
         }
-        assert_eq!(windows[0].iv, None, "ilk pencere InitV kullanır");
+        assert_eq!(windows[0].iv, None, "first window uses InitV");
         for pair in windows.windows(2) {
             let expected_iv = (pair[0].data.end - AES_BLOCK_SIZE)..pair[0].data.end;
             assert_eq!(pair[1].iv, Some(expected_iv));
@@ -2166,7 +2166,7 @@ mod tests {
         let windows = map.cipher_windows(0..map.total_len);
         assert!(
             windows.len() >= 2,
-            "büyük okuma birden çok pencereye bölünmeli"
+            "a large read must split across windows"
         );
         assert!(windows.iter().all(|w| w.take <= MAX_CIPHER_WINDOW));
 
@@ -2270,7 +2270,7 @@ mod tests {
 
         fn read_fixture(name: &str) -> Vec<u8> {
             std::fs::read(format!("{FIXTURE_DIR}/{name}"))
-                .unwrap_or_else(|error| panic!("fixture okunamadı ({name}): {error}"))
+                .unwrap_or_else(|error| panic!("could not read fixture ({name}): {error}"))
         }
 
         /// Ciltleri sanal set uzayında birleştirip parça eşlemini kurar.
@@ -2278,7 +2278,7 @@ mod tests {
             let volumes: Vec<Vec<u8>> = volume_names.iter().map(|name| read_fixture(name)).collect();
             let bytes = concat(&volumes);
             let map = build_fragment_map(&mut Cursor::new(bytes.clone()), &layout(&volumes), password)
-                .unwrap_or_else(|error| panic!("fixture seti açılamadı: {error}"));
+                .unwrap_or_else(|error| panic!("could not open fixture set: {error}"));
             (bytes, map)
         }
 
@@ -2355,7 +2355,7 @@ mod tests {
             assert!(matches!(error, RarError::Encrypted));
             assert_eq!(
                 error.to_string(),
-                "RAR arşivi parola korumalı ve NZB parola içermiyor"
+                "RAR archive is password-protected and the NZB carries no password"
             );
         }
 

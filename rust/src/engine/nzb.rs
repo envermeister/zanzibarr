@@ -11,11 +11,11 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum NzbError {
-    #[error("XML okuma hatası: {0}")]
+    #[error("XML read error: {0}")]
     Xml(#[from] quick_xml::Error),
-    #[error("bozuk NZB: {0}")]
+    #[error("malformed NZB: {0}")]
     Malformed(String),
-    #[error("NZB kök öğesi (<nzb>) bulunamadı")]
+    #[error("NZB root element (<nzb>) not found")]
     NotAnNzb,
 }
 
@@ -23,33 +23,33 @@ pub enum NzbError {
 /// doğrulama hataları.
 #[derive(Debug, Error, Clone, PartialEq, Eq)]
 pub enum NzbContentError {
-    #[error("NZB'de doğrudan oynatılabilir medya dosyası yok")]
+    #[error("no directly playable media file in the NZB")]
     NoPlayableMedia,
-    #[error("`{filename}` dosyasında segment {missing} eksik veya sırası bozuk")]
+    #[error("segment {missing} missing or out of order in `{filename}`")]
     NonContiguousSegments { filename: String, missing: u32 },
-    #[error("`{filename}` dosyası {declared} segment bildiriyor, NZB'de {actual} segment var")]
+    #[error("`{filename}` declares {declared} segments but the NZB has {actual}")]
     DeclaredSegmentCountMismatch {
         filename: String,
         declared: u32,
         actual: u32,
     },
     #[error(
-        "bölünmüş 7z seti `{archive_name}` için volume {expected:03} beklenirken {found:03} bulundu"
+        "split 7z set `{archive_name}` expected volume {expected:03} but found {found:03}"
     )]
     Split7zVolumeGap {
         archive_name: String,
         expected: u32,
         found: u32,
     },
-    #[error("bölünmüş 7z seti `{archive_name}` içinde volume {number:03} birden fazla kez var")]
+    #[error("split 7z set `{archive_name}` contains volume {number:03} more than once")]
     DuplicateSplit7zVolume { archive_name: String, number: u32 },
-    #[error("bölünmüş RAR seti `{archive_name}` için volume {expected} beklenirken {found} bulundu")]
+    #[error("split RAR set `{archive_name}` expected volume {expected} but found {found}")]
     SplitRarVolumeGap {
         archive_name: String,
         expected: u32,
         found: u32,
     },
-    #[error("bölünmüş RAR seti `{archive_name}` içinde volume {number} birden fazla kez var")]
+    #[error("split RAR set `{archive_name}` contains volume {number} more than once")]
     DuplicateSplitRarVolume { archive_name: String, number: u32 },
 }
 
@@ -333,7 +333,7 @@ impl NzbFile {
     /// Segment listesinin 1'den başlayıp kesintisiz ilerlediğini ve subject
     /// bir toplam bildiriyorsa bu toplamla uyuştuğunu doğrular.
     pub fn validate_segments(&self) -> Result<(), NzbContentError> {
-        let filename = self.filename().unwrap_or("adı bilinmeyen dosya");
+        let filename = self.filename().unwrap_or("file with unknown name");
         let mut expected = 1_u32;
         for segment in &self.segments {
             if segment.number != expected {
@@ -496,7 +496,7 @@ pub fn parse_nzb(xml: &str) -> Result<Nzb, NzbError> {
                 b"nzb" => saw_root = true,
                 b"segment" => {
                     return Err(NzbError::Malformed(
-                        "boş <segment/> öğesi: message-ID yok".into(),
+                        "empty <segment/> element: no message-ID".into(),
                     ));
                 }
                 b"file" => nzb.files.push(NzbFile {
@@ -571,7 +571,7 @@ pub fn parse_nzb(xml: &str) -> Result<Nzb, NzbError> {
                             seg.message_id = normalize_message_id(&text);
                             if seg.message_id.is_empty() {
                                 return Err(NzbError::Malformed(format!(
-                                    "segment {} message-ID içermiyor",
+                                    "segment {} has no message-ID",
                                     seg.number
                                 )));
                             }

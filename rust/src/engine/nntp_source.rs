@@ -194,7 +194,7 @@ impl FetchContext {
                     _ = wait_for_cancellation(&mut cancellation) => {
                         return Err(io::Error::new(
                             io::ErrorKind::Interrupted,
-                            "segment çekimi iptal edildi",
+                            "segment fetch cancelled",
                         ));
                     }
                     result = work => result?,
@@ -250,7 +250,7 @@ impl FetchContext {
             let result = if stale {
                 Err(io::Error::new(
                     io::ErrorKind::Interrupted,
-                    "önden çekim dalgası geçersiz",
+                    "invalid prefetch wave",
                 ))
             } else {
                 ctx.fetch(index).await
@@ -335,7 +335,7 @@ impl NntpByteSource {
             ctx.fetch_and_cache_with_kick(0, false).await?;
         }
         if source.file_size().is_none() {
-            return Err(io::Error::other("ilk segmentten dosya boyutu öğrenilemedi"));
+            return Err(io::Error::other("could not learn file size from the first segment"));
         }
         Ok(source)
     }
@@ -385,7 +385,7 @@ impl NntpByteSource {
                         .lock()
                         .expect("kilit")
                         .decoded_span(index)
-                        .expect("çözülen segmentin span'i olur");
+                        .expect("decoded segment has a span");
                     return Ok((index, span));
                 }
                 Err(LocatorError::NeedSegments(indices)) => {
@@ -443,14 +443,14 @@ impl NntpByteSource {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
                 format!(
-                    "geçersiz kaynak aralığı {}..{} (boyut {file_size})",
+                    "invalid source range {}..{} (size {file_size})",
                     range.start, range.end
                 ),
             ));
         }
 
         let capacity = usize::try_from(range.end - range.start)
-            .map_err(|_| io::Error::other("istenen aralık belleğe sığmıyor"))?;
+            .map_err(|_| io::Error::other("requested range does not fit in memory"))?;
         let mut output = Vec::with_capacity(capacity);
         for piece in self.overlay_pieces(range) {
             match piece {

@@ -14,21 +14,21 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum YencError {
-    #[error("=ybegin satırı bulunamadı")]
+    #[error("=ybegin line not found")]
     MissingBegin,
-    #[error("=yend satırı bulunamadı")]
+    #[error("=yend line not found")]
     MissingEnd,
-    #[error("bozuk yEnc: {0}")]
+    #[error("malformed yEnc: {0}")]
     Malformed(String),
-    #[error("satır kaçış karakteriyle (=) bitiyor")]
+    #[error("line ends with escape character (=)")]
     TrailingEscape,
-    #[error("boyut uyuşmazlığı: beklenen {expected}, çözülen {actual}")]
+    #[error("size mismatch: expected {expected}, decoded {actual}")]
     SizeMismatch { expected: u64, actual: u64 },
-    #[error("CRC32 uyuşmazlığı: beklenen {expected:08x}, hesaplanan {actual:08x}")]
+    #[error("CRC32 mismatch: expected {expected:08x}, computed {actual:08x}")]
     CrcMismatch { expected: u32, actual: u32 },
-    #[error("parçalar kesintisiz değil (beklenen ofset {expected}, gelen {found})")]
+    #[error("parts are not contiguous (expected offset {expected}, got {found})")]
     PartsNotContiguous { expected: u64, found: u64 },
-    #[error("birleştirilecek parça yok")]
+    #[error("no pieces to join")]
     NoParts,
 }
 
@@ -117,7 +117,7 @@ pub fn decode(article: &[u8]) -> Result<YencPart, YencError> {
         }
         if line.starts_with(b"=y") {
             return Err(YencError::Malformed(format!(
-                "veri içinde beklenmeyen kontrol satırı: {}",
+                "unexpected control line in data: {}",
                 String::from_utf8_lossy(line)
             )));
         }
@@ -239,7 +239,7 @@ impl Keywords {
         self.get(key)
             .map(|v| {
                 v.parse()
-                    .map_err(|_| YencError::Malformed(format!("{key}={v} sayı değil")))
+                    .map_err(|_| YencError::Malformed(format!("{key}={v} is not a number")))
             })
             .transpose()
     }
@@ -252,7 +252,7 @@ impl Keywords {
         self.get(key)
             .map(|v| {
                 u32::from_str_radix(v.trim(), 16)
-                    .map_err(|_| YencError::Malformed(format!("{key}={v} onaltılık değil")))
+                    .map_err(|_| YencError::Malformed(format!("{key}={v} is not hex")))
             })
             .transpose()
     }
@@ -261,7 +261,7 @@ impl Keywords {
 fn parse_keywords(line: &[u8], prefix: &[u8]) -> Result<Keywords, YencError> {
     let rest = line
         .strip_prefix(prefix)
-        .ok_or_else(|| YencError::Malformed("başlık öneki eksik".into()))?;
+        .ok_or_else(|| YencError::Malformed("missing header prefix".into()))?;
     // Başlıklar ASCII'dir; name alanı ise gelişigüzel bayt içerebilir.
     let rest = String::from_utf8_lossy(rest);
 
@@ -277,7 +277,7 @@ fn parse_keywords(line: &[u8], prefix: &[u8]) -> Result<Keywords, YencError> {
     for token in attrs.split_ascii_whitespace() {
         let (key, value) = token
             .split_once('=')
-            .ok_or_else(|| YencError::Malformed(format!("anahtar=değer değil: {token}")))?;
+            .ok_or_else(|| YencError::Malformed(format!("not a key=value pair: {token}")))?;
         pairs.push((key.to_string(), value.to_string()));
     }
     Ok(Keywords { pairs, name })
@@ -339,7 +339,7 @@ sonradan gelen cop\r\n";
 
     #[test]
     fn multipart_birlestirilir_ve_dosya_crc_dogrulanir() {
-        // "123456789" iki parça: "12345" (1-5) + "6789" (6-9).
+        // "123456789" two pieces: "12345" (1-5) + "6789" (6-9).
         let p1 = decode(
             b"=ybegin part=1 total=2 line=128 size=9 name=t\r\n\
 =ypart begin=1 end=5\r\n\

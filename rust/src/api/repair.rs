@@ -108,7 +108,7 @@ impl NntpRepairFetcher {
     }
 
     fn locator_for(&self, name: &str) -> Result<Arc<Mutex<SegmentLocator>>, RepairError> {
-        let mut locators = self.locators.lock().expect("eşleyici kilidi");
+        let mut locators = self.locators.lock().expect("locator lock");
         if let Some(locator) = locators.get(&name.to_ascii_lowercase()) {
             return Ok(Arc::clone(locator));
         }
@@ -119,7 +119,7 @@ impl NntpRepairFetcher {
     }
 
     fn cache_for(&self, name: &str) -> Arc<Mutex<SegmentCache>> {
-        let mut cache = self.cache.lock().expect("önbellek kilidi");
+        let mut cache = self.cache.lock().expect("cache lock");
         cache
             .entry(name.to_ascii_lowercase())
             .or_insert_with(|| Arc::new(Mutex::new(SegmentCache::new(REPAIR_SEGMENT_CACHE))))
@@ -134,11 +134,11 @@ impl NntpRepairFetcher {
     ) -> std::io::Result<Arc<Vec<u8>>> {
         let locator = self.locator_for(name).map_err(std::io::Error::other)?;
         let cache = self.cache_for(name);
-        if let Some(data) = cache.lock().expect("önbellek").get(index) {
+        if let Some(data) = cache.lock().expect("cache").get(index) {
             return Ok(data);
         }
         let message_id = {
-            let loc = locator.lock().expect("eşleyici");
+            let loc = locator.lock().expect("locator");
             loc.message_id(index)
                 .ok_or_else(|| std::io::Error::other(format!("segment {index} yok")))?
                 .to_string()
@@ -171,7 +171,7 @@ impl NntpRepairFetcher {
                 _ = cancellation.changed() => {
                     return Err(std::io::Error::new(
                         std::io::ErrorKind::Interrupted,
-                        "onarım çekimi iptal edildi",
+                        "repair fetch cancelled",
                     ));
                 }
                 result = work => result?,
@@ -179,14 +179,14 @@ impl NntpRepairFetcher {
         };
 
         {
-            let mut loc = locator.lock().expect("eşleyici");
+            let mut loc = locator.lock().expect("locator");
             if !loc.is_located(index) {
                 loc.record_part(index, &part)
                     .map_err(|error| std::io::Error::other(error.to_string()))?;
             }
         }
         let data = Arc::new(part.data.clone());
-        cache.lock().expect("önbellek").insert(index, Arc::clone(&data));
+        cache.lock().expect("cache").insert(index, Arc::clone(&data));
         Ok(data)
     }
 
@@ -199,7 +199,7 @@ impl NntpRepairFetcher {
         let locator = self.locator_for(name).map_err(std::io::Error::other)?;
         loop {
             let outcome = {
-                let loc = locator.lock().expect("eşleyici");
+                let loc = locator.lock().expect("locator");
                 loc.resolve(offset..offset + 1)
             };
             match outcome {
@@ -207,9 +207,9 @@ impl NntpRepairFetcher {
                     let index = slices[0].index;
                     let span = locator
                         .lock()
-                        .expect("eşleyici")
+                        .expect("locator")
                         .decoded_span(index)
-                        .expect("çözülen segmentin span'i olur");
+                        .expect("decoded segment has a span");
                     return Ok((index, span));
                 }
                 Err(crate::engine::locator::LocatorError::NeedSegments(indices)) => {
@@ -249,22 +249,22 @@ impl RepairFetcher for NntpRepairFetcher {
         let mut output: Vec<u8> = Vec::new();
         let mut index = 0usize;
         let segment_total = {
-            let loc = locator.lock().expect("eşleyici");
+            let loc = locator.lock().expect("locator");
             loc.segment_count()
         };
         loop {
             let data = self.fetch_segment(name, index).await?;
             let span = locator
                 .lock()
-                .expect("eşleyici")
+                .expect("locator")
                 .decoded_span(index)
-                .expect("çözülen segmentin span'i olur");
+                .expect("decoded segment has a span");
             if span.end as usize > output.len() {
                 output.resize(span.end as usize, 0);
             }
             output[span.start as usize..span.end as usize].copy_from_slice(&data);
 
-            let file_size = locator.lock().expect("eşleyici").file_size();
+            let file_size = locator.lock().expect("locator").file_size();
             if let Some(size) = file_size {
                 if span.end >= size {
                     output.truncate(size as usize);
@@ -274,7 +274,7 @@ impl RepairFetcher for NntpRepairFetcher {
             index += 1;
             if index > segment_total + 1 {
                 return Err(std::io::Error::other(
-                    "PAR2 dosyası tüm segmentlerden sonra da tamamlanmadı",
+                    "PAR2 file did not complete even after fetching all segments",
                 ));
             }
         }
@@ -299,7 +299,7 @@ pub fn begin_repair(config: ProviderConfigDto, nzb_path: String) -> u64 {
         detail: String::new(),
     }));
 
-    let mut active = ACTIVE_REPAIR.lock().expect("aktif onarım kilidi");
+    let mut active = ACTIVE_REPAIR.lock().expect("active repair lock");
     if let Some(previous) = active.take() {
         let _ = previous.cancel.send(true);
         // Önceki görevin kapanmasını bekletmek için yeni göreve taşınır.
@@ -327,7 +327,7 @@ pub fn begin_repair(config: ProviderConfigDto, nzb_path: String) -> u64 {
 
 /// Oturumun son ilerleme anlığını döndürür; oturum yoksa None.
 pub fn repair_progress(session_id: u64) -> Option<RepairProgressDto> {
-    let active = ACTIVE_REPAIR.lock().expect("aktif onarım kilidi");
+    let active = ACTIVE_REPAIR.lock().expect("active repair lock");
     let repair = active
         .as_ref()
         .filter(|repair| repair.session_id == session_id)?;
@@ -343,22 +343,22 @@ pub fn repair_progress(session_id: u64) -> Option<RepairProgressDto> {
 /// Oturum sonucunu bekler. Oturum iptal edilmişse açık hata döner.
 pub fn await_repair(session_id: u64) -> Result<RepairReportDto, String> {
     let (ready_result, cancel) = {
-        let mut active = ACTIVE_REPAIR.lock().expect("aktif onarım kilidi");
+        let mut active = ACTIVE_REPAIR.lock().expect("active repair lock");
         let repair = active
             .as_mut()
             .filter(|repair| repair.session_id == session_id)
-            .ok_or_else(|| "onarım oturumu artık etkin değil".to_string())?;
+            .ok_or_else(|| "repair session is no longer active".to_string())?;
         let ready = repair
             .ready
             .take()
-            .ok_or_else(|| "onarım sonucu zaten bekleniyor".to_string())?;
+            .ok_or_else(|| "repair result already expected".to_string())?;
         (ready, repair.cancel.clone())
     };
 
     let result = RUNTIME.block_on(async move {
         match ready_result.await {
             Ok(result) => result,
-            Err(_) => Err("onarım oturumu beklenmedik biçimde kapandı".to_string()),
+            Err(_) => Err("repair session closed unexpectedly".to_string()),
         }
     });
     if result.is_err() {
@@ -369,7 +369,7 @@ pub fn await_repair(session_id: u64) -> Result<RepairReportDto, String> {
 
 /// Oturumu iptal eder. Kimlik artık aktif değilse false döner.
 pub fn cancel_repair(session_id: u64) -> bool {
-    let active = ACTIVE_REPAIR.lock().expect("aktif onarım kilidi");
+    let active = ACTIVE_REPAIR.lock().expect("active repair lock");
     let Some(repair) = active
         .as_ref()
         .filter(|repair| repair.session_id == session_id)
@@ -402,13 +402,13 @@ async fn run_repair_inner(
     let nzb_bytes = tokio::task::spawn_blocking(move || std::fs::read(&path_for_read))
         .await
         .map_err(|error| error.to_string())?
-        .map_err(|error| format!("NZB okunamadı: {error}"))?;
+        .map_err(|error| format!("could not read NZB: {error}"))?;
     if nzb_bytes.len() as u64 > MAX_NZB_FILE_BYTES {
         return Err(format!(
-            "NZB dosyası güvenli boyut sınırını aşıyor ({MAX_NZB_FILE_BYTES} bayt)"
+            "NZB file exceeds the safe size limit ({MAX_NZB_FILE_BYTES} bytes)"
         ));
     }
-    let nzb_text = String::from_utf8(nzb_bytes).map_err(|_| "NZB UTF-8 değil".to_string())?;
+    let nzb_text = String::from_utf8(nzb_bytes).map_err(|_| "NZB is not UTF-8".to_string())?;
     let parsed = nzb::parse_nzb(&nzb_text).map_err(|error| error.to_string())?;
 
     let par2_names: Vec<String> = parsed
@@ -419,7 +419,7 @@ async fn run_repair_inner(
         .map(str::to_string)
         .collect();
     if par2_names.is_empty() {
-        return Err("NZB'de PAR2 dosyası yok; bu yayın onarılamaz".to_string());
+        return Err("no PAR2 file in the NZB; this release cannot be repaired".to_string());
     }
 
     let pool = TlsNntpConnector::new(config.into()).into_pool();
