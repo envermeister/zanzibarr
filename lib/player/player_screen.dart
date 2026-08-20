@@ -196,6 +196,13 @@ class _PlayerScreenState extends State<PlayerScreen>
         // Desteklenen altyazıları libmpv'nin yerel video yüzeyinde işler;
         // Flutter metin katmanına bağımlı kalmaz.
         libass: true,
+        // Android'de fontconfig olmadığından libass sistem fontlarına
+        // erişemez; erişemediğinde metin altyazıları sessizce görünmez
+        // olur. media_kit bu asset'i cache'e çıkarıp sub-fonts-dir /
+        // sub-font olarak mpv'ye verir. Aile adı fontun iç adıyla
+        // birebir eşleşmelidir ("Noto Sans").
+        libassAndroidFont: 'assets/fonts/subtitle.ttf',
+        libassAndroidFontName: 'Noto Sans',
       ),
     );
     _videoController = VideoController(

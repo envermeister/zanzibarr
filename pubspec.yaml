@@ -84,6 +84,7 @@ flutter:
 
   assets:
     - assets/zanzibarr-logo.png
+    - assets/fonts/subtitle.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:
