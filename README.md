@@ -132,6 +132,8 @@ cargo test             # inside rust/ — engine side
 
 CI produces the Windows `.exe` and Android `.apk` artifacts on demand (see `.github/workflows/`).
 
+Building on **Linux desktop** (unsupported, community-verified): see [`docs/BUILDING.linux.md`](docs/BUILDING.linux.md).
+
 ## Roadmap
 
 - [x] Streaming playback with true seek (STORE releases)
