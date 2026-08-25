@@ -114,6 +114,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   double _subtitleScale = 1.0;
   double _subtitlePosition = 100.0;
   Duration _subtitleDelay = Duration.zero;
+  String _subtitleColor = MediaPreferences.defaultSubtitleColor;
   Duration _audioDelay = Duration.zero;
   Tracks _tracks = const Tracks();
   Track _track = const Track();
@@ -183,6 +184,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   double? _queuedSubtitleScale;
   double? _queuedSubtitlePosition;
   Duration? _queuedSubtitleDelay;
+  String? _queuedSubtitleColor;
   bool _subtitleUpdateRunning = false;
   Future<void>? _subtitleDrainFuture;
 
@@ -657,6 +659,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           (preferences.subtitleDelaySeconds * Duration.microsecondsPerSecond)
               .round(),
     );
+    _subtitleColor = preferences.subtitleColor;
     _audioDelay = Duration(
       microseconds:
           (preferences.audioDelaySeconds * Duration.microsecondsPerSecond)
@@ -693,6 +696,9 @@ class _PlayerScreenState extends State<PlayerScreen>
           AdvancedPlaybackController.maximumSubtitleDelay,
         ),
       ),
+    );
+    await _tryNativePreference(
+      () => _playback.setSubtitleColor(_subtitleColor),
     );
     await _tryNativePreference(
       () => _playback.setAudioDelay(
@@ -750,6 +756,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       subtitlePosition: _subtitlePosition,
       subtitleDelaySeconds:
           _subtitleDelay.inMicroseconds / Duration.microsecondsPerSecond,
+      subtitleColor: _subtitleColor,
       audioDelaySeconds:
           _audioDelay.inMicroseconds / Duration.microsecondsPerSecond,
     );
@@ -1082,10 +1089,17 @@ class _PlayerScreenState extends State<PlayerScreen>
     _startSubtitleDrain();
   }
 
+  void _queueSubtitleColor(String value) {
+    _queuedSubtitleColor = value;
+    if (mounted) setState(() => _subtitleColor = value);
+    _startSubtitleDrain();
+  }
+
   bool get _hasQueuedSubtitleUpdate =>
       _queuedSubtitleScale != null ||
       _queuedSubtitlePosition != null ||
-      _queuedSubtitleDelay != null;
+      _queuedSubtitleDelay != null ||
+      _queuedSubtitleColor != null;
 
   void _startSubtitleDrain() {
     if (_disposing || _subtitleUpdateRunning || !_hasQueuedSubtitleUpdate) {
@@ -1143,6 +1157,21 @@ class _PlayerScreenState extends State<PlayerScreen>
           } catch (_) {
             if (_queuedSubtitleDelay == null && mounted) {
               setState(() => _subtitleDelay = _playback.subtitleDelay);
+            }
+            rethrow;
+          }
+          continue;
+        }
+
+        final color = _queuedSubtitleColor;
+        if (color != null) {
+          _queuedSubtitleColor = null;
+          try {
+            await _playback.setSubtitleColor(color);
+            applied = true;
+          } catch (_) {
+            if (_queuedSubtitleColor == null && mounted) {
+              setState(() => _subtitleColor = _playback.subtitleColor);
             }
             rethrow;
           }
@@ -2723,11 +2752,13 @@ class _PlayerScreenState extends State<PlayerScreen>
         scale: _subtitleScale,
         position: _subtitlePosition,
         delay: _subtitleDelay,
+        color: _subtitleColor,
         tracks: _tracks.subtitle,
         selectedTrack: _track.subtitle,
         onScaleChanged: _queueSubtitleScale,
         onPositionChanged: _queueSubtitlePosition,
         onDelayChanged: _queueSubtitleDelay,
+        onColorChanged: _queueSubtitleColor,
         onTrackSelected: (track) => unawaited(_selectSubtitle(track)),
         onClose: _toggleSubtitleControls,
       );

@@ -57,6 +57,7 @@
   "auto": "自动",
   "off": "关闭",
   "subtitleDecreaseTooltip": "减小字幕字号",
+  "subtitleColor": "字幕颜色",
   "subtitleIncreaseTooltip": "增大字幕字号",
   "subtitleMoveUpTooltip": "字幕上移",
   "subtitleMoveDownTooltip": "字幕下移",

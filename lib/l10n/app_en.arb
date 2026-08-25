@@ -120,6 +120,7 @@
   "auto": "Auto",
   "off": "Off",
   "subtitleDecreaseTooltip": "Decrease subtitle size",
+  "subtitleColor": "Subtitle color",
   "subtitleIncreaseTooltip": "Increase subtitle size",
   "subtitleMoveUpTooltip": "Move subtitle up",
   "subtitleMoveDownTooltip": "Move subtitle down",

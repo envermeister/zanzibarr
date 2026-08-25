@@ -57,6 +57,7 @@
   "auto": "خودکار",
   "off": "خاموش",
   "subtitleDecreaseTooltip": "کوچک‌تر کردن زیرنویس",
+  "subtitleColor": "رنگ زیرنویس",
   "subtitleIncreaseTooltip": "بزرگ‌تر کردن زیرنویس",
   "subtitleMoveUpTooltip": "انتقال زیرنویس به بالا",
   "subtitleMoveDownTooltip": "انتقال زیرنویس به پایین",

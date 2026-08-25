@@ -269,6 +269,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'Уменьшить размер субтитров';
 
   @override
+  String get subtitleColor => 'Цвет субтитров';
+
+  @override
   String get subtitleIncreaseTooltip => 'Увеличить размер субтитров';
 
   @override

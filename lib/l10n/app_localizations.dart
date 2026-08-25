@@ -590,6 +590,12 @@ abstract class AppLocalizations {
   /// **'Decrease subtitle size'**
   String get subtitleDecreaseTooltip;
 
+  /// No description provided for @subtitleColor.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitle color'**
+  String get subtitleColor;
+
   /// No description provided for @subtitleIncreaseTooltip.
   ///
   /// In en, this message translates to:

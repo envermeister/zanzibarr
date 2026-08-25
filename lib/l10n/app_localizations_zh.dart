@@ -262,6 +262,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get subtitleDecreaseTooltip => '减小字幕字号';
 
   @override
+  String get subtitleColor => '字幕颜色';
+
+  @override
   String get subtitleIncreaseTooltip => '增大字幕字号';
 
   @override

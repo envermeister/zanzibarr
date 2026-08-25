@@ -57,6 +57,7 @@
   "auto": "자동",
   "off": "끄기",
   "subtitleDecreaseTooltip": "자막 크기 줄이기",
+  "subtitleColor": "자막 색상",
   "subtitleIncreaseTooltip": "자막 크기 키우기",
   "subtitleMoveUpTooltip": "자막 위로 이동",
   "subtitleMoveDownTooltip": "자막 아래로 이동",

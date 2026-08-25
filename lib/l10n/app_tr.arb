@@ -78,6 +78,7 @@
   "auto": "Otomatik",
   "off": "Kapalı",
   "subtitleDecreaseTooltip": "Altyazıyı küçült",
+  "subtitleColor": "Altyazı rengi",
   "subtitleIncreaseTooltip": "Altyazıyı büyüt",
   "subtitleMoveUpTooltip": "Altyazıyı yukarı taşı",
   "subtitleMoveDownTooltip": "Altyazıyı aşağı taşı",

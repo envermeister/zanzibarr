@@ -57,6 +57,7 @@
   "auto": "Авто",
   "off": "Выкл.",
   "subtitleDecreaseTooltip": "Уменьшить размер субтитров",
+  "subtitleColor": "Цвет субтитров",
   "subtitleIncreaseTooltip": "Увеличить размер субтитров",
   "subtitleMoveUpTooltip": "Поднять субтитры выше",
   "subtitleMoveDownTooltip": "Опустить субтитры ниже",

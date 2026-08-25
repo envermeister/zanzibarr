@@ -57,6 +57,7 @@
   "auto": "تلقائي",
   "off": "إيقاف",
   "subtitleDecreaseTooltip": "تصغير حجم الترجمة",
+  "subtitleColor": "لون الترجمة",
   "subtitleIncreaseTooltip": "تكبير حجم الترجمة",
   "subtitleMoveUpTooltip": "تحريك الترجمة لأعلى",
   "subtitleMoveDownTooltip": "تحريك الترجمة لأسفل",

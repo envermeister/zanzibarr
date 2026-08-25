@@ -57,6 +57,7 @@
   "auto": "Auto",
   "off": "Off",
   "subtitleDecreaseTooltip": "Riduci dimensione sottotitoli",
+  "subtitleColor": "Colore dei sottotitoli",
   "subtitleIncreaseTooltip": "Aumenta dimensione sottotitoli",
   "subtitleMoveUpTooltip": "Sposta i sottotitoli in alto",
   "subtitleMoveDownTooltip": "Sposta i sottotitoli in basso",

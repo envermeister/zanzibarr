@@ -268,6 +268,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'Decrease subtitle size';
 
   @override
+  String get subtitleColor => 'Subtitle color';
+
+  @override
   String get subtitleIncreaseTooltip => 'Increase subtitle size';
 
   @override

@@ -268,6 +268,9 @@ class AppLocalizationsHi extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'सबटाइटल आकार घटाएँ';
 
   @override
+  String get subtitleColor => 'उपशीर्षक रंग';
+
+  @override
   String get subtitleIncreaseTooltip => 'सबटाइटल आकार बढ़ाएँ';
 
   @override

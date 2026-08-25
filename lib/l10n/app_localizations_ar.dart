@@ -267,6 +267,9 @@ class AppLocalizationsAr extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'تصغير حجم الترجمة';
 
   @override
+  String get subtitleColor => 'لون الترجمة';
+
+  @override
   String get subtitleIncreaseTooltip => 'تكبير حجم الترجمة';
 
   @override

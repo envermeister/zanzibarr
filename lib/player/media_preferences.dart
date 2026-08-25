@@ -172,6 +172,7 @@ class MediaPreferences {
     double subtitleScale = defaultSubtitleScale,
     double subtitlePosition = defaultSubtitlePosition,
     double subtitleDelaySeconds = 0,
+    String subtitleColor = defaultSubtitleColor,
     double audioDelaySeconds = 0,
   }) => MediaPreferences._(
     crop: crop,
@@ -197,6 +198,7 @@ class MediaPreferences {
       subtitleDelaySeconds,
       0,
     ).clamp(-maximumDelaySeconds, maximumDelaySeconds).toDouble(),
+    subtitleColor: _sanitizeSubtitleColor(subtitleColor),
     audioDelaySeconds: _finiteOr(
       audioDelaySeconds,
       0,
@@ -216,6 +218,7 @@ class MediaPreferences {
     required this.subtitleScale,
     required this.subtitlePosition,
     required this.subtitleDelaySeconds,
+    required this.subtitleColor,
     required this.audioDelaySeconds,
   });
 
@@ -235,8 +238,10 @@ class MediaPreferences {
   static const maximumSubtitlePosition = 150.0;
   static const defaultSubtitlePosition = 100.0;
   static const maximumDelaySeconds = 600.0;
+  static const defaultSubtitleColor = '#FFFFFF';
 
   static final RegExp _presetPattern = RegExp(r'^[a-z0-9][a-z0-9_-]{0,31}$');
+  static final RegExp _subtitleColorPattern = RegExp(r'^#[0-9a-fA-F]{6}$');
 
   final NormalizedCropRect crop;
   final double? aspectRatio;
@@ -253,6 +258,7 @@ class MediaPreferences {
   final double subtitleScale;
   final double subtitlePosition;
   final double subtitleDelaySeconds;
+  final String subtitleColor;
   final double audioDelaySeconds;
 
   bool get periodicInfoEnabled => periodicInfoInterval != null;
@@ -273,6 +279,7 @@ class MediaPreferences {
     'subtitleScale': subtitleScale,
     'subtitlePosition': subtitlePosition,
     'subtitleDelaySeconds': subtitleDelaySeconds,
+    'subtitleColor': subtitleColor,
     'audioDelaySeconds': audioDelaySeconds,
   };
 
@@ -316,6 +323,7 @@ class MediaPreferences {
           defaultSubtitlePosition,
         ),
         subtitleDelaySeconds: _numberOr(value['subtitleDelaySeconds'], 0),
+        subtitleColor: _stringOr(value['subtitleColor'], defaultSubtitleColor),
         audioDelaySeconds: _numberOr(value['audioDelaySeconds'], 0),
       );
     } on FormatException {
@@ -342,6 +350,11 @@ class MediaPreferences {
   static String _sanitizePreset(String value, String fallback) =>
       _presetPattern.hasMatch(value) ? value : fallback;
 
+  static String _sanitizeSubtitleColor(String value) =>
+      _subtitleColorPattern.hasMatch(value.trim())
+          ? value.trim().toUpperCase()
+          : defaultSubtitleColor;
+
   @override
   bool operator ==(Object other) =>
       other is MediaPreferences &&
@@ -357,6 +370,7 @@ class MediaPreferences {
       subtitleScale == other.subtitleScale &&
       subtitlePosition == other.subtitlePosition &&
       subtitleDelaySeconds == other.subtitleDelaySeconds &&
+      subtitleColor == other.subtitleColor &&
       audioDelaySeconds == other.audioDelaySeconds;
 
   @override
@@ -373,6 +387,7 @@ class MediaPreferences {
     subtitleScale,
     subtitlePosition,
     subtitleDelaySeconds,
+    subtitleColor,
     audioDelaySeconds,
   );
 }

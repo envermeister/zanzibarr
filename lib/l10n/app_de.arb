@@ -57,6 +57,7 @@
   "auto": "Automatisch",
   "off": "Aus",
   "subtitleDecreaseTooltip": "Untertitelgröße verkleinern",
+  "subtitleColor": "Untertitelfarbe",
   "subtitleIncreaseTooltip": "Untertitelgröße vergrößern",
   "subtitleMoveUpTooltip": "Untertitel nach oben verschieben",
   "subtitleMoveDownTooltip": "Untertitel nach unten verschieben",

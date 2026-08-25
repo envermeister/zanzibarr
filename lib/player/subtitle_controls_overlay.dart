@@ -9,11 +9,13 @@ class SubtitleControlsOverlay extends StatefulWidget {
     required this.scale,
     required this.position,
     required this.delay,
+    required this.color,
     required this.tracks,
     required this.selectedTrack,
     required this.onScaleChanged,
     required this.onPositionChanged,
     required this.onDelayChanged,
+    required this.onColorChanged,
     required this.onTrackSelected,
     required this.onClose,
   });
@@ -21,11 +23,13 @@ class SubtitleControlsOverlay extends StatefulWidget {
   final double scale;
   final double position;
   final Duration delay;
+  final String color;
   final List<SubtitleTrack> tracks;
   final SubtitleTrack selectedTrack;
   final ValueChanged<double> onScaleChanged;
   final ValueChanged<double> onPositionChanged;
   final ValueChanged<Duration> onDelayChanged;
+  final ValueChanged<String> onColorChanged;
   final ValueChanged<SubtitleTrack> onTrackSelected;
   final VoidCallback onClose;
 
@@ -226,6 +230,12 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                         ),
                       ),
                       const _Divider(),
+                      _ColorMenu(
+                        tooltip: l10n.subtitleColor,
+                        selected: widget.color,
+                        onSelected: widget.onColorChanged,
+                      ),
+                      const _Divider(),
                       _OverlayButton(
                         icon: Icons.close_rounded,
                         tooltip: l10n.closeSubtitleControlsTooltip,
@@ -275,6 +285,77 @@ class _Divider extends StatelessWidget {
     margin: const EdgeInsets.symmetric(horizontal: 3),
     color: Colors.white12,
   );
+}
+
+/// Altyazı metin rengi seçici: hazır renk halkaları; seçili renk tik ile
+/// işaretlenir, simge geçerli rengi taşır. mpv tarafında `sub-color` düz
+/// metin altyazılara uygulanır; kendi stilini taşıyan ASS izleri etkilenmez.
+class _ColorMenu extends StatelessWidget {
+  const _ColorMenu({
+    required this.tooltip,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String tooltip;
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  static const colors = <String>[
+    '#FFFFFF',
+    '#FFD54F',
+    '#FFB300',
+    '#00E676',
+    '#00E5FF',
+    '#FF5252',
+    '#E040FB',
+  ];
+
+  static Color _toColor(String hex) =>
+      Color(0xFF000000 | int.parse(hex.substring(1), radix: 16));
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: tooltip,
+      color: const Color(0xF2242427),
+      onSelected: onSelected,
+      itemBuilder: (context) => colors
+          .map(
+            (hex) => PopupMenuItem<String>(
+              value: hex,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    child: hex == selected
+                        ? const Icon(Icons.check, size: 16)
+                        : null,
+                  ),
+                  Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      color: _toColor(hex),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white24),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(growable: false),
+      child: Padding(
+        padding: const EdgeInsets.all(7),
+        child: Icon(
+          Icons.palette_rounded,
+          color: _toColor(selected),
+          size: 18,
+        ),
+      ),
+    );
+  }
 }
 
 String _subtitleLabel(

@@ -57,6 +57,7 @@
   "auto": "Automático",
   "off": "Desativado",
   "subtitleDecreaseTooltip": "Diminuir tamanho da legenda",
+  "subtitleColor": "Cor das legendas",
   "subtitleIncreaseTooltip": "Aumentar tamanho da legenda",
   "subtitleMoveUpTooltip": "Mover legenda para cima",
   "subtitleMoveDownTooltip": "Mover legenda para baixo",

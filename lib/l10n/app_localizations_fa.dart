@@ -267,6 +267,9 @@ class AppLocalizationsFa extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'کوچک‌تر کردن زیرنویس';
 
   @override
+  String get subtitleColor => 'رنگ زیرنویس';
+
+  @override
   String get subtitleIncreaseTooltip => 'بزرگ‌تر کردن زیرنویس';
 
   @override

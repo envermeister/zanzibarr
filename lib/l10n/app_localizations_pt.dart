@@ -269,6 +269,9 @@ class AppLocalizationsPt extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'Diminuir tamanho da legenda';
 
   @override
+  String get subtitleColor => 'Cor das legendas';
+
+  @override
   String get subtitleIncreaseTooltip => 'Aumentar tamanho da legenda';
 
   @override

@@ -263,6 +263,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get subtitleDecreaseTooltip => '字幕サイズを小さく';
 
   @override
+  String get subtitleColor => '字幕の色';
+
+  @override
   String get subtitleIncreaseTooltip => '字幕サイズを大きく';
 
   @override

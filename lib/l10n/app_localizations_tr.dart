@@ -268,6 +268,9 @@ class AppLocalizationsTr extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'Altyazıyı küçült';
 
   @override
+  String get subtitleColor => 'Altyazı rengi';
+
+  @override
   String get subtitleIncreaseTooltip => 'Altyazıyı büyüt';
 
   @override

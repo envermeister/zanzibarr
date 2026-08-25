@@ -313,6 +313,33 @@ void main() {
     expect(controller.subtitlePosition, 33.4);
   });
 
+  test('altyazı rengi mpv hex biçimiyle gönderilir ve doğrulanır', () async {
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setSubtitleColor('#ffd54f');
+
+    expect(controller.subtitleColor, '#FFD54F');
+    expect(backend.calls, ['set:sub-color=#FFD54F']);
+    expect(backend.properties['sub-color'], '#FFD54F');
+
+    await expectLater(
+      controller.setSubtitleColor('yellow'),
+      throwsArgumentError,
+    );
+    await expectLater(
+      controller.setSubtitleColor('#12345'),
+      throwsArgumentError,
+    );
+    await expectLater(
+      controller.setSubtitleColor('#GGGGGG'),
+      throwsArgumentError,
+    );
+    // Reddedilen değerler motor tarafına yazılmaz ve durum değişmez.
+    expect(controller.subtitleColor, '#FFD54F');
+    expect(backend.calls, hasLength(1));
+  });
+
   test('ses senkronu artı eksi beş saniyeyle sınırlı', () async {
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend);

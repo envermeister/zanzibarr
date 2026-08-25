@@ -139,6 +139,11 @@ class AdvancedPlaybackController {
   static const Duration maximumSubtitleDelay = Duration(seconds: 60);
   static const Duration maximumAudioDelay = Duration(seconds: 5);
 
+  /// Varsayılan altyazı rengi (beyaz). mpv `sub-color` değeri `#RRGGBB`
+  /// biçimindedir; ASS stillerini ezmez, düz metin altyazılara uygulanır.
+  static const String defaultSubtitleColor = '#FFFFFF';
+  static final RegExp _subtitleColorPattern = RegExp(r'^#[0-9a-fA-F]{6}$');
+
   static const supportedRates = <double>[
     0.5,
     0.75,
@@ -306,6 +311,7 @@ class AdvancedPlaybackController {
   double subtitleScale = 1.0;
   double subtitlePosition = 100.0;
   Duration subtitleDelay = Duration.zero;
+  String subtitleColor = defaultSubtitleColor;
   Duration audioDelay = Duration.zero;
   double videoPanX = 0.0;
   double videoPanY = 0.0;
@@ -886,6 +892,15 @@ class AdvancedPlaybackController {
     _requireDurationRange(value, maximumSubtitleDelay, 'Altyazı gecikmesi');
     await _backend.setProperty('sub-delay', _seconds(value));
     subtitleDelay = value;
+  }
+
+  Future<void> setSubtitleColor(String value) async {
+    final normalized = value.trim().toUpperCase();
+    if (!_subtitleColorPattern.hasMatch(normalized)) {
+      throw ArgumentError.value(value, 'value', 'Altyazı rengi');
+    }
+    await _backend.setProperty('sub-color', normalized);
+    subtitleColor = normalized;
   }
 
   Future<void> setAudioDelay(Duration value) async {

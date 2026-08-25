@@ -65,6 +65,7 @@ void main() {
       subtitleScale: 1.4,
       subtitlePosition: 88,
       subtitleDelaySeconds: -0.35,
+      subtitleColor: '#00E5FF',
       audioDelaySeconds: 0.125,
     );
 
@@ -121,6 +122,7 @@ void main() {
         subtitleScale: -3,
         subtitlePosition: 500,
         subtitleDelaySeconds: -1000,
+        subtitleColor: 'red',
         audioDelaySeconds: 1000,
       );
 
@@ -139,8 +141,24 @@ void main() {
       expect(preferences.subtitleScale, 0);
       expect(preferences.subtitlePosition, 150);
       expect(preferences.subtitleDelaySeconds, -600);
+      expect(preferences.subtitleColor, MediaPreferences.defaultSubtitleColor);
       expect(preferences.audioDelaySeconds, 600);
     });
+  });
+
+  test('subtitle color is normalized and validated', () {
+    expect(
+      MediaPreferences(subtitleColor: '#00e5ff').subtitleColor,
+      '#00E5FF',
+    );
+    expect(
+      MediaPreferences(subtitleColor: '#12345678').subtitleColor,
+      MediaPreferences.defaultSubtitleColor,
+    );
+    expect(
+      MediaPreferences(subtitleColor: '  #ffd54F ').subtitleColor,
+      '#FFD54F',
+    );
   });
 
   test('clear deletes only the hashed media key', () async {

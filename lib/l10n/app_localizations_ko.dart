@@ -263,6 +263,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get subtitleDecreaseTooltip => '자막 크기 줄이기';
 
   @override
+  String get subtitleColor => '자막 색상';
+
+  @override
   String get subtitleIncreaseTooltip => '자막 크기 키우기';
 
   @override

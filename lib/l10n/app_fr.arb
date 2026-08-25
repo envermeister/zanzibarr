@@ -57,6 +57,7 @@
   "auto": "Auto",
   "off": "Désactivé",
   "subtitleDecreaseTooltip": "Réduire la taille des sous-titres",
+  "subtitleColor": "Couleur des sous-titres",
   "subtitleIncreaseTooltip": "Augmenter la taille des sous-titres",
   "subtitleMoveUpTooltip": "Déplacer les sous-titres vers le haut",
   "subtitleMoveDownTooltip": "Déplacer les sous-titres vers le bas",
