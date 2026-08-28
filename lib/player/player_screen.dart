@@ -17,6 +17,7 @@ import 'advanced_playback_controller.dart';
 import 'gyuni_player_controls.dart';
 import 'media_preferences.dart';
 import 'picture_in_picture_window.dart';
+import 'playback_history.dart';
 import 'playback_startup_guard.dart';
 import 'player_keyboard_controls.dart';
 import 'smart_canvas.dart';
@@ -35,6 +36,7 @@ class PlayerScreen extends StatefulWidget {
     this.store,
     this.preferenceStore,
     this.pictureInPictureWindow,
+    this.historyStore,
     this.startupTimeout = const Duration(seconds: 45),
     this.streamPreparationTimeout = const Duration(seconds: 90),
   });
@@ -49,6 +51,10 @@ class PlayerScreen extends StatefulWidget {
 
   /// Yerel pencere davranışını testlerde ayırmak için.
   final PictureInPictureWindow? pictureInPictureWindow;
+
+  /// İzleme geçmişi (kaldığı yerden devam); testlerde sahte depo enjekte
+  /// edilir.
+  final PlaybackHistoryStore? historyStore;
 
   /// libmpv video izini tanıyamazsa sonsuz spinner yerine hata gösterilir.
   final Duration startupTimeout;
@@ -78,6 +84,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   late final PictureInPictureWindow _pictureInPictureWindow;
   late final PlaybackStartupGuard _startupGuard;
   late final MediaPreferencesStore _preferenceStore;
+  late final PlaybackHistoryStore _historyStore;
 
   final _videoKey = GlobalKey<VideoState>();
   final _playButtonFocusNode = FocusNode(debugLabel: 'Oynat/Duraklat düğmesi');
@@ -188,6 +195,11 @@ class _PlayerScreenState extends State<PlayerScreen>
   bool _subtitleUpdateRunning = false;
   Future<void>? _subtitleDrainFuture;
 
+  // İzleme geçmişi: konum 5 sn'de bir ve kapanışta depoya yazılır; oynatma
+  // hazır olduğunda (bir kez) kayıtlı konuma dönülür.
+  Timer? _historySaveTimer;
+  bool _historyResumeDone = false;
+
   @override
   void initState() {
     super.initState();
@@ -224,6 +236,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _pictureInPictureWindow =
         widget.pictureInPictureWindow ?? NativePictureInPictureWindow();
     _preferenceStore = widget.preferenceStore ?? MediaPreferencesStore();
+    _historyStore = widget.historyStore ?? PlaybackHistoryStore();
     _startupGuard = PlaybackStartupGuard(widget.startupTimeout);
     _positionSubscription = _player.stream.position.listen((position) {
       if (!mounted || _scrubbing) return;
@@ -471,6 +484,60 @@ class _PlayerScreenState extends State<PlayerScreen>
     });
     _configurePeriodicInfoTimer();
     _revealControls();
+    _startHistoryTracking();
+  }
+
+  /// Oynatma hazır olduğunda kayıtlı konuma (varsa) döner ve ilerlemeyi
+  /// düzenli aralıklarla depoya yazar.
+  void _startHistoryTracking() {
+    unawaited(_resumeFromHistory());
+    _historySaveTimer?.cancel();
+    _historySaveTimer = Timer.periodic(
+      const Duration(seconds: 5),
+      (_) => unawaited(_saveHistoryPosition()),
+    );
+  }
+
+  Future<void> _resumeFromHistory() async {
+    if (_historyResumeDone) return;
+    _historyResumeDone = true;
+    try {
+      final entry = await _historyStore.entryFor(widget.nzbPath);
+      if (entry == null || _disposing) return;
+      // Son %3'e ulaşılmış içerik izlenmiş sayılır; kayıt düşülüp baştan
+      // başlanır.
+      if (entry.isCompleted) {
+        await _historyStore.remove(widget.nzbPath);
+        return;
+      }
+      final target = entry.position;
+      if (target < const Duration(seconds: 3)) return;
+      await _player.seek(target);
+    } catch (_) {
+      // Geçmiş okunamazsa oynatma baştan başlar.
+    }
+  }
+
+  Future<void> _saveHistoryPosition() async {
+    if (_disposing || !_playbackReady) return;
+    final duration = _duration;
+    final position = _position;
+    if (position <= const Duration(seconds: 3)) return;
+    try {
+      await _historyStore.save(
+        PlaybackHistoryEntry(
+          nzbPath: widget.nzbPath,
+          title: _info?.filename.isNotEmpty ?? false
+              ? _info!.filename
+              : widget.nzbPath.split(RegExp(r'[/\\]')).last,
+          positionSeconds: position.inMilliseconds / 1000,
+          durationSeconds: duration.inMilliseconds / 1000,
+          updatedAtMs: DateTime.now().millisecondsSinceEpoch,
+        ),
+      );
+    } catch (_) {
+      // Depo yazılamazsa oynatma kesilmez.
+    }
   }
 
   /// Yalnız entegrasyon testleri içindir: oynatma hazır mı, açılış hatası
@@ -784,6 +851,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    // Son izleme konumu kapanışta kaydedilir; _disposing bayrağından önce
+    // çalışmalı ki yazma atlanmasın.
+    unawaited(_saveHistoryPosition());
+    _historySaveTimer?.cancel();
     _disposing = true;
     _scrubGeneration++;
     _canvasGeneration++;

@@ -57,6 +57,14 @@
   "auto": "Auto",
   "off": "Désactivé",
   "subtitleDecreaseTooltip": "Réduire la taille des sous-titres",
+  "continueWatching": "Reprendre la lecture",
+  "historyRemoveTooltip": "Retirer de l'historique",
+  "historyRemaining": "{time} restantes",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "Couleur des sous-titres",
   "subtitleIncreaseTooltip": "Augmenter la taille des sous-titres",
   "subtitleMoveUpTooltip": "Déplacer les sous-titres vers le haut",

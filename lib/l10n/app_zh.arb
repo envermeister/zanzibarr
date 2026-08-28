@@ -57,6 +57,14 @@
   "auto": "自动",
   "off": "关闭",
   "subtitleDecreaseTooltip": "减小字幕字号",
+  "continueWatching": "继续观看",
+  "historyRemoveTooltip": "从历史记录中移除",
+  "historyRemaining": "剩余 {time}",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "字幕颜色",
   "subtitleIncreaseTooltip": "增大字幕字号",
   "subtitleMoveUpTooltip": "字幕上移",

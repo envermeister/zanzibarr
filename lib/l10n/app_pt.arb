@@ -57,6 +57,14 @@
   "auto": "Automático",
   "off": "Desativado",
   "subtitleDecreaseTooltip": "Diminuir tamanho da legenda",
+  "continueWatching": "Continuar a ver",
+  "historyRemoveTooltip": "Remover do histórico",
+  "historyRemaining": "Faltam {time}",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "Cor das legendas",
   "subtitleIncreaseTooltip": "Aumentar tamanho da legenda",
   "subtitleMoveUpTooltip": "Mover legenda para cima",

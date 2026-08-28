@@ -263,6 +263,17 @@ class AppLocalizationsKo extends AppLocalizations {
   String get subtitleDecreaseTooltip => '자막 크기 줄이기';
 
   @override
+  String get continueWatching => '이어보기';
+
+  @override
+  String get historyRemoveTooltip => '기록에서 삭제';
+
+  @override
+  String historyRemaining(String time) {
+    return '$time 남음';
+  }
+
+  @override
   String get subtitleColor => '자막 색상';
 
   @override

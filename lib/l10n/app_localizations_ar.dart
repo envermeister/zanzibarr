@@ -267,6 +267,17 @@ class AppLocalizationsAr extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'تصغير حجم الترجمة';
 
   @override
+  String get continueWatching => 'متابعة المشاهدة';
+
+  @override
+  String get historyRemoveTooltip => 'إزالة من السجل';
+
+  @override
+  String historyRemaining(String time) {
+    return 'متبقٍ $time';
+  }
+
+  @override
   String get subtitleColor => 'لون الترجمة';
 
   @override

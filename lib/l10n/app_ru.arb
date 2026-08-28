@@ -57,6 +57,14 @@
   "auto": "Авто",
   "off": "Выкл.",
   "subtitleDecreaseTooltip": "Уменьшить размер субтитров",
+  "continueWatching": "Продолжить просмотр",
+  "historyRemoveTooltip": "Удалить из истории",
+  "historyRemaining": "Осталось {time}",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "Цвет субтитров",
   "subtitleIncreaseTooltip": "Увеличить размер субтитров",
   "subtitleMoveUpTooltip": "Поднять субтитры выше",

@@ -57,6 +57,14 @@
   "auto": "خودکار",
   "off": "خاموش",
   "subtitleDecreaseTooltip": "کوچک‌تر کردن زیرنویس",
+  "continueWatching": "ادامه تماشا",
+  "historyRemoveTooltip": "حذف از تاریخچه",
+  "historyRemaining": "{time} باقی مانده",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "رنگ زیرنویس",
   "subtitleIncreaseTooltip": "بزرگ‌تر کردن زیرنویس",
   "subtitleMoveUpTooltip": "انتقال زیرنویس به بالا",

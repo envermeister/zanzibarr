@@ -57,6 +57,14 @@
   "auto": "Automatisch",
   "off": "Aus",
   "subtitleDecreaseTooltip": "Untertitelgröße verkleinern",
+  "continueWatching": "Weiter ansehen",
+  "historyRemoveTooltip": "Aus Verlauf entfernen",
+  "historyRemaining": "Noch {time}",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "Untertitelfarbe",
   "subtitleIncreaseTooltip": "Untertitelgröße vergrößern",
   "subtitleMoveUpTooltip": "Untertitel nach oben verschieben",

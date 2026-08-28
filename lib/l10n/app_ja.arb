@@ -57,6 +57,14 @@
   "auto": "自動",
   "off": "オフ",
   "subtitleDecreaseTooltip": "字幕サイズを小さく",
+  "continueWatching": "続きを見る",
+  "historyRemoveTooltip": "履歴から削除",
+  "historyRemaining": "残り {time}",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "字幕の色",
   "subtitleIncreaseTooltip": "字幕サイズを大きく",
   "subtitleMoveUpTooltip": "字幕を上に移動",

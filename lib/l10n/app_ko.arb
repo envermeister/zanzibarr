@@ -57,6 +57,14 @@
   "auto": "자동",
   "off": "끄기",
   "subtitleDecreaseTooltip": "자막 크기 줄이기",
+  "continueWatching": "이어보기",
+  "historyRemoveTooltip": "기록에서 삭제",
+  "historyRemaining": "{time} 남음",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "자막 색상",
   "subtitleIncreaseTooltip": "자막 크기 키우기",
   "subtitleMoveUpTooltip": "자막 위로 이동",

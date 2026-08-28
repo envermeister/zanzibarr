@@ -271,6 +271,17 @@ class AppLocalizationsFr extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'Réduire la taille des sous-titres';
 
   @override
+  String get continueWatching => 'Reprendre la lecture';
+
+  @override
+  String get historyRemoveTooltip => 'Retirer de l\'historique';
+
+  @override
+  String historyRemaining(String time) {
+    return '$time restantes';
+  }
+
+  @override
   String get subtitleColor => 'Couleur des sous-titres';
 
   @override

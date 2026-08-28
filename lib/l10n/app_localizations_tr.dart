@@ -268,6 +268,17 @@ class AppLocalizationsTr extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'Altyazıyı küçült';
 
   @override
+  String get continueWatching => 'İzlemeye devam et';
+
+  @override
+  String get historyRemoveTooltip => 'Geçmişten kaldır';
+
+  @override
+  String historyRemaining(String time) {
+    return '$time kaldı';
+  }
+
+  @override
   String get subtitleColor => 'Altyazı rengi';
 
   @override

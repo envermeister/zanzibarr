@@ -120,6 +120,14 @@
   "auto": "Auto",
   "off": "Off",
   "subtitleDecreaseTooltip": "Decrease subtitle size",
+  "continueWatching": "Continue watching",
+  "historyRemoveTooltip": "Remove from history",
+  "historyRemaining": "{time} left",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "Subtitle color",
   "subtitleIncreaseTooltip": "Increase subtitle size",
   "subtitleMoveUpTooltip": "Move subtitle up",

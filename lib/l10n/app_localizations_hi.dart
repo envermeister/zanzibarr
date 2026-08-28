@@ -268,6 +268,17 @@ class AppLocalizationsHi extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'सबटाइटल आकार घटाएँ';
 
   @override
+  String get continueWatching => 'देखना जारी रखें';
+
+  @override
+  String get historyRemoveTooltip => 'इतिहास से हटाएँ';
+
+  @override
+  String historyRemaining(String time) {
+    return '$time शेष';
+  }
+
+  @override
   String get subtitleColor => 'उपशीर्षक रंग';
 
   @override

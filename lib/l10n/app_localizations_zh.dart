@@ -262,6 +262,17 @@ class AppLocalizationsZh extends AppLocalizations {
   String get subtitleDecreaseTooltip => '减小字幕字号';
 
   @override
+  String get continueWatching => '继续观看';
+
+  @override
+  String get historyRemoveTooltip => '从历史记录中移除';
+
+  @override
+  String historyRemaining(String time) {
+    return '剩余 $time';
+  }
+
+  @override
   String get subtitleColor => '字幕颜色';
 
   @override

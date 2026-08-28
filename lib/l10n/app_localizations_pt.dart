@@ -269,6 +269,17 @@ class AppLocalizationsPt extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'Diminuir tamanho da legenda';
 
   @override
+  String get continueWatching => 'Continuar a ver';
+
+  @override
+  String get historyRemoveTooltip => 'Remover do histórico';
+
+  @override
+  String historyRemaining(String time) {
+    return 'Faltam $time';
+  }
+
+  @override
   String get subtitleColor => 'Cor das legendas';
 
   @override

@@ -57,6 +57,14 @@
   "auto": "Auto",
   "off": "Off",
   "subtitleDecreaseTooltip": "Riduci dimensione sottotitoli",
+  "continueWatching": "Continua a guardare",
+  "historyRemoveTooltip": "Rimuovi dalla cronologia",
+  "historyRemaining": "Mancano {time}",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "Colore dei sottotitoli",
   "subtitleIncreaseTooltip": "Aumenta dimensione sottotitoli",
   "subtitleMoveUpTooltip": "Sposta i sottotitoli in alto",

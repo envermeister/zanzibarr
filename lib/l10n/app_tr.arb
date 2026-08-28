@@ -78,6 +78,14 @@
   "auto": "Otomatik",
   "off": "Kapalı",
   "subtitleDecreaseTooltip": "Altyazıyı küçült",
+  "continueWatching": "İzlemeye devam et",
+  "historyRemoveTooltip": "Geçmişten kaldır",
+  "historyRemaining": "{time} kaldı",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "Altyazı rengi",
   "subtitleIncreaseTooltip": "Altyazıyı büyüt",
   "subtitleMoveUpTooltip": "Altyazıyı yukarı taşı",

@@ -263,6 +263,17 @@ class AppLocalizationsJa extends AppLocalizations {
   String get subtitleDecreaseTooltip => '字幕サイズを小さく';
 
   @override
+  String get continueWatching => '続きを見る';
+
+  @override
+  String get historyRemoveTooltip => '履歴から削除';
+
+  @override
+  String historyRemaining(String time) {
+    return '残り $time';
+  }
+
+  @override
   String get subtitleColor => '字幕の色';
 
   @override

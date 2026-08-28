@@ -269,6 +269,17 @@ class AppLocalizationsRu extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'Уменьшить размер субтитров';
 
   @override
+  String get continueWatching => 'Продолжить просмотр';
+
+  @override
+  String get historyRemoveTooltip => 'Удалить из истории';
+
+  @override
+  String historyRemaining(String time) {
+    return 'Осталось $time';
+  }
+
+  @override
   String get subtitleColor => 'Цвет субтитров';
 
   @override

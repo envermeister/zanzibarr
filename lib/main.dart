@@ -4,6 +4,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'l10n/app_localizations.dart';
+import 'player/gyuni_player_controls.dart' show formatPlayerDuration;
+import 'player/playback_history.dart';
 import 'player/player_screen.dart';
 import 'search/search_screen.dart';
 import 'settings/indexer_settings.dart';
@@ -13,10 +15,16 @@ import 'src/rust/frb_generated.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(ZanzibarrBootstrap(uiPreferences: UiPreferencesController(UiPreferencesStore())));
+  runApp(
+    ZanzibarrBootstrap(
+      uiPreferences: UiPreferencesController(UiPreferencesStore()),
+    ),
+  );
 }
 
-Future<void> _initializeNativeEngine(UiPreferencesController uiPreferences) async {
+Future<void> _initializeNativeEngine(
+  UiPreferencesController uiPreferences,
+) async {
   MediaKit.ensureInitialized();
   // Tercih deposu hatası (ör. Android Keystore anahtarı yeniden kurulumda
   // geçersizleşti) motorun açılmasını engellemez; varsayılanlarla devam edilir.
@@ -172,43 +180,39 @@ class ZanzibarrApp extends StatelessWidget {
     );
   }
 
-  InputDecorationTheme _inputTheme({required Color fill, required Color border}) =>
-      InputDecorationTheme(
-        filled: true,
-        fillColor: fill,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 15,
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: border),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: _accent, width: 1.2),
-        ),
-      );
+  InputDecorationTheme _inputTheme({
+    required Color fill,
+    required Color border,
+  }) => InputDecorationTheme(
+    filled: true,
+    fillColor: fill,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 15),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: border),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: BorderSide(color: border),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(12),
+      borderSide: const BorderSide(color: _accent, width: 1.2),
+    ),
+  );
 
   FilledButtonThemeData _filledButtonTheme({
     required Color background,
     required Color foreground,
-  }) =>
-      FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          backgroundColor: background,
-          foregroundColor: foreground,
-          minimumSize: const Size(0, 44),
-          padding: const EdgeInsets.symmetric(horizontal: 18),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(11),
-          ),
-        ),
-      );
+  }) => FilledButtonThemeData(
+    style: FilledButton.styleFrom(
+      backgroundColor: background,
+      foregroundColor: foreground,
+      minimumSize: const Size(0, 44),
+      padding: const EdgeInsets.symmetric(horizontal: 18),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+    ),
+  );
 
   SnackBarThemeData _snackBarTheme(Color background) => SnackBarThemeData(
     behavior: SnackBarBehavior.floating,
@@ -228,7 +232,11 @@ class ZanzibarrApp extends StatelessWidget {
 }
 
 class _EngineStartupView extends StatelessWidget {
-  const _EngineStartupView({required this.failed, required this.onRetry, this.error});
+  const _EngineStartupView({
+    required this.failed,
+    required this.onRetry,
+    this.error,
+  });
 
   final bool failed;
   final VoidCallback? onRetry;
@@ -319,9 +327,12 @@ class _EngineStartupView extends StatelessWidget {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.uiPreferences});
+  const HomeScreen({super.key, this.uiPreferences, this.historyStore});
 
   final UiPreferencesController? uiPreferences;
+
+  /// Testlerde sahte depo enjekte etmek için; null ise gerçek depo kullanılır.
+  final PlaybackHistoryStore? historyStore;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -330,6 +341,44 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   bool _pickingFile = false;
   bool _openingIndexer = false;
+  late final PlaybackHistoryStore _historyStore =
+      widget.historyStore ?? PlaybackHistoryStore();
+  List<PlaybackHistoryEntry> _history = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHistory();
+  }
+
+  Future<void> _loadHistory() async {
+    List<PlaybackHistoryEntry> entries;
+    try {
+      entries = await _historyStore.load();
+    } catch (_) {
+      // Geçmiş okunamazsa bölüm gizli kalır.
+      return;
+    }
+    if (mounted) setState(() => _history = entries);
+  }
+
+  Future<void> _removeHistoryEntry(PlaybackHistoryEntry entry) async {
+    try {
+      await _historyStore.remove(entry.nzbPath);
+    } catch (_) {
+      // Silme başarısızsa liste eski hâliyle kalır.
+      return;
+    }
+    await _loadHistory();
+  }
+
+  Future<void> _openPath(String path) async {
+    await Navigator.of(
+      context,
+    ).push(_fadeRoute(PlayerScreen(nzbPath: path), opaque: true));
+    // Oynatıcıdan dönüşte izleme ilerlemesi tazelenir.
+    await _loadHistory();
+  }
 
   Future<void> _pickAndPlay(BuildContext context) async {
     if (_pickingFile) return;
@@ -338,9 +387,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const typeGroup = XTypeGroup(label: 'NZB', extensions: ['nzb']);
       final file = await openFile(acceptedTypeGroups: [typeGroup]);
       if (file == null || !context.mounted) return;
-      await Navigator.of(
-        context,
-      ).push(_fadeRoute(PlayerScreen(nzbPath: file.path), opaque: true));
+      await _openPath(file.path);
     } catch (error) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -375,9 +422,9 @@ class _HomeScreenState extends State<HomeScreen> {
             content: Text(AppLocalizations.of(context).indexerMissingHint),
           ),
         );
-        await Navigator.of(context).push(
-          _fadeRoute(SettingsScreen(uiPreferences: widget.uiPreferences)),
-        );
+        await Navigator.of(
+          context,
+        ).push(_fadeRoute(SettingsScreen(uiPreferences: widget.uiPreferences)));
       }
     } finally {
       if (mounted) setState(() => _openingIndexer = false);
@@ -385,9 +432,9 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _openSettings(BuildContext context) {
-    Navigator.of(context).push(
-      _fadeRoute(SettingsScreen(uiPreferences: widget.uiPreferences)),
-    );
+    Navigator.of(
+      context,
+    ).push(_fadeRoute(SettingsScreen(uiPreferences: widget.uiPreferences)));
   }
 
   @override
@@ -418,7 +465,9 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.all(14),
                   child: _GlassIconButton(
                     icon: Icons.settings_rounded,
-                    tooltip: AppLocalizations.of(context).providerSettingsTooltip,
+                    tooltip: AppLocalizations.of(
+                      context,
+                    ).providerSettingsTooltip,
                     onPressed: () => _openSettings(context),
                   ),
                 ),
@@ -465,6 +514,14 @@ class _HomeScreenState extends State<HomeScreen> {
                         subtitle: l10n.searchIndexerCardHint,
                         onPressed: () => _openIndexerSearch(context),
                       ),
+                      if (_history.isNotEmpty) ...[
+                        const SizedBox(height: 28),
+                        _ContinueWatchingSection(
+                          entries: _history,
+                          onOpen: (entry) => _openPath(entry.nzbPath),
+                          onRemove: _removeHistoryEntry,
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -506,11 +563,7 @@ class _AppLogoMark extends StatelessWidget {
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22),
-        child: Image.asset(
-          'assets/zanzibarr-logo.png',
-          width: 92,
-          height: 92,
-        ),
+        child: Image.asset('assets/zanzibarr-logo.png', width: 92, height: 92),
       ),
     ),
   );
@@ -641,6 +694,161 @@ class _GlassIconButton extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(11),
             side: BorderSide(color: foreground.withValues(alpha: 0.08)),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Ana ekrandaki "izlemeye devam et" bölümü: son oynatılan içeriklerin
+/// ilerleme çubuklu listesi; dokunulunca kaldığı yerden açılır.
+class _ContinueWatchingSection extends StatelessWidget {
+  const _ContinueWatchingSection({
+    required this.entries,
+    required this.onOpen,
+    required this.onRemove,
+  });
+
+  final List<PlaybackHistoryEntry> entries;
+  final ValueChanged<PlaybackHistoryEntry> onOpen;
+  final ValueChanged<PlaybackHistoryEntry> onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final foreground = isDark ? Colors.white : Colors.black;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4, bottom: 10),
+          child: Text(
+            l10n.continueWatching,
+            style: TextStyle(
+              color: foreground.withValues(alpha: 0.55),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.4,
+            ),
+          ),
+        ),
+        for (final entry in entries)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: _HistoryCard(
+              entry: entry,
+              onOpen: () => onOpen(entry),
+              onRemove: () => onRemove(entry),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _HistoryCard extends StatelessWidget {
+  const _HistoryCard({
+    required this.entry,
+    required this.onOpen,
+    required this.onRemove,
+  });
+
+  final PlaybackHistoryEntry entry;
+  final VoidCallback onOpen;
+  final VoidCallback onRemove;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final foreground = isDark ? Colors.white : Colors.black;
+    final remaining = Duration(
+      milliseconds: ((entry.durationSeconds - entry.positionSeconds) * 1000)
+          .round(),
+    );
+    return Material(
+      color: foreground.withValues(alpha: isDark ? 0.045 : 0.035),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: foreground.withValues(alpha: 0.07)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onOpen,
+        hoverColor: foreground.withValues(alpha: 0.04),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      entry.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: foreground.withValues(alpha: 0.9),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    entry.durationSeconds > 0
+                        ? '${formatPlayerDuration(entry.position)} / '
+                              '${formatPlayerDuration(Duration(milliseconds: (entry.durationSeconds * 1000).round()))}'
+                        : formatPlayerDuration(entry.position),
+                    style: TextStyle(
+                      color: foreground.withValues(alpha: 0.45),
+                      fontSize: 10.5,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  SizedBox(
+                    width: 26,
+                    height: 26,
+                    child: IconButton(
+                      tooltip: l10n.historyRemoveTooltip,
+                      padding: EdgeInsets.zero,
+                      iconSize: 15,
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: foreground.withValues(alpha: 0.4),
+                      ),
+                      onPressed: onRemove,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 7),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(2),
+                child: LinearProgressIndicator(
+                  value: entry.progress.clamp(0.0, 1.0),
+                  minHeight: 3,
+                  backgroundColor: foreground.withValues(alpha: 0.1),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Theme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ),
+              if (entry.durationSeconds > 0 && remaining > Duration.zero) ...[
+                const SizedBox(height: 5),
+                Text(
+                  l10n.historyRemaining(formatPlayerDuration(remaining)),
+                  style: TextStyle(
+                    color: foreground.withValues(alpha: 0.38),
+                    fontSize: 10.5,
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
       ),

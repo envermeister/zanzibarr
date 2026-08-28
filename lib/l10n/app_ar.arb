@@ -57,6 +57,14 @@
   "auto": "تلقائي",
   "off": "إيقاف",
   "subtitleDecreaseTooltip": "تصغير حجم الترجمة",
+  "continueWatching": "متابعة المشاهدة",
+  "historyRemoveTooltip": "إزالة من السجل",
+  "historyRemaining": "متبقٍ {time}",
+  "@historyRemaining": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "subtitleColor": "لون الترجمة",
   "subtitleIncreaseTooltip": "تكبير حجم الترجمة",
   "subtitleMoveUpTooltip": "تحريك الترجمة لأعلى",

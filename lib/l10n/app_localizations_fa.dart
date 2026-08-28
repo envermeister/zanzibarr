@@ -267,6 +267,17 @@ class AppLocalizationsFa extends AppLocalizations {
   String get subtitleDecreaseTooltip => 'کوچک‌تر کردن زیرنویس';
 
   @override
+  String get continueWatching => 'ادامه تماشا';
+
+  @override
+  String get historyRemoveTooltip => 'حذف از تاریخچه';
+
+  @override
+  String historyRemaining(String time) {
+    return '$time باقی مانده';
+  }
+
+  @override
   String get subtitleColor => 'رنگ زیرنویس';
 
   @override

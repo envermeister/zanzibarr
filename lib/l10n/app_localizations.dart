@@ -590,6 +590,24 @@ abstract class AppLocalizations {
   /// **'Decrease subtitle size'**
   String get subtitleDecreaseTooltip;
 
+  /// No description provided for @continueWatching.
+  ///
+  /// In en, this message translates to:
+  /// **'Continue watching'**
+  String get continueWatching;
+
+  /// No description provided for @historyRemoveTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Remove from history'**
+  String get historyRemoveTooltip;
+
+  /// No description provided for @historyRemaining.
+  ///
+  /// In en, this message translates to:
+  /// **'{time} left'**
+  String historyRemaining(String time);
+
   /// No description provided for @subtitleColor.
   ///
   /// In en, this message translates to:
