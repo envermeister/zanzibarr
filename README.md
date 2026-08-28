@@ -130,7 +130,7 @@ flutter test           # Flutter side
 cargo test             # inside rust/ — engine side
 ```
 
-CI produces the Windows `.zip`, macOS `.zip`, Linux `.tar.gz` and Android `.apk` artifacts on demand (see `.github/workflows/`).
+CI produces the Windows `.zip`, macOS `.zip`, Linux `.tar.gz`, Android `.apk` and iOS (unsigned `.ipa`) artifacts on demand (see `.github/workflows/`).
 
 The **Linux** build links against the system libmpv — install the runtime first (`sudo apt install libmpv2` on Ubuntu/Debian; DV tone-mapping needs a libplacebo-enabled build, which Ubuntu 24.04 ships). Detailed notes: [`docs/BUILDING.linux.md`](docs/BUILDING.linux.md).
 
@@ -146,7 +146,7 @@ The **Linux** build links against the system libmpv — install the runtime firs
 - [x] PAR2 repair wired into playback (user-triggered from the player error screen; repaired slices served from a local overlay)
 - [ ] Compressed RAR stream-seek (needs a RAR decompressor — no pure-Rust one exists; C++ unrar FFI is the open question)
 - [x] Linux build (system libmpv, Ubuntu 24.04 verified)
-- [ ] iOS build
+- [x] iOS build (unsigned `.ipa` via CI; sideload with AltStore/Sideloadly — TestFlight needs a paid developer account setup)
 ## Support the project
 
 zanzibarr is free and open source, built in spare time. If it saved you a download queue, you can buy the next coffee that funds the engine on [Buy Me a Coffee](https://buymeacoffee.com/envermeister) or [Ko-fi](https://ko-fi.com/envermeister). One-off or monthly — both keep the commits coming.

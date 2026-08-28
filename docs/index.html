@@ -500,6 +500,13 @@ createApp({
           url: 'https://github.com/envermeister/zanzibarr/releases/latest/download/zanzibarr-linux-x64.tar.gz',
           icon: '<svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9l3 3-3 3M12 15h5"/></svg>',
         },
+        {
+          name: 'iOS',
+          meta: 'Unsigned .ipa for iPhone & iPad — sideload with AltStore or Sideloadly.',
+          label: 'zanzibarr-ios-unsigned.ipa',
+          url: 'https://github.com/envermeister/zanzibarr/releases/latest/download/zanzibarr-ios-unsigned.ipa',
+          icon: '<svg viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2.5"/><path d="M11 18.5h2"/></svg>',
+        },
       ],
       langs: ['English', 'Türkçe', 'Español', 'Deutsch', 'Français', 'Português', 'Italiano', 'Русский', '中文', '日本語', '한국어', 'हिन्दी', 'العربية', 'فارسی'],
       roadmap: [
@@ -514,7 +521,7 @@ createApp({
         { text: 'Dolby Vision P5 on Windows & Linux — GPU reshape with runtime fallback', done: true },
         { text: 'Resume playback — remember position, continue-watching row', done: true },
         { text: 'Compressed RAR stream-seek (no pure-Rust decoder exists)', done: false },
-        { text: 'iOS build', done: false },
+        { text: 'iOS build — unsigned .ipa via CI (TestFlight next)', done: true },
       ],
     };
   },
