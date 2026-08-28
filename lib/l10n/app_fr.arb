@@ -58,6 +58,18 @@
   "off": "Désactivé",
   "subtitleDecreaseTooltip": "Réduire la taille des sous-titres",
   "continueWatching": "Reprendre la lecture",
+  "updateAvailable": "Mise à jour disponible",
+  "updateNow": "Mettre à jour",
+  "updateLater": "Plus tard",
+  "updateSkip": "Ignorer cette version",
+  "updateDownloading": "Téléchargement de la mise à jour…",
+  "updateOpenPage": "Ouvrir la page de téléchargement",
+  "updateFailed": "Échec de la mise à jour : {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "Retirer de l'historique",
   "historyRemaining": "{time} restantes",
   "@historyRemaining": {

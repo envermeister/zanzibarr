@@ -58,6 +58,18 @@
   "off": "إيقاف",
   "subtitleDecreaseTooltip": "تصغير حجم الترجمة",
   "continueWatching": "متابعة المشاهدة",
+  "updateAvailable": "تحديث متاح",
+  "updateNow": "حدّث الآن",
+  "updateLater": "لاحقاً",
+  "updateSkip": "تخطى هذا الإصدار",
+  "updateDownloading": "جارٍ تنزيل التحديث…",
+  "updateOpenPage": "فتح صفحة التنزيل",
+  "updateFailed": "فشل التحديث: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "إزالة من السجل",
   "historyRemaining": "متبقٍ {time}",
   "@historyRemaining": {

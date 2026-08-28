@@ -272,6 +272,29 @@ class AppLocalizationsPt extends AppLocalizations {
   String get continueWatching => 'Continuar a ver';
 
   @override
+  String get updateAvailable => 'Atualização disponível';
+
+  @override
+  String get updateNow => 'Atualizar agora';
+
+  @override
+  String get updateLater => 'Mais tarde';
+
+  @override
+  String get updateSkip => 'Ignorar esta versão';
+
+  @override
+  String get updateDownloading => 'A transferir a atualização…';
+
+  @override
+  String get updateOpenPage => 'Abrir página de transferência';
+
+  @override
+  String updateFailed(String error) {
+    return 'Falha na atualização: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => 'Remover do histórico';
 
   @override

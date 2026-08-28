@@ -265,6 +265,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get continueWatching => '继续观看';
 
   @override
+  String get updateAvailable => '发现新版本';
+
+  @override
+  String get updateNow => '立即更新';
+
+  @override
+  String get updateLater => '稍后';
+
+  @override
+  String get updateSkip => '跳过此版本';
+
+  @override
+  String get updateDownloading => '正在下载更新…';
+
+  @override
+  String get updateOpenPage => '打开下载页面';
+
+  @override
+  String updateFailed(String error) {
+    return '更新失败：$error';
+  }
+
+  @override
   String get historyRemoveTooltip => '从历史记录中移除';
 
   @override

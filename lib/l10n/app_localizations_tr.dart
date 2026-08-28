@@ -271,6 +271,29 @@ class AppLocalizationsTr extends AppLocalizations {
   String get continueWatching => 'İzlemeye devam et';
 
   @override
+  String get updateAvailable => 'Güncelleme mevcut';
+
+  @override
+  String get updateNow => 'Şimdi güncelle';
+
+  @override
+  String get updateLater => 'Daha sonra';
+
+  @override
+  String get updateSkip => 'Bu sürümü atla';
+
+  @override
+  String get updateDownloading => 'Güncelleme indiriliyor…';
+
+  @override
+  String get updateOpenPage => 'İndirme sayfasını aç';
+
+  @override
+  String updateFailed(String error) {
+    return 'Güncelleme başarısız: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => 'Geçmişten kaldır';
 
   @override

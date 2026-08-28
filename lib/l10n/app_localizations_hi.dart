@@ -271,6 +271,29 @@ class AppLocalizationsHi extends AppLocalizations {
   String get continueWatching => 'देखना जारी रखें';
 
   @override
+  String get updateAvailable => 'अपडेट उपलब्ध है';
+
+  @override
+  String get updateNow => 'अभी अपडेट करें';
+
+  @override
+  String get updateLater => 'बाद में';
+
+  @override
+  String get updateSkip => 'इस संस्करण को छोड़ें';
+
+  @override
+  String get updateDownloading => 'अपडेट डाउनलोड हो रहा है…';
+
+  @override
+  String get updateOpenPage => 'डाउनलोड पृष्ठ खोलें';
+
+  @override
+  String updateFailed(String error) {
+    return 'अपडेट विफल: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => 'इतिहास से हटाएँ';
 
   @override

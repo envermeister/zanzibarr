@@ -121,6 +121,18 @@
   "off": "Off",
   "subtitleDecreaseTooltip": "Decrease subtitle size",
   "continueWatching": "Continue watching",
+  "updateAvailable": "Update available",
+  "updateNow": "Update now",
+  "updateLater": "Later",
+  "updateSkip": "Skip this version",
+  "updateDownloading": "Downloading update…",
+  "updateOpenPage": "Open download page",
+  "updateFailed": "Update failed: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "Remove from history",
   "historyRemaining": "{time} left",
   "@historyRemaining": {

@@ -3,6 +3,8 @@
          Debug/profile manifest'lerinde Flutter bunu zaten ekler; release
          paketinin çalışması için burada da olmalı. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- OTA güncelleme: indirilen APK'nın sistem yükleyicisiyle kurulması. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <!-- Android TV: dokunmatik ekranı olmayan cihazlara (TV box) kurulabilsin;
          telefon/tablet desteği de korunur (required=false). -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>
@@ -41,6 +43,16 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- OTA güncelleme: indirilen APK'yı sistem yükleyicisine verir. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="com.zanzibarr.zanzibarr.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"/>
+        </provider>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -7,6 +9,7 @@ import 'l10n/app_localizations.dart';
 import 'player/gyuni_player_controls.dart' show formatPlayerDuration;
 import 'player/playback_history.dart';
 import 'player/player_screen.dart';
+import 'update/update_service.dart';
 import 'search/search_screen.dart';
 import 'settings/indexer_settings.dart';
 import 'settings/settings_screen.dart';
@@ -327,12 +330,20 @@ class _EngineStartupView extends StatelessWidget {
 }
 
 class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key, this.uiPreferences, this.historyStore});
+  const HomeScreen({
+    super.key,
+    this.uiPreferences,
+    this.historyStore,
+    this.updateService,
+  });
 
   final UiPreferencesController? uiPreferences;
 
   /// Testlerde sahte depo enjekte etmek için; null ise gerçek depo kullanılır.
   final PlaybackHistoryStore? historyStore;
+
+  /// Testlerde sahte güncelleme servisi enjekte etmek için.
+  final UpdateService? updateService;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -343,12 +354,35 @@ class _HomeScreenState extends State<HomeScreen> {
   bool _openingIndexer = false;
   late final PlaybackHistoryStore _historyStore =
       widget.historyStore ?? PlaybackHistoryStore();
+  late final UpdateService _updateService =
+      widget.updateService ?? UpdateService();
   List<PlaybackHistoryEntry> _history = const [];
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    // Açılışta yeni sürüm kontrolü; bulunursa diyalog gösterilir.
+    unawaited(_checkForUpdate());
+  }
+
+  Future<void> _checkForUpdate() async {
+    try {
+      final latest = await _updateService.checkForUpdate();
+      if (!mounted || latest == null) return;
+      await _showUpdateDialog(latest);
+    } catch (_) {
+      // Güncelleme kontrolü (ağ hatası vb.) uygulama açılışını engellemez.
+    }
+  }
+
+  Future<void> _showUpdateDialog(ReleaseInfo release) async {
+    final l10n = AppLocalizations.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) =>
+          _UpdateDialog(release: release, service: _updateService, l10n: l10n),
+    );
   }
 
   Future<void> _loadHistory() async {
@@ -852,6 +886,96 @@ class _HistoryCard extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Yeni sürüm bildirimi diyaloğu: notlar + atla/sonra/güncelle seçenekleri.
+/// Android'de güncelleme APK'sı indirilip sistem yükleyicisine verilir;
+/// diğer platformlarda release sayfası tarayıcıda açılır.
+class _UpdateDialog extends StatefulWidget {
+  const _UpdateDialog({
+    required this.release,
+    required this.service,
+    required this.l10n,
+  });
+
+  final ReleaseInfo release;
+  final UpdateService service;
+  final AppLocalizations l10n;
+
+  @override
+  State<_UpdateDialog> createState() => _UpdateDialogState();
+}
+
+class _UpdateDialogState extends State<_UpdateDialog> {
+  bool _downloading = false;
+  double _progress = 0;
+
+  Future<void> _install() async {
+    final l10n = widget.l10n;
+    setState(() => _downloading = true);
+    try {
+      await widget.service.install(
+        widget.release,
+        onProgress: (value) => setState(() => _progress = value),
+      );
+      if (mounted) Navigator.of(context).pop();
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _downloading = false);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(l10n.updateFailed('$error'))));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = widget.l10n;
+    final release = widget.release;
+    return AlertDialog(
+      title: Text(l10n.updateAvailable),
+      content: SizedBox(
+        width: 420,
+        child: SingleChildScrollView(
+          child: Text(
+            release.notes.trim(),
+            style: const TextStyle(fontSize: 12.5, height: 1.45),
+          ),
+        ),
+      ),
+      actions: [
+        if (_downloading)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: LinearProgressIndicator(
+              value: _progress > 0 ? _progress : null,
+              semanticsLabel: l10n.updateDownloading,
+            ),
+          )
+        else ...[
+          TextButton(
+            onPressed: () {
+              widget.service.skipVersion(release.version);
+              Navigator.of(context).pop();
+            },
+            child: Text(l10n.updateSkip),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: Text(l10n.updateLater),
+          ),
+          FilledButton(
+            onPressed: _install,
+            child: Text(
+              widget.service.canAutoInstall
+                  ? l10n.updateNow
+                  : l10n.updateOpenPage,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

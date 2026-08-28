@@ -58,6 +58,18 @@
   "off": "オフ",
   "subtitleDecreaseTooltip": "字幕サイズを小さく",
   "continueWatching": "続きを見る",
+  "updateAvailable": "アップデートがあります",
+  "updateNow": "今すぐ更新",
+  "updateLater": "後で",
+  "updateSkip": "このバージョンをスキップ",
+  "updateDownloading": "アップデートをダウンロード中…",
+  "updateOpenPage": "ダウンロードページを開く",
+  "updateFailed": "アップデートに失敗しました: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "履歴から削除",
   "historyRemaining": "残り {time}",
   "@historyRemaining": {

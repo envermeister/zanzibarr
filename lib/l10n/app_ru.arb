@@ -58,6 +58,18 @@
   "off": "Выкл.",
   "subtitleDecreaseTooltip": "Уменьшить размер субтитров",
   "continueWatching": "Продолжить просмотр",
+  "updateAvailable": "Доступно обновление",
+  "updateNow": "Обновить сейчас",
+  "updateLater": "Позже",
+  "updateSkip": "Пропустить эту версию",
+  "updateDownloading": "Загрузка обновления…",
+  "updateOpenPage": "Открыть страницу загрузки",
+  "updateFailed": "Ошибка обновления: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "Удалить из истории",
   "historyRemaining": "Осталось {time}",
   "@historyRemaining": {

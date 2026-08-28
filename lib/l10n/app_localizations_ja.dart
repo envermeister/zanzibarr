@@ -266,6 +266,29 @@ class AppLocalizationsJa extends AppLocalizations {
   String get continueWatching => '続きを見る';
 
   @override
+  String get updateAvailable => 'アップデートがあります';
+
+  @override
+  String get updateNow => '今すぐ更新';
+
+  @override
+  String get updateLater => '後で';
+
+  @override
+  String get updateSkip => 'このバージョンをスキップ';
+
+  @override
+  String get updateDownloading => 'アップデートをダウンロード中…';
+
+  @override
+  String get updateOpenPage => 'ダウンロードページを開く';
+
+  @override
+  String updateFailed(String error) {
+    return 'アップデートに失敗しました: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => '履歴から削除';
 
   @override

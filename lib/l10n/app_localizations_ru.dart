@@ -272,6 +272,29 @@ class AppLocalizationsRu extends AppLocalizations {
   String get continueWatching => 'Продолжить просмотр';
 
   @override
+  String get updateAvailable => 'Доступно обновление';
+
+  @override
+  String get updateNow => 'Обновить сейчас';
+
+  @override
+  String get updateLater => 'Позже';
+
+  @override
+  String get updateSkip => 'Пропустить эту версию';
+
+  @override
+  String get updateDownloading => 'Загрузка обновления…';
+
+  @override
+  String get updateOpenPage => 'Открыть страницу загрузки';
+
+  @override
+  String updateFailed(String error) {
+    return 'Ошибка обновления: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => 'Удалить из истории';
 
   @override

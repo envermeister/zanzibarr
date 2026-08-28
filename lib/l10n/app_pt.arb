@@ -58,6 +58,18 @@
   "off": "Desativado",
   "subtitleDecreaseTooltip": "Diminuir tamanho da legenda",
   "continueWatching": "Continuar a ver",
+  "updateAvailable": "Atualização disponível",
+  "updateNow": "Atualizar agora",
+  "updateLater": "Mais tarde",
+  "updateSkip": "Ignorar esta versão",
+  "updateDownloading": "A transferir a atualização…",
+  "updateOpenPage": "Abrir página de transferência",
+  "updateFailed": "Falha na atualização: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "Remover do histórico",
   "historyRemaining": "Faltam {time}",
   "@historyRemaining": {

@@ -272,6 +272,29 @@ class AppLocalizationsEs extends AppLocalizations {
   String get continueWatching => 'Seguir viendo';
 
   @override
+  String get updateAvailable => 'Actualización disponible';
+
+  @override
+  String get updateNow => 'Actualizar ahora';
+
+  @override
+  String get updateLater => 'Más tarde';
+
+  @override
+  String get updateSkip => 'Omitir esta versión';
+
+  @override
+  String get updateDownloading => 'Descargando actualización…';
+
+  @override
+  String get updateOpenPage => 'Abrir página de descarga';
+
+  @override
+  String updateFailed(String error) {
+    return 'Error al actualizar: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => 'Quitar del historial';
 
   @override

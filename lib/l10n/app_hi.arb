@@ -58,6 +58,18 @@
   "off": "बंद",
   "subtitleDecreaseTooltip": "सबटाइटल आकार घटाएँ",
   "continueWatching": "देखना जारी रखें",
+  "updateAvailable": "अपडेट उपलब्ध है",
+  "updateNow": "अभी अपडेट करें",
+  "updateLater": "बाद में",
+  "updateSkip": "इस संस्करण को छोड़ें",
+  "updateDownloading": "अपडेट डाउनलोड हो रहा है…",
+  "updateOpenPage": "डाउनलोड पृष्ठ खोलें",
+  "updateFailed": "अपडेट विफल: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "इतिहास से हटाएँ",
   "historyRemaining": "{time} शेष",
   "@historyRemaining": {

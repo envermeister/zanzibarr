@@ -270,6 +270,29 @@ class AppLocalizationsFa extends AppLocalizations {
   String get continueWatching => 'ادامه تماشا';
 
   @override
+  String get updateAvailable => 'به‌روزرسانی موجود است';
+
+  @override
+  String get updateNow => 'همین حالا به‌روزرسانی کن';
+
+  @override
+  String get updateLater => 'بعداً';
+
+  @override
+  String get updateSkip => 'رد کردن این نسخه';
+
+  @override
+  String get updateDownloading => 'در حال دانلود به‌روزرسانی…';
+
+  @override
+  String get updateOpenPage => 'باز کردن صفحه دانلود';
+
+  @override
+  String updateFailed(String error) {
+    return 'به‌روزرسانی ناموفق: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => 'حذف از تاریخچه';
 
   @override

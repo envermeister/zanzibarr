@@ -58,6 +58,18 @@
   "off": "خاموش",
   "subtitleDecreaseTooltip": "کوچک‌تر کردن زیرنویس",
   "continueWatching": "ادامه تماشا",
+  "updateAvailable": "به‌روزرسانی موجود است",
+  "updateNow": "همین حالا به‌روزرسانی کن",
+  "updateLater": "بعداً",
+  "updateSkip": "رد کردن این نسخه",
+  "updateDownloading": "در حال دانلود به‌روزرسانی…",
+  "updateOpenPage": "باز کردن صفحه دانلود",
+  "updateFailed": "به‌روزرسانی ناموفق: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "حذف از تاریخچه",
   "historyRemaining": "{time} باقی مانده",
   "@historyRemaining": {

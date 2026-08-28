@@ -58,6 +58,18 @@
   "off": "Aus",
   "subtitleDecreaseTooltip": "Untertitelgröße verkleinern",
   "continueWatching": "Weiter ansehen",
+  "updateAvailable": "Update verfügbar",
+  "updateNow": "Jetzt aktualisieren",
+  "updateLater": "Später",
+  "updateSkip": "Diese Version überspringen",
+  "updateDownloading": "Update wird heruntergeladen…",
+  "updateOpenPage": "Download-Seite öffnen",
+  "updateFailed": "Update fehlgeschlagen: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "Aus Verlauf entfernen",
   "historyRemaining": "Noch {time}",
   "@historyRemaining": {

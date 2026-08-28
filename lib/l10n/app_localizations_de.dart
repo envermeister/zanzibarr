@@ -273,6 +273,29 @@ class AppLocalizationsDe extends AppLocalizations {
   String get continueWatching => 'Weiter ansehen';
 
   @override
+  String get updateAvailable => 'Update verfügbar';
+
+  @override
+  String get updateNow => 'Jetzt aktualisieren';
+
+  @override
+  String get updateLater => 'Später';
+
+  @override
+  String get updateSkip => 'Diese Version überspringen';
+
+  @override
+  String get updateDownloading => 'Update wird heruntergeladen…';
+
+  @override
+  String get updateOpenPage => 'Download-Seite öffnen';
+
+  @override
+  String updateFailed(String error) {
+    return 'Update fehlgeschlagen: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => 'Aus Verlauf entfernen';
 
   @override

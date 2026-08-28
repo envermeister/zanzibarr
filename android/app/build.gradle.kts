@@ -40,6 +40,11 @@ kotlin {
     }
 }
 
+dependencies {
+    // OTA güncelleme: indirilen APK'yı sistem yükleyicisine veren FileProvider.
+    implementation("androidx.core:core-ktx:1.13.1")
+}
+
 flutter {
     source = "../.."
 }

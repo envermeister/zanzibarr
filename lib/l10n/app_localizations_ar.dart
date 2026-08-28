@@ -270,6 +270,29 @@ class AppLocalizationsAr extends AppLocalizations {
   String get continueWatching => 'متابعة المشاهدة';
 
   @override
+  String get updateAvailable => 'تحديث متاح';
+
+  @override
+  String get updateNow => 'حدّث الآن';
+
+  @override
+  String get updateLater => 'لاحقاً';
+
+  @override
+  String get updateSkip => 'تخطى هذا الإصدار';
+
+  @override
+  String get updateDownloading => 'جارٍ تنزيل التحديث…';
+
+  @override
+  String get updateOpenPage => 'فتح صفحة التنزيل';
+
+  @override
+  String updateFailed(String error) {
+    return 'فشل التحديث: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => 'إزالة من السجل';
 
   @override

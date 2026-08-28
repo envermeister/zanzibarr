@@ -79,6 +79,18 @@
   "off": "Kapalı",
   "subtitleDecreaseTooltip": "Altyazıyı küçült",
   "continueWatching": "İzlemeye devam et",
+  "updateAvailable": "Güncelleme mevcut",
+  "updateNow": "Şimdi güncelle",
+  "updateLater": "Daha sonra",
+  "updateSkip": "Bu sürümü atla",
+  "updateDownloading": "Güncelleme indiriliyor…",
+  "updateOpenPage": "İndirme sayfasını aç",
+  "updateFailed": "Güncelleme başarısız: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "Geçmişten kaldır",
   "historyRemaining": "{time} kaldı",
   "@historyRemaining": {

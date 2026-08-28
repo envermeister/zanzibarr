@@ -58,6 +58,18 @@
   "off": "끄기",
   "subtitleDecreaseTooltip": "자막 크기 줄이기",
   "continueWatching": "이어보기",
+  "updateAvailable": "새 버전이 있습니다",
+  "updateNow": "지금 업데이트",
+  "updateLater": "나중에",
+  "updateSkip": "이 버전 건너뛰기",
+  "updateDownloading": "업데이트 다운로드 중…",
+  "updateOpenPage": "다운로드 페이지 열기",
+  "updateFailed": "업데이트 실패: {error}",
+  "@updateFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  },
   "historyRemoveTooltip": "기록에서 삭제",
   "historyRemaining": "{time} 남음",
   "@historyRemaining": {

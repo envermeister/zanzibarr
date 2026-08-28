@@ -266,6 +266,29 @@ class AppLocalizationsKo extends AppLocalizations {
   String get continueWatching => '이어보기';
 
   @override
+  String get updateAvailable => '새 버전이 있습니다';
+
+  @override
+  String get updateNow => '지금 업데이트';
+
+  @override
+  String get updateLater => '나중에';
+
+  @override
+  String get updateSkip => '이 버전 건너뛰기';
+
+  @override
+  String get updateDownloading => '업데이트 다운로드 중…';
+
+  @override
+  String get updateOpenPage => '다운로드 페이지 열기';
+
+  @override
+  String updateFailed(String error) {
+    return '업데이트 실패: $error';
+  }
+
+  @override
   String get historyRemoveTooltip => '기록에서 삭제';
 
   @override

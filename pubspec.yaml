@@ -44,6 +44,11 @@ dependencies:
   media_kit_video: ^2.0.1
   media_kit_libs_video: ^1.0.7
   file_selector: ^1.1.0
+  # Güncelleme denetimi (GitHub Releases) ve sürüm bilgisi için.
+  http: ^1.2.0
+  package_info_plus: ^9.0.0
+  path_provider: ^2.1.0
+  url_launcher: ^6.3.0
 
 # macOS için media_kit'in paketlediği minimal FFmpeg/libmpv 0.36 yerine
 # homebrew libmpv 0.40 + tam FFmpeg gömen yerel çatal kullanılır.
