@@ -839,7 +839,7 @@ void main() {
 
   test('DV reshaping desteklenmeyen platformda vf özelliğine dokunmaz',
       () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend);
@@ -848,6 +848,43 @@ void main() {
 
     expect(controller.dolbyVisionReshaping, isFalse);
     expect(backend.calls.where((call) => call.contains('vf')), isEmpty);
+  });
+
+  test('DV reshaping Windows\'ta donanım önekli filtreyle başlar', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setDolbyVisionReshaping(true);
+
+    expect(controller.dolbyVisionReshaping, isTrue);
+    // Donanım kareleri (d3d11va) libplacebo'ya doğrudan giremez; önek
+    // eksikse lavfi grafı sessizce devre dışı kalır.
+    expect(backend.properties['vf'], startsWith('lavfi=[hwdownload,'));
+  });
+
+  test('DV reshaping Windows\'ta donanım hatasında yazılıma düşer', () async {
+    debugDefaultTargetPlatformOverride = TargetPlatform.windows;
+    addTearDown(() => debugDefaultTargetPlatformOverride = null);
+    final backend = _FakeBackend()..unsupportedProperties.add('vf');
+    final controller = AdvancedPlaybackController(backend);
+
+    await controller.setDolbyVisionReshaping(true);
+
+    // İlk deneme donanım önekli, ikincisi (yazılım merdiveni) öneksiz;
+    // ikisi de reddedildiğinde filtre temizlenir ve hwdec geri yüklenir.
+    final vfWrites = backend.calls
+        .where((call) => call.startsWith('set:vf='))
+        .toList();
+    expect(vfWrites, hasLength(3));
+    expect(vfWrites[0], contains('hwdownload'));
+    expect(vfWrites[1], isNot(contains('hwdownload')));
+    expect(vfWrites[2], 'set:vf=');
+    expect(backend.calls, contains('set:hwdec=no'));
+    expect(backend.calls, contains('set:hwdec=auto-safe'));
+    expect(controller.dolbyVisionReshaping, isFalse);
+    expect(controller.dvReshapeStatus, DvReshapeStatus.failed);
   });
 
   test('DV reshaping filtresi reddedilirse eski davranışa düşer', () async {

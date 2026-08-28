@@ -407,8 +407,10 @@ class AdvancedPlaybackController {
   /// reshape filtresini açar/kapatır.
   ///
   /// macOS'ta paketli Mpv çerçevesi libplacebo'lu FFmpeg ve MoltenVK ile
-  /// derlenmiştir. Android'de media-kit'in stok libmpv'sinde libplacebo
-  /// yoktur; bu yüzden uygulama, libplacebo+Vulkan destekli fork derlemesiyle
+  /// derlenmiştir. Windows'ta media-kit'in paketli derlemesi libplacebo +
+  /// Vulkan + libdovi içerir; filtre FFmpeg'in `vf_libplacebo`'su üzerinden
+  /// çalışır. Android'de media-kit'in stok libmpv'sinde libplacebo yoktur;
+  /// bu yüzden uygulama, libplacebo+Vulkan destekli fork derlemesiyle
   /// (vendor/media_kit_libs_android_video) gelir. Diğer platformlarda bayrak
   /// kapalı kalır ve `vf`'ye dokunulmaz.
   ///
@@ -433,7 +435,8 @@ class AdvancedPlaybackController {
   /// [setHardwareDecoding] filtreyi uygun varyantla yeniden uygular.
   Future<void> setDolbyVisionReshaping(bool enabled) async {
     final platformSupported = defaultTargetPlatform == TargetPlatform.macOS ||
-        defaultTargetPlatform == TargetPlatform.android;
+        defaultTargetPlatform == TargetPlatform.android ||
+        defaultTargetPlatform == TargetPlatform.windows;
     if (!platformSupported) {
       dolbyVisionReshaping = false;
       return;
@@ -441,12 +444,17 @@ class AdvancedPlaybackController {
     if (!enabled) {
       dolbyVisionReshaping = false;
       _cancelDvWatch();
+      // Yazılım denemesi yapıldıysa donanım kipi özgün değerine döndürülür
+      // (Windows merdiveni); Android'de yüzey karelerine her zaman dönülür.
+      final softwareWasForced = _dvSoftwareRetried;
       _dvSoftwareRetried = false;
       _setDvReshapeStatus(DvReshapeStatus.inactive);
       await _trySetProperty('vf', '');
       if (defaultTargetPlatform == TargetPlatform.android) {
         // Mediacodec yüzey karelerine geri dön (sıfır-kopya render yolu).
         await _trySetProperty('hwdec', 'mediacodec');
+      } else if (softwareWasForced) {
+        await _trySetProperty('hwdec', hwdecEnabledValue);
       }
       return;
     }
@@ -467,7 +475,12 @@ class AdvancedPlaybackController {
   /// Filtreyi geçerli kip ve HDR hedefiyle uygular; çalışma zamanı izleme
   /// penceresini kurar. Özellik yazımı reddedilirse başarısızlık yoluna
   /// ([_handleDvFailure]) düşer.
-  Future<void> _applyDvReshapeFilter() async {
+  ///
+  /// [forceSoftware] yalnız Windows merdivenindeki ikinci denemedir:
+  /// d3d11va donanım kareleri libplacebo'ya doğrudan giremez ve hwdownload
+  /// bazı sürücülerde dovi üstverisini düşürür; yazılım çözme (hevcdec.c
+  /// set_side_data) üstveriyi her karede taşır.
+  Future<void> _applyDvReshapeFilter({bool forceSoftware = false}) async {
     _setDvReshapeStatus(DvReshapeStatus.applying);
     _armDvWatch();
     try {
@@ -485,6 +498,12 @@ class AdvancedPlaybackController {
         _dvSoftwareRetried = true;
         await _backend.setProperty('hwdec', 'no');
         await _backend.setProperty('vf', dvReshapeFilterAndroid);
+      } else if (forceSoftware) {
+        await _backend.setProperty('hwdec', 'no');
+        await _backend.setProperty(
+          'vf',
+          _dvReshapeFilterFor(hdrMode, forceSoftware: true),
+        );
       } else {
         await _backend.setProperty('vf', _dvReshapeFilterFor(hdrMode));
       }
@@ -554,25 +573,32 @@ class AdvancedPlaybackController {
     }
   }
 
-  /// Çalışma zamanı hatası yakalandığında: Android'de ilk hatada yazılım
-  /// çözmeyle bir kez yeniden dener; son denemede (veya macOS'ta) filtreyi
-  /// temizleyip eski davranışa döner ve durumu failed yapar.
+  /// Çalışma zamanı hatası yakalandığında: donanım denemesi başarısız olan
+  /// platformlarda (Android hariç — orada yazılım tek yoldur ve baştan
+  /// kurulur; Windows'ta ilk hatada yazılıma düşülür) yazılım çözmeyle bir
+  /// kez yeniden dener; son denemede (veya macOS'ta) filtreyi temizleyip
+  /// eski davranışa döner ve durumu failed yapar.
   Future<void> _handleDvFailure(String reason) async {
     _dvWatchTimer?.cancel();
     _recordDvDiagnostic(reason);
-    if (defaultTargetPlatform == TargetPlatform.android &&
-        !_dvSoftwareRetried) {
+    final retryWithSoftware = !_dvSoftwareRetried &&
+        (defaultTargetPlatform == TargetPlatform.android ||
+            defaultTargetPlatform == TargetPlatform.windows);
+    if (retryWithSoftware) {
       _dvSoftwareRetried = true;
       _recordDvDiagnostic(
         'donanım yolu başarısız; yazılım çözme ile yeniden deneniyor',
       );
-      await _applyDvReshapeFilter();
+      await _applyDvReshapeFilter(forceSoftware: true);
       return;
     }
     dolbyVisionReshaping = false;
     await _trySetProperty('vf', '');
     if (defaultTargetPlatform == TargetPlatform.android) {
       await _trySetProperty('hwdec', 'mediacodec');
+    } else if (_dvSoftwareRetried) {
+      // Yazılım denemesi de başarısız oldu; donanım kipi özgün değerine döner.
+      await _trySetProperty('hwdec', hwdecEnabledValue);
     }
     _setDvReshapeStatus(DvReshapeStatus.failed);
   }
@@ -660,9 +686,9 @@ class AdvancedPlaybackController {
 
   /// HDR hedefini ve kare biçimine göre zorunlu `hwdownload` önekini
   /// seçer; önek kuralları [dvReshapeFilterSdr] belgesinde.
-  String _dvReshapeFilterFor(HdrMode mode) {
+  String _dvReshapeFilterFor(HdrMode mode, {bool forceSoftware = false}) {
     final sdr = mode == HdrMode.sdr;
-    if (hardwareDecoding) {
+    if (hardwareDecoding && !forceSoftware) {
       return sdr ? dvReshapeFilterSdr : dvReshapeFilterHdr;
     }
     return sdr ? dvReshapeFilterSdrSoftware : dvReshapeFilterHdrSoftware;
