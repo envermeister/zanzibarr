@@ -1,0 +1,44 @@
+name: iOS build
+
+# Yalnızca elle tetiklenir. İmzasız paket üretir: cihaza kurulum için
+# AltStore/Sideloadly ile yerel imzalama gerekir (TestFlight dağıtımı
+# ayrı App Store Connect kurulumu ister).
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Yerel geliştirme sürümüyle aynı Flutter (pubspec.lock üretimiyle uyum).
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.44.6"
+          channel: stable
+          cache: true
+
+      # cargokit, Rust motorunu iOS hedeflerine çapraz derler.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+
+      - name: flutter pub get
+        run: flutter pub get
+
+      - name: flutter build ios (release, imzasız)
+        run: flutter build ios --release --no-codesign
+
+      # Runner.app -> Payload/ -> .ipa (imzalama kullanıcı tarafında yapılır).
+      - name: Paketle (ipa)
+        run: |
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/
+          zip -qr zanzibarr-ios-unsigned.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: zanzibarr-ios-unsigned
+          path: zanzibarr-ios-unsigned.ipa
+          retention-days: 14
