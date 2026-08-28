@@ -1,9 +1,9 @@
 # Building zanzibarr on Ubuntu 24.04
 
-> **Note:** Linux desktop is **not** an officially supported target (see the
-> roadmap in `README.md`) — this is a community-verified "got it compiling"
-> record, not a maintained platform. Thanks to **@sanderjo** for figuring it
-> out and documenting it ([issue #2](https://github.com/envermeister/zanzibarr/issues/2)).
+> **Note:** Linux desktop is now built by CI (`.github/workflows/linux-build.yml`).
+> This guide covers building from source yourself — thanks to **@sanderjo**
+>  for the original notes ([issue #2](https://github.com/envermeister/zanzibarr/issues/2)).
+> At runtime the app links the system libmpv (`sudo apt install libmpv2`).
 
 ## Prerequisites
 

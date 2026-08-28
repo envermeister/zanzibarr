@@ -104,7 +104,7 @@ Everything heavy — parsing, decoding, archive surgery, NNTP networking — is 
 
 ## Getting started
 
-1. Grab the latest build for your platform from [Releases](https://github.com/envermeister/zanzibarr/releases) (Windows `.exe`, Android `.apk` — pick `arm64-v8a` for phones and TV boxes).
+1. Grab the latest build for your platform from [Releases](https://github.com/envermeister/zanzibarr/releases) (Windows `.zip`, macOS `.zip`, Linux `.tar.gz`, Android `.apk` — pick `arm64-v8a` for phones and TV boxes).
 2. Open the settings gear and add your Usenet provider's NNTP host, port, username and password. They're stored in the OS keychain.
 3. Drop in any `.nzb` from your favorite indexer and press play.
 
@@ -130,9 +130,9 @@ flutter test           # Flutter side
 cargo test             # inside rust/ — engine side
 ```
 
-CI produces the Windows `.exe` and Android `.apk` artifacts on demand (see `.github/workflows/`).
+CI produces the Windows `.zip`, macOS `.zip`, Linux `.tar.gz` and Android `.apk` artifacts on demand (see `.github/workflows/`).
 
-Building on **Linux desktop** (unsupported, community-verified): see [`docs/BUILDING.linux.md`](docs/BUILDING.linux.md).
+The **Linux** build links against the system libmpv — install the runtime first (`sudo apt install libmpv2` on Ubuntu/Debian; DV tone-mapping needs a libplacebo-enabled build, which Ubuntu 24.04 ships). Detailed notes: [`docs/BUILDING.linux.md`](docs/BUILDING.linux.md).
 
 ## Roadmap
 
@@ -145,8 +145,8 @@ Building on **Linux desktop** (unsupported, community-verified): see [`docs/BUIL
 - [x] PAR2 engine: packet parsing, slice health check, Reed-Solomon repair (verified byte-exact against par2cmdline)
 - [x] PAR2 repair wired into playback (user-triggered from the player error screen; repaired slices served from a local overlay)
 - [ ] Compressed RAR stream-seek (needs a RAR decompressor — no pure-Rust one exists; C++ unrar FFI is the open question)
-- [ ] iOS & Linux builds
-
+- [x] Linux build (system libmpv, Ubuntu 24.04 verified)
+- [ ] iOS build
 ## Support the project
 
 zanzibarr is free and open source, built in spare time. If it saved you a download queue, you can buy the next coffee that funds the engine on [Buy Me a Coffee](https://buymeacoffee.com/envermeister) or [Ko-fi](https://ko-fi.com/envermeister). One-off or monthly — both keep the commits coming.

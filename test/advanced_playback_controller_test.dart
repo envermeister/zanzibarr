@@ -839,7 +839,8 @@ void main() {
 
   test('DV reshaping desteklenmeyen platformda vf özelliğine dokunmaz',
       () async {
-    debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+    // iOS'ta libplacebo derlemesi yok; platform desteklenene dek kapalı.
+    debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
     addTearDown(() => debugDefaultTargetPlatformOverride = null);
     final backend = _FakeBackend();
     final controller = AdvancedPlaybackController(backend);

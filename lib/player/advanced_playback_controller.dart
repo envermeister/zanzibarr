@@ -409,10 +409,10 @@ class AdvancedPlaybackController {
   /// macOS'ta paketli Mpv çerçevesi libplacebo'lu FFmpeg ve MoltenVK ile
   /// derlenmiştir. Windows'ta media-kit'in paketli derlemesi libplacebo +
   /// Vulkan + libdovi içerir; filtre FFmpeg'in `vf_libplacebo`'su üzerinden
-  /// çalışır. Android'de media-kit'in stok libmpv'sinde libplacebo yoktur;
-  /// bu yüzden uygulama, libplacebo+Vulkan destekli fork derlemesiyle
-  /// (vendor/media_kit_libs_android_video) gelir. Diğer platformlarda bayrak
-  /// kapalı kalır ve `vf`'ye dokunulmaz.
+  /// çalışır. Linux'ta sistem libmpv'sine bağlanılır. Android'de media-kit'in
+  /// stok libmpv'sinde libplacebo yoktur; bu yüzden uygulama, libplacebo+Vulkan
+  /// destekli fork derlemesiyle (vendor/media_kit_libs_android_video) gelir.
+  /// Desteklenmeyen platformlarda bayrak kapalı kalır ve `vf`'ye dokunulmaz.
   ///
   /// `vf` yazımının başarılı olması filtrenin gerçekten çalıştığını
   /// GARANTİLEMEZ: lavfi grafı ilk karelerde (Vulkan init, biçim uyuşmazlığı)
@@ -434,9 +434,13 @@ class AdvancedPlaybackController {
   /// sonradan değişirse [setHdrMode], kod çözme kipi değişirse
   /// [setHardwareDecoding] filtreyi uygun varyantla yeniden uygular.
   Future<void> setDolbyVisionReshaping(bool enabled) async {
+    // Linux'ta sistem libmpv'sine bağlanılır (Ubuntu 24.04'ün mpv'si
+    // libplacebo'ludur); derleme filtresizse çalışma zamanı doğrulaması
+    // devreye girip SDR'e güvenle düşer.
     final platformSupported = defaultTargetPlatform == TargetPlatform.macOS ||
         defaultTargetPlatform == TargetPlatform.android ||
-        defaultTargetPlatform == TargetPlatform.windows;
+        defaultTargetPlatform == TargetPlatform.windows ||
+        defaultTargetPlatform == TargetPlatform.linux;
     if (!platformSupported) {
       dolbyVisionReshaping = false;
       return;
