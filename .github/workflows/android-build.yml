@@ -3,6 +3,7 @@ name: Android build
 # Yalnızca elle tetiklenir: private repoda dakika tasarrufu.
 on:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:

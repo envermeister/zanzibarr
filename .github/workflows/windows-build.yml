@@ -3,6 +3,7 @@ name: Windows build
 # Yalnızca elle tetiklenir: private repoda Windows dakikası 2x tüketir.
 on:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:

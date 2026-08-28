@@ -5,6 +5,7 @@ name: iOS build
 # ayrı App Store Connect kurulumu ister).
 on:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   build:

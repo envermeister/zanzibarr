@@ -1,0 +1,57 @@
+name: Release
+
+# Sürüm akışı: notlar docs/releases/vX.Y.md altına yazılıp commit'lenir,
+# `git tag vX.Y && git push --tags` (veya `gh release create vX.Y ...`)
+# tetikler. Bu workflow dört platformu derleyip asset'leri release'e ekler;
+# macOS paketi imza yerelde üretildiğinden elle eklenir
+# (gh release upload vX.Y dist/macos/zanzibarr-macos-arm64.zip).
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Yayınlanacak tag (ör. v1.4)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    uses: ./.github/workflows/android-build.yml
+  windows:
+    uses: ./.github/workflows/windows-build.yml
+  linux:
+    uses: ./.github/workflows/linux-build.yml
+  ios:
+    uses: ./.github/workflows/ios-build.yml
+
+  publish:
+    needs: [android, windows, linux, ios]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: zanzibarr-*
+          merge-multiple: true
+
+      # Android tek zip taşır; bölünmüş APK'lar açığa çıkarılır.
+      - name: Paketleri hazırla
+        run: |
+          unzip -o zanzibarr-android.zip -d .
+          rm zanzibarr-android.zip
+          ls -la
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          body_path: docs/releases/${{ inputs.tag || github.ref_name }}.md
+          files: |
+            zanzibarr-android-*.apk
+            zanzibarr-windows-x64.zip
+            zanzibarr-linux-x64.tar.gz
+            zanzibarr-ios-unsigned.ipa
+          fail_on_unmatched_files: true
