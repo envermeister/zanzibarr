@@ -412,7 +412,7 @@ createApp({
         },
         {
           title: 'Opens archives others won\'t',
-          body: 'Multi-volume RAR5 and split 7z — including AES-256 encrypted sets — reassemble in memory into one virtual, seekable file. Nothing touches disk.',
+          body: 'Multi-volume RAR5/RAR4 and split 7z — including AES-256 encrypted sets — reassemble in memory into one virtual, seekable file. Even compressed RAR plays: decode-ahead onto a temp spool, seekable as it fills.',
           icon: icon('<rect x="3" y="4" width="18" height="14" rx="2"/><path d="M3 9h18M8 4v5"/>'),
         },
         {
@@ -521,7 +521,7 @@ createApp({
         { text: 'PAR2 health check & Reed-Solomon repair — byte-exact vs par2cmdline', done: true },
         { text: 'Dolby Vision P5 on Windows & Linux — GPU reshape with runtime fallback', done: true },
         { text: 'Resume playback — remember position, continue-watching row', done: true },
-        { text: 'Compressed RAR stream-seek (no pure-Rust decoder exists)', done: false },
+        { text: 'Compressed RAR stream-seek — decode-ahead with real seeking in decoded regions', done: true },
         { text: 'iOS build — unsigned .ipa via CI (TestFlight next)', done: true },
       ],
     };

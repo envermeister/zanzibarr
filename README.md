@@ -56,7 +56,7 @@ Hook up any Newznab-compatible indexer and the home screen becomes your launchpa
 Byte offsets are resolved from the decoded yEnc `begin/end` positions of every segment — never guessed from article sizes. The result is frame-accurate seeking across thousands of segments, even mid-segment, even on 100+ GB releases.
 
 **It opens the archives others won't**
-Straight video NZBs, multi-volume **RAR5** sets, legacy **RAR4** volumes and split **7z** releases — **LZMA/LZMA2-compressed** and **AES-256 encrypted** sets included — are reassembled into a single virtual, seekable file entirely in memory. Nothing is extracted to disk. (Deliberately honest: only compressed RAR is still declined rather than faked — see the roadmap.)
+Straight video NZBs, multi-volume **RAR5** sets, legacy **RAR4** volumes and split **7z** releases — **LZMA/LZMA2-compressed** and **AES-256 encrypted** sets included — are reassembled into a single virtual, seekable file entirely in memory. Nothing is extracted to disk. **Compressed RAR** (method > STORE, `-hp` encrypted included) plays too: the compressed set is spooled to a temporary directory and decoded ahead by a vendored libunrar, so the decoded prefix is seekable instantly and the rest streams in as it decodes — temporary disk is reclaimed when you close the player.
 
 **Scratches don't stop the show**
 Missing or corrupt Usenet segments no longer kill the movie: hit **Repair with PAR2** on the error screen and the engine verifies every slice of the recovery set, rebuilds the damaged ones with Reed-Solomon (byte-exact against par2cmdline) and serves them from a local overlay. Playback resumes exactly where it failed.
@@ -144,7 +144,7 @@ The **Linux** build links against the system libmpv — install the runtime firs
 - [x] Compressed 7z (LZMA/LZMA2, solid) stream-seek & RAR4 STORE sets
 - [x] PAR2 engine: packet parsing, slice health check, Reed-Solomon repair (verified byte-exact against par2cmdline)
 - [x] PAR2 repair wired into playback (user-triggered from the player error screen; repaired slices served from a local overlay)
-- [ ] Compressed RAR stream-seek (needs a RAR decompressor — no pure-Rust one exists; C++ unrar FFI is the open question)
+- [x] Compressed RAR stream-seek (vendored libunrar; decode-ahead onto a temp spool with range-serving)
 - [x] Linux build (system libmpv, Ubuntu 24.04 verified)
 - [x] iOS build (unsigned `.ipa` via CI; sideload with AltStore/Sideloadly — TestFlight needs a paid developer account setup)
 ## Support the project
