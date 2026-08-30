@@ -947,8 +947,6 @@ dependencies = [
 [[package]]
 name = "unrar_sys"
 version = "0.5.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8b77675b883cfbe6bf41e6b7a5cd6008e0a83ba497de3d96e41a064bbeead765"
 dependencies = [
  "cc",
  "libc",

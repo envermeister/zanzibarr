@@ -75,6 +75,7 @@ version = "2"
 version = "1"
 
 [dependencies.unrar_sys]
+path = "../unrar-sys"
 version = "0.5"
 
 [dependencies.widestring]

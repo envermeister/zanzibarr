@@ -513,22 +513,14 @@ impl<M: ProcessMode> Internal<M> {
         let user_data = unsafe { &mut *(user_data as *mut Userdata<M::Output>) };
         match msg {
             native::UCM_CHANGEVOLUMEW => {
-                // zanzibarr yaması: libunrar cilt değişiminde p1 null
-                // olabilir; from_ptr_truncate null ile UB üretir.
-                if p1 == 0 {
-                    return 0;
-                }
-                // 2048 seems to be the buffer size in unrar,
-                // also it's the maximum path length since 5.00.
-                let next =
-                    unsafe { widestring::WideCString::from_ptr_truncate(p1 as *const _, 2048) };
-                user_data.1 = Some(next);
-                match p2 {
-                    // Next volume not found. -1 means stop
-                    native::RAR_VOL_ASK => -1,
-                    // Next volume found, 0 means continue
-                    _ => 0,
-                }
+                // zanzibarr yaması: p1'e hiç dokunulmaz. Cilt adı kaydı
+                // (user_data.1) kütüphanenin hiçbir yerinde okunmuyor ve
+                // libunrar'ın gönderdiği işaretçi güvenilir biçimde okunamıyor
+                // (sabit 2048 okuma tahsisat ötesine taşıyor / hizasız
+                // işaretçi → debug UB denetimi SIGABRT). 0 = otomatik cilt
+                // adıyla devam; ciltler zaten diskte dizgiden bulunur.
+                let _ = (p1, p2);
+                0
             }
             native::UCM_PROCESSDATA => {
                 // zanzibarr yaması: cilt sınırlarında/boş parçalarda libunrar
