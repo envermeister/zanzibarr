@@ -24,6 +24,51 @@ pub(crate) const ARCHIVE_VOLUME_CACHE_SEGMENTS: usize = 8;
 pub(crate) const MAX_ARCHIVE_VOLUMES: usize = 4096;
 pub(crate) const BLOCKING_READER_MAX_CHUNK: usize = 1024 * 1024;
 
+/// Sıkıştırılmış RAR yolunun ciltleri diske kopyalarken kullandığı soyut
+/// okuyucu; NNTP dışında bellek içi sahtelerle de test edilebilir.
+/// (RPITIT dyn-uyumlu olmadığından boxed future döner.)
+pub(crate) trait VolumeSpoolReader: Send + Sync {
+    fn volume_count(&self) -> usize;
+    /// Cildin sanal set uzayındaki başlangıç ofseti.
+    fn volume_start(&self, index: usize) -> u64;
+    fn volume_len(&self, index: usize) -> u64;
+    fn volume_name(&self, index: usize) -> String;
+    fn read_range_bytes(
+        &self,
+        range: Range<u64>,
+    ) -> std::pin::Pin<Box<dyn Future<Output = io::Result<Vec<u8>>> + Send + '_>>;
+}
+
+impl VolumeSpoolReader for NntpVolumeSet {
+    fn volume_count(&self) -> usize {
+        self.volume_count()
+    }
+
+    fn volume_start(&self, index: usize) -> u64 {
+        self.volume_start(index)
+    }
+
+    fn volume_len(&self, index: usize) -> u64 {
+        self.volume_len(index)
+    }
+
+    fn volume_name(&self, index: usize) -> String {
+        let name = self.volumes[index].filename();
+        if name.is_empty() {
+            format!("volume{index:05}.rar")
+        } else {
+            name.to_string()
+        }
+    }
+
+    fn read_range_bytes(
+        &self,
+        range: Range<u64>,
+    ) -> std::pin::Pin<Box<dyn Future<Output = io::Result<Vec<u8>>> + Send + '_>> {
+        Box::pin(self.read_range_bytes(range))
+    }
+}
+
 /// Cilt kümesi kurulurken oluşabilecek hatalar. Biçim-özel hata türleri
 /// (SevenZipError, RarError) bu türe `From` ile bağlanır.
 #[derive(Debug, Error)]

@@ -22,6 +22,12 @@ webpki-roots = "1.0.8"
 zesven = { version = "1.1.0", default-features = false, features = ["aes", "lzma"] }
 zeroize = "1.8.2"
 md5 = "0.8"
+# Sıkıştırılmış RAR setlerinin çözümü: resmî C++ unrar'ın Rust bağları.
+# Yalnız okuma/çıkarma (unrar lisansı sıkıştırma yaratılmasını yasaklar —
+# zaten yalnızca çözüyoruz).
+# Vendor notu: 0.5.8 kaynağına UCM_CHANGEVOLUME/UCM_PROCESSDATA null
+# korumaları eklendi (çok ciltli setlerde SIGABRT/UB'yi önler).
+unrar = { path = "../vendor/unrar-rs" }
 
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }

@@ -18,3 +18,4 @@ pub mod seekable_decode;
 pub mod server;
 pub mod sevenzip;
 pub mod yenc;
+pub mod rarcompressed;

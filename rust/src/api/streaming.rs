@@ -20,7 +20,8 @@ use tokio::task::JoinHandle;
 use crate::engine::nntp::{ProviderConfig, TlsNntpConnector};
 use crate::engine::nntp_source::{NntpByteSource, DEFAULT_PREFETCH_DEPTH};
 use crate::engine::nzb::{self, NzbContentError, NzbFile};
-use crate::engine::rar::RarEntrySource;
+use crate::engine::rar::{RarEntrySource, RarError};
+use crate::engine::rarcompressed::CompressedRarEntrySource;
 use crate::engine::server::{self, RangeSource};
 use crate::engine::sevenzip::SevenZipEntrySource;
 
@@ -157,6 +158,7 @@ enum StreamSource {
     Direct(NntpByteSource),
     SevenZip(SevenZipEntrySource),
     Rar(RarEntrySource),
+    RarCompressed(CompressedRarEntrySource),
 }
 
 impl StreamSource {
@@ -165,6 +167,7 @@ impl StreamSource {
             Self::Direct(source) => source.filename(),
             Self::SevenZip(source) => source.filename(),
             Self::Rar(source) => source.filename(),
+            Self::RarCompressed(source) => source.filename(),
         }
     }
 
@@ -173,6 +176,7 @@ impl StreamSource {
             Self::Direct(source) => source.segment_count(),
             Self::SevenZip(source) => source.segment_count(),
             Self::Rar(source) => source.segment_count(),
+            Self::RarCompressed(source) => source.segment_count(),
         }
     }
 
@@ -182,6 +186,8 @@ impl StreamSource {
             Self::Direct(_) => false,
             Self::SevenZip(source) => source.is_compressed(),
             Self::Rar(_) => false,
+            // Sıkıştırılmış RAR her zaman ardışıl çözüm yolundadır.
+            Self::RarCompressed(_) => true,
         }
     }
 
@@ -196,6 +202,9 @@ impl StreamSource {
             }
             Self::SevenZip(source) => source.set_overlays(overlay),
             Self::Rar(source) => source.set_overlays(overlay),
+            // PAR2 onarımı sıkıştırılmış yolda henüz bağlı değil; ciltler
+            // spool sırasında doğrudan NNTP'den okunur.
+            Self::RarCompressed(_) => {}
         }
     }
 }
@@ -207,6 +216,7 @@ impl RangeSource for StreamSource {
             Self::Direct(source) => source.total_len(),
             Self::SevenZip(source) => source.total_len(),
             Self::Rar(source) => source.total_len(),
+            Self::RarCompressed(source) => source.total_len(),
         }
     }
 
@@ -215,6 +225,7 @@ impl RangeSource for StreamSource {
             Self::Direct(source) => source.content_type(),
             Self::SevenZip(source) => source.content_type(),
             Self::Rar(source) => source.content_type(),
+            Self::RarCompressed(source) => source.content_type(),
         }
     }
 
@@ -226,6 +237,7 @@ impl RangeSource for StreamSource {
             Self::Direct(source) => source.write_range(range, out).await,
             Self::SevenZip(source) => source.write_range(range, out).await,
             Self::Rar(source) => source.write_range(range, out).await,
+            Self::RarCompressed(source) => source.write_range(range, out).await,
         }
     }
 }
@@ -272,11 +284,32 @@ async fn prepare_stream_source(
                 .await
                 .map_err(|error| error.to_string())?,
         )),
-        StreamSelection::Rar { volumes, password } => Ok(StreamSource::Rar(
-            RarEntrySource::new_cancellable(pool, volumes, password, cancellation)
-                .await
-                .map_err(|error| error.to_string())?,
-        )),
+        StreamSelection::Rar { volumes, password } => {
+            match RarEntrySource::new_cancellable(
+                pool.clone(),
+                volumes.clone(),
+                password.clone(),
+                cancellation.clone(),
+            )
+            .await
+            {
+                Ok(source) => Ok(StreamSource::Rar(source)),
+                // STORE olmayan setler decode-ahead yoluna düşer: ciltler
+                // geçici diske kopyalanır, libunrar hedef üyeyi büyüyen çıktı
+                // dosyasına çözer, oynatıcı çıktıyı Range ile okur.
+                Err(RarError::UnsupportedCompression) => Ok(StreamSource::RarCompressed(
+                    CompressedRarEntrySource::new_cancellable(
+                        pool,
+                        volumes,
+                        password,
+                        cancellation,
+                    )
+                    .await
+                    .map_err(|error| error.to_string())?,
+                )),
+                Err(error) => Err(error.to_string()),
+            }
+        }
     }
 }
 

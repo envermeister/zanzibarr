@@ -1158,6 +1158,19 @@ fn build_fragment_map<R: Read + Seek>(
     volumes: &[(u64, u64)],
     password: Option<&str>,
 ) -> Result<FragmentMap, RarError> {
+    let parts = collect_playable_parts(reader, volumes, password)?;
+    validate_and_build(&parts, password)
+}
+
+/// Tüm ciltlerin başlıklarını yürüyüp oynatılabilir en büyük dosyanın parça
+/// grubunu döndürür. Sıkıştırma/parola denetimi YAPMAZ; STORE doğrulaması
+/// `validate_and_build`'e, sıkıştırılmış yolun plan çıkarımı
+/// [`probe_compressed_plan`]'e aittir.
+fn collect_playable_parts<R: Read + Seek>(
+    reader: &mut R,
+    volumes: &[(u64, u64)],
+    password: Option<&str>,
+) -> Result<Vec<FragmentPart>, RarError> {
     // (küçük harf ad) -> parça listesi; ekleme sırası korunur.
     let mut groups: Vec<(String, Vec<FragmentPart>)> = Vec::new();
     // Ciltler arası KDF önbelleği: aynı salt'ı taşıyan -hp ciltlerinde pahalı
@@ -1196,13 +1209,66 @@ fn build_fragment_map<R: Read + Seek>(
 
     // Oynatılabilir gruplar arasından en büyüğü seç. unpacked_size her
     // parçanın başlığında toplam dosya boyutunu taşır.
-    let (_, parts) = groups
+    let index = groups
         .iter()
-        .filter(|(_, parts)| is_playable_media_filename(&parts[0].entry.name))
-        .max_by_key(|(_, parts)| parts[0].entry.unpacked_size)
+        .position(|(_, parts)| is_playable_media_filename(&parts[0].entry.name))
+        .and_then(|_| {
+            groups
+                .iter()
+                .enumerate()
+                .filter(|(_, (_, parts))| {
+                    is_playable_media_filename(&parts[0].entry.name)
+                })
+                .max_by_key(|(_, (_, parts))| parts[0].entry.unpacked_size)
+                .map(|(index, _)| index)
+        })
         .ok_or(RarError::NoPlayableMedia)?;
+    Ok(groups.swap_remove(index).1)
+}
 
-    validate_and_build(parts, password)
+/// Sıkıştırılmış (STORE olmayan) bir RAR setinin oynatılacak üyesinin planı.
+/// Gerçek çözüm [`super::rarcompressed`] üzerinden yürür.
+pub(crate) struct CompressedRarPlan {
+    pub(crate) filename: String,
+    pub(crate) unpacked_size: u64,
+}
+
+/// Sıkıştırılmış setin başlıklarını okuyup plan çıkarır. Yalnız STORE
+/// setlerinde `UnsupportedCompression` yerine None döner (çağıran STORE yolunu
+/// zaten denemiştir); diğer hatalar aynen yayılır.
+pub(crate) async fn probe_compressed_plan(
+    pool: Arc<NntpPool<TlsNntpConnector>>,
+    files: Vec<NzbFile>,
+    password: Option<String>,
+    mut cancellation: watch::Receiver<bool>,
+) -> Result<Option<(CompressedRarPlan, Arc<NntpVolumeSet>)>, RarError> {
+    let archive = Arc::new(NntpVolumeSet::new_cancellable(pool, files, &mut cancellation).await?);
+    ensure_not_cancelled(&cancellation)?;
+    let layout: Vec<(u64, u64)> = (0..archive.volume_count())
+        .map(|index| (archive.volume_start(index), archive.volume_len(index)))
+        .collect();
+    let archive_for_parser = Arc::clone(&archive);
+    let runtime = tokio::runtime::Handle::current();
+
+    let archive_for_task = Arc::clone(&archive);
+    let parts = run_blocking_cancellable(cancellation, move |reader_cancellation| {
+        let mut reader =
+            BlockingArchiveReader::new(archive_for_parser, runtime, reader_cancellation);
+        collect_playable_parts(&mut reader, &layout, password.as_deref())
+    })
+    .await?;
+
+    let first = parts.first().expect("playable group is never empty");
+    if first.entry.store && !first.entry.solid {
+        return Ok(None);
+    }
+    Ok(Some((
+        CompressedRarPlan {
+            filename: first.entry.name.clone(),
+            unpacked_size: first.entry.unpacked_size,
+        },
+        archive_for_task,
+    )))
 }
 
 struct FragmentPart {
