@@ -274,6 +274,12 @@ class AppLocalizationsFr extends AppLocalizations {
   String get continueWatching => 'Reprendre la lecture';
 
   @override
+  String get videoFitCover => 'Remplir l’écran';
+
+  @override
+  String get videoFitContain => 'Ajuster à l’écran';
+
+  @override
   String get updateAvailable => 'Mise à jour disponible';
 
   @override

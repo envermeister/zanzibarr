@@ -273,6 +273,12 @@ class AppLocalizationsDe extends AppLocalizations {
   String get continueWatching => 'Weiter ansehen';
 
   @override
+  String get videoFitCover => 'Bildschirm füllen';
+
+  @override
+  String get videoFitContain => 'An Bildschirm anpassen';
+
+  @override
   String get updateAvailable => 'Update verfügbar';
 
   @override

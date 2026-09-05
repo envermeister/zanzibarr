@@ -58,6 +58,8 @@
   "off": "बंद",
   "subtitleDecreaseTooltip": "सबटाइटल आकार घटाएँ",
   "continueWatching": "देखना जारी रखें",
+  "videoFitCover": "स्क्रीन भरें",
+  "videoFitContain": "स्क्रीन में समायोजित करें",
   "updateAvailable": "अपडेट उपलब्ध है",
   "updateNow": "अभी अपडेट करें",
   "updateLater": "बाद में",

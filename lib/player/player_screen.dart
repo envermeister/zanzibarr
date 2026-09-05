@@ -203,6 +203,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   // hazır olduğunda (bir kez) kayıtlı konuma dönülür.
   Timer? _historySaveTimer;
   bool _historyResumeDone = false;
+  // Android çok-sesli sessiz açılış düzeltmesi tek seferlik uygulanır.
+  bool _audioReasserted = false;
+  // Video sığdırma kipi: false=contain (oran korunur), true=cover (doldur).
+  bool _videoFill = false;
 
   @override
   void initState() {
@@ -396,6 +400,29 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (hasRealVideo) {
       _markPlaybackReady();
       unawaited(_applyDolbyVisionReshapingIfNeeded());
+      _reassertAudioTrackOnAndroid(tracks);
+    }
+  }
+
+  /// Çok sesli içerikte Android'de ilk açılış zinciri ara sıra sessiz kalır
+  /// (ao açılışı iz kurulmadan önce kurulduğunda); varsayılan izi açıkça
+  /// yeniden seçmek zinciri tazeler. Kullanıcının elle yeniden seçmesinin
+  /// düzelttiği gözleminin otomatik karşılığıdır. Tek sesli içerikte
+  /// dokunulmaz (gereksiz yeniden kurulum olmaz).
+  void _reassertAudioTrackOnAndroid(Tracks tracks) {
+    if (_audioReasserted ||
+        defaultTargetPlatform != TargetPlatform.android ||
+        _disposing) {
+      return;
+    }
+    final realTracks = tracks.audio
+        .where((track) => track.id != 'auto' && track.id != 'no')
+        .toList();
+    final current = _track.audio;
+    final isConcrete = current.id != 'auto' && current.id != 'no';
+    if (realTracks.length > 1 && isConcrete) {
+      _audioReasserted = true;
+      unawaited(_player.setAudioTrack(current));
     }
   }
 
@@ -1174,6 +1201,13 @@ class _PlayerScreenState extends State<PlayerScreen>
     } catch (error) {
       _showControlError(error);
     }
+  }
+
+  /// Video sığdırma kipi: contain (oran korunur, bantlar kalır) ↔ cover
+  /// (ekranı doldurur, kenarlar kırpılır).
+  void _toggleVideoFit() {
+    setState(() => _videoFill = !_videoFill);
+    _revealControls();
   }
 
   void _queueSubtitleScale(double value) {
@@ -2790,7 +2824,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       child: Video(
         key: _videoKey,
         controller: _videoController,
-        fit: BoxFit.contain,
+        fit: _videoFill ? BoxFit.cover : BoxFit.contain,
         filterQuality: FilterQuality.high,
         controls: (_) => PlayerKeyboardControls(
           handler: this,
@@ -2844,6 +2878,8 @@ class _PlayerScreenState extends State<PlayerScreen>
                     unawaited(_togglePictureInPicture()),
                 onToggleCanvas: _toggleCanvasEditor,
                 onToggleSubtitleControls: _toggleSubtitleControls,
+                videoFill: _videoFill,
+                onToggleVideoFit: _toggleVideoFit,
                 onDoubleTapSeek: _flashSeek,
                 onVolumeChanged: _onVolumeChanged,
                 onToggleMute: _toggleMute,

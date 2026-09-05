@@ -121,6 +121,8 @@
   "off": "Off",
   "subtitleDecreaseTooltip": "Decrease subtitle size",
   "continueWatching": "Continue watching",
+  "videoFitCover": "Fill screen",
+  "videoFitContain": "Fit to screen",
   "updateAvailable": "Update available",
   "updateNow": "Update now",
   "updateLater": "Later",

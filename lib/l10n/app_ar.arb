@@ -58,6 +58,8 @@
   "off": "إيقاف",
   "subtitleDecreaseTooltip": "تصغير حجم الترجمة",
   "continueWatching": "متابعة المشاهدة",
+  "videoFitCover": "ملء الشاشة",
+  "videoFitContain": "ملاءمة الشاشة",
   "updateAvailable": "تحديث متاح",
   "updateNow": "حدّث الآن",
   "updateLater": "لاحقاً",

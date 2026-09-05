@@ -596,6 +596,18 @@ abstract class AppLocalizations {
   /// **'Continue watching'**
   String get continueWatching;
 
+  /// No description provided for @videoFitCover.
+  ///
+  /// In en, this message translates to:
+  /// **'Fill screen'**
+  String get videoFitCover;
+
+  /// No description provided for @videoFitContain.
+  ///
+  /// In en, this message translates to:
+  /// **'Fit to screen'**
+  String get videoFitContain;
+
   /// No description provided for @updateAvailable.
   ///
   /// In en, this message translates to:

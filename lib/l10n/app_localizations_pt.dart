@@ -272,6 +272,12 @@ class AppLocalizationsPt extends AppLocalizations {
   String get continueWatching => 'Continuar a ver';
 
   @override
+  String get videoFitCover => 'Preencher ecrã';
+
+  @override
+  String get videoFitContain => 'Ajustar ao ecrã';
+
+  @override
   String get updateAvailable => 'Atualização disponível';
 
   @override

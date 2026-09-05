@@ -266,6 +266,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get continueWatching => '이어보기';
 
   @override
+  String get videoFitCover => '화면 채우기';
+
+  @override
+  String get videoFitContain => '화면에 맞추기';
+
+  @override
   String get updateAvailable => '새 버전이 있습니다';
 
   @override

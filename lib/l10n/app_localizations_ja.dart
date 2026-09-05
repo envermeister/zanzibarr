@@ -266,6 +266,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get continueWatching => '続きを見る';
 
   @override
+  String get videoFitCover => '画面いっぱいに表示';
+
+  @override
+  String get videoFitContain => '画面に合わせる';
+
+  @override
   String get updateAvailable => 'アップデートがあります';
 
   @override

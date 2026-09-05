@@ -271,6 +271,12 @@ class AppLocalizationsHi extends AppLocalizations {
   String get continueWatching => 'देखना जारी रखें';
 
   @override
+  String get videoFitCover => 'स्क्रीन भरें';
+
+  @override
+  String get videoFitContain => 'स्क्रीन में समायोजित करें';
+
+  @override
   String get updateAvailable => 'अपडेट उपलब्ध है';
 
   @override

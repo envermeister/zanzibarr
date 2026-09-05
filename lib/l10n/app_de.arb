@@ -58,6 +58,8 @@
   "off": "Aus",
   "subtitleDecreaseTooltip": "Untertitelgröße verkleinern",
   "continueWatching": "Weiter ansehen",
+  "videoFitCover": "Bildschirm füllen",
+  "videoFitContain": "An Bildschirm anpassen",
   "updateAvailable": "Update verfügbar",
   "updateNow": "Jetzt aktualisieren",
   "updateLater": "Später",

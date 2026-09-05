@@ -58,6 +58,8 @@
   "off": "オフ",
   "subtitleDecreaseTooltip": "字幕サイズを小さく",
   "continueWatching": "続きを見る",
+  "videoFitCover": "画面いっぱいに表示",
+  "videoFitContain": "画面に合わせる",
   "updateAvailable": "アップデートがあります",
   "updateNow": "今すぐ更新",
   "updateLater": "後で",

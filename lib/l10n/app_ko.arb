@@ -58,6 +58,8 @@
   "off": "끄기",
   "subtitleDecreaseTooltip": "자막 크기 줄이기",
   "continueWatching": "이어보기",
+  "videoFitCover": "화면 채우기",
+  "videoFitContain": "화면에 맞추기",
   "updateAvailable": "새 버전이 있습니다",
   "updateNow": "지금 업데이트",
   "updateLater": "나중에",

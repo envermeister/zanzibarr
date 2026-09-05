@@ -347,6 +347,7 @@ Widget _playerComposition({
           onToggleFullscreen: () {},
           onTogglePictureInPicture: () {},
           onToggleCanvas: () {},
+          onToggleVideoFit: () {},
           onToggleSubtitleControls: () {},
           onDoubleTapSeek: (_) {},
           onFrameBackward: () {},

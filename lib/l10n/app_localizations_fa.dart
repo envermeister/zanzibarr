@@ -270,6 +270,12 @@ class AppLocalizationsFa extends AppLocalizations {
   String get continueWatching => 'ادامه تماشا';
 
   @override
+  String get videoFitCover => 'پر کردن صفحه';
+
+  @override
+  String get videoFitContain => 'متناسب با صفحه';
+
+  @override
   String get updateAvailable => 'به‌روزرسانی موجود است';
 
   @override

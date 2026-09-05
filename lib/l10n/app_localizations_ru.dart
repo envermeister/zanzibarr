@@ -272,6 +272,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get continueWatching => 'Продолжить просмотр';
 
   @override
+  String get videoFitCover => 'Заполнить экран';
+
+  @override
+  String get videoFitContain => 'Вписать в экран';
+
+  @override
   String get updateAvailable => 'Доступно обновление';
 
   @override

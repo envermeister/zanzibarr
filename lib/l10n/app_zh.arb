@@ -58,6 +58,8 @@
   "off": "关闭",
   "subtitleDecreaseTooltip": "减小字幕字号",
   "continueWatching": "继续观看",
+  "videoFitCover": "填充屏幕",
+  "videoFitContain": "适应屏幕",
   "updateAvailable": "发现新版本",
   "updateNow": "立即更新",
   "updateLater": "稍后",

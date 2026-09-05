@@ -58,6 +58,8 @@
   "off": "Desativado",
   "subtitleDecreaseTooltip": "Diminuir tamanho da legenda",
   "continueWatching": "Continuar a ver",
+  "videoFitCover": "Preencher ecrã",
+  "videoFitContain": "Ajustar ao ecrã",
   "updateAvailable": "Atualização disponível",
   "updateNow": "Atualizar agora",
   "updateLater": "Mais tarde",

@@ -272,6 +272,12 @@ class AppLocalizationsEs extends AppLocalizations {
   String get continueWatching => 'Seguir viendo';
 
   @override
+  String get videoFitCover => 'Llenar pantalla';
+
+  @override
+  String get videoFitContain => 'Ajustar a la pantalla';
+
+  @override
   String get updateAvailable => 'Actualización disponible';
 
   @override

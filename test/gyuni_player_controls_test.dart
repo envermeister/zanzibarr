@@ -45,6 +45,7 @@ Widget _buildChrome({
           onToggleFullscreen: onToggleFullscreen ?? () {},
           onTogglePictureInPicture: () {},
           onToggleCanvas: () {},
+          onToggleVideoFit: () {},
           onToggleSubtitleControls: () {},
           onDoubleTapSeek: onDoubleTapSeek ?? (_) {},
           onFrameBackward: () {},

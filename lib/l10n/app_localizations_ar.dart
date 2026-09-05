@@ -270,6 +270,12 @@ class AppLocalizationsAr extends AppLocalizations {
   String get continueWatching => 'متابعة المشاهدة';
 
   @override
+  String get videoFitCover => 'ملء الشاشة';
+
+  @override
+  String get videoFitContain => 'ملاءمة الشاشة';
+
+  @override
   String get updateAvailable => 'تحديث متاح';
 
   @override

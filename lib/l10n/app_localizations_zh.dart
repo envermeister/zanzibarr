@@ -265,6 +265,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get continueWatching => '继续观看';
 
   @override
+  String get videoFitCover => '填充屏幕';
+
+  @override
+  String get videoFitContain => '适应屏幕';
+
+  @override
   String get updateAvailable => '发现新版本';
 
   @override

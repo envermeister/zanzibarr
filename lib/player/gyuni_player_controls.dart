@@ -30,6 +30,7 @@ class GyuniPlayerChrome extends StatelessWidget {
     required this.onTogglePictureInPicture,
     required this.onToggleCanvas,
     required this.onToggleSubtitleControls,
+    required this.onToggleVideoFit,
     required this.onDoubleTapSeek,
     required this.onFrameBackward,
     required this.onFrameForward,
@@ -50,6 +51,7 @@ class GyuniPlayerChrome extends StatelessWidget {
     this.isPictureInPicture = false,
     this.canvasActive = false,
     this.subtitleControlsActive = false,
+    this.videoFill = false,
     this.pictureInPictureSupported = false,
     this.engineBadge,
     this.onLoadExternalAudio,
@@ -65,6 +67,7 @@ class GyuniPlayerChrome extends StatelessWidget {
   final bool isPictureInPicture;
   final bool canvasActive;
   final bool subtitleControlsActive;
+  final bool videoFill;
   final bool pictureInPictureSupported;
   final String filename;
   final String status;
@@ -87,6 +90,7 @@ class GyuniPlayerChrome extends StatelessWidget {
   final VoidCallback onTogglePictureInPicture;
   final VoidCallback onToggleCanvas;
   final VoidCallback onToggleSubtitleControls;
+  final VoidCallback onToggleVideoFit;
   final ValueChanged<int> onDoubleTapSeek;
   final VoidCallback onFrameBackward;
   final VoidCallback onFrameForward;
@@ -196,11 +200,13 @@ class GyuniPlayerChrome extends StatelessWidget {
                           ready: ready,
                           canvasActive: canvasActive,
                           subtitleControlsActive: subtitleControlsActive,
+                          videoFill: videoFill,
                           pictureInPictureSupported: pictureInPictureSupported,
                           isPictureInPicture: isPictureInPicture,
                           onClose: onClose,
                           onToggleCanvas: onToggleCanvas,
                           onToggleSubtitleControls: onToggleSubtitleControls,
+                          onToggleVideoFit: onToggleVideoFit,
                           onTogglePictureInPicture: onTogglePictureInPicture,
                           onToggleFullscreen: onToggleFullscreen,
                         ),
@@ -400,10 +406,12 @@ class _TopToolbar extends StatelessWidget {
     required this.canvasActive,
     required this.subtitleControlsActive,
     required this.pictureInPictureSupported,
+    required this.videoFill,
     required this.isPictureInPicture,
     required this.onClose,
     required this.onToggleCanvas,
     required this.onToggleSubtitleControls,
+    required this.onToggleVideoFit,
     required this.onTogglePictureInPicture,
     required this.onToggleFullscreen,
   });
@@ -415,9 +423,11 @@ class _TopToolbar extends StatelessWidget {
   final bool subtitleControlsActive;
   final bool pictureInPictureSupported;
   final bool isPictureInPicture;
+  final bool videoFill;
   final VoidCallback onClose;
   final VoidCallback onToggleCanvas;
   final VoidCallback onToggleSubtitleControls;
+  final VoidCallback onToggleVideoFit;
   final VoidCallback onTogglePictureInPicture;
   final VoidCallback onToggleFullscreen;
 
@@ -486,6 +496,14 @@ class _TopToolbar extends StatelessWidget {
                   const Spacer(),
                 _ToolbarGroup(
                   children: [
+                    _CompactIconButton(
+                      icon: videoFill
+                          ? Icons.fit_screen_rounded
+                          : Icons.fit_screen_outlined,
+                      tooltip: videoFill ? l10n.videoFitContain : l10n.videoFitCover,
+                      selected: videoFill,
+                      onPressed: ready ? onToggleVideoFit : null,
+                    ),
                     _CompactIconButton(
                       icon: Icons.crop_rounded,
                       tooltip: 'Smart Canvas',

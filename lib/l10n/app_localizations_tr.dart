@@ -271,6 +271,12 @@ class AppLocalizationsTr extends AppLocalizations {
   String get continueWatching => 'İzlemeye devam et';
 
   @override
+  String get videoFitCover => 'Ekranı doldur';
+
+  @override
+  String get videoFitContain => 'Ekrana sığdır';
+
+  @override
   String get updateAvailable => 'Güncelleme mevcut';
 
   @override

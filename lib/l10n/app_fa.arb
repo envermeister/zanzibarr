@@ -58,6 +58,8 @@
   "off": "خاموش",
   "subtitleDecreaseTooltip": "کوچک‌تر کردن زیرنویس",
   "continueWatching": "ادامه تماشا",
+  "videoFitCover": "پر کردن صفحه",
+  "videoFitContain": "متناسب با صفحه",
   "updateAvailable": "به‌روزرسانی موجود است",
   "updateNow": "همین حالا به‌روزرسانی کن",
   "updateLater": "بعداً",

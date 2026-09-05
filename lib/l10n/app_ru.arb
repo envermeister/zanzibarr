@@ -58,6 +58,8 @@
   "off": "Выкл.",
   "subtitleDecreaseTooltip": "Уменьшить размер субтитров",
   "continueWatching": "Продолжить просмотр",
+  "videoFitCover": "Заполнить экран",
+  "videoFitContain": "Вписать в экран",
   "updateAvailable": "Доступно обновление",
   "updateNow": "Обновить сейчас",
   "updateLater": "Позже",

@@ -79,6 +79,8 @@
   "off": "Kapalı",
   "subtitleDecreaseTooltip": "Altyazıyı küçült",
   "continueWatching": "İzlemeye devam et",
+  "videoFitCover": "Ekranı doldur",
+  "videoFitContain": "Ekrana sığdır",
   "updateAvailable": "Güncelleme mevcut",
   "updateNow": "Şimdi güncelle",
   "updateLater": "Daha sonra",
