@@ -88,6 +88,9 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   final _videoKey = GlobalKey<VideoState>();
   final _playButtonFocusNode = FocusNode(debugLabel: 'Oynat/Duraklat düğmesi');
+  /// TV kumandası modunda odak kökü: kontroller gizlenirken odak buraya geri
+  /// çekilir; aksi halde odak kaybolur ve kumanda tuşları hiçbir yere ulaşmaz.
+  final _keyboardFocusNode = FocusNode(debugLabel: 'Oynatıcı klavye kökü');
 
   /// Gelişmiş ayarlar menüsü açıkken onun StatefulBuilder setState'i; DV
   /// durum satırının menü açıkken de canlı güncellenmesi için kullanılır.
@@ -874,6 +877,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       _repairActive = false;
     }
     _playButtonFocusNode.dispose();
+    _keyboardFocusNode.dispose();
     _controlsTimer?.cancel();
     _seekFlashTimer?.cancel();
     _periodicInfoTimer?.cancel();
@@ -1490,8 +1494,18 @@ class _PlayerScreenState extends State<PlayerScreen>
       _controlsTimer = Timer(const Duration(milliseconds: 2800), () {
         if (!mounted || !_playing || _scrubbing || _canvasEditing) return;
         setState(() => _controlsVisible = false);
+        _refocusKeyboardRoot();
       });
     }
+  }
+
+  /// TV kumandasında kontroller gizlenirken odak köke geri çekilir; düğme
+  /// odağı ExcludeFocus ile düşer ve odaksız kalınmaz.
+  void _refocusKeyboardRoot() {
+    if (!_touchPrimary || !mounted || _disposing) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && !_disposing) _keyboardFocusNode.requestFocus();
+    });
   }
 
   void _toggleControlsVisibility() {
@@ -1502,6 +1516,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (_playing && !_canvasEditing && !_subtitleControlsVisible) {
       _controlsTimer?.cancel();
       setState(() => _controlsVisible = false);
+      _refocusKeyboardRoot();
     }
   }
 
@@ -2733,6 +2748,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         filterQuality: FilterQuality.high,
         controls: (_) => PlayerKeyboardControls(
           handler: this,
+          focusNode: _keyboardFocusNode,
           child: Builder(
             builder: (focusContext) => Listener(
               behavior: HitTestBehavior.translucent,

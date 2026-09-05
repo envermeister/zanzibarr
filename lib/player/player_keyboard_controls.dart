@@ -57,14 +57,20 @@ class PlayerKeyboardControls extends StatelessWidget {
     super.key,
     required this.handler,
     required this.child,
+    this.focusNode,
   });
 
   final PlayerKeyboardHandler handler;
   final Widget child;
 
+  /// Dışarıdan verilen odak düğümü; TV modunda kontroller gizlenirken odak
+  /// buraya geri çekilir (yoksa kumanda tuşları hiçbir düğüme ulaşmaz).
+  final FocusNode? focusNode;
+
   @override
   Widget build(BuildContext context) {
     return Focus(
+      focusNode: focusNode,
       autofocus: true,
       onKeyEvent: (node, event) => handlePlayerKeyEvent(node, event, handler),
       onFocusChange: (focused) {
