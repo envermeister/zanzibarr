@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_selector/file_selector.dart';
@@ -488,6 +489,51 @@ class _PlayerScreenState extends State<PlayerScreen>
     _configurePeriodicInfoTimer();
     _revealControls();
     _startHistoryTracking();
+    _debugProbeDumpIfRequested();
+  }
+
+  /// Teşhis kancası (ZANZIBARR_DEBUG_PROBE=1): oynatma hazır olunca video
+  /// parametrelerini ve ses izlerini stdout'a döker. Yalnız geliştiricide.
+  void _debugProbeDumpIfRequested() {
+    if ((Platform.environment['ZANZIBARR_DEBUG_PROBE'] ?? '').isEmpty) return;
+    unawaited(_debugProbeDump());
+  }
+
+  Future<void> _debugProbeDump() async {
+    Future<String> prop(String name) async {
+      try {
+        return (await _playback.debugGetProperty(name)).trim();
+      } catch (e) {
+        return '<hata: $e>';
+      }
+    }
+
+    debugPrint('PROBE: === VIDEO ===');
+    for (final p in [
+      'video-params/w', 'video-params/h', 'video-params/dw',
+      'video-params/dh', 'video-params/aspect', 'video-params/par',
+      'video-params/pixelformat', 'video-out-params/w', 'video-out-params/h',
+      'video-out-params/aspect', 'dwidth', 'dheight',
+    ]) {
+      debugPrint('PROBE: $p = ${await prop(p)}');
+    }
+    debugPrint('PROBE: === AUDIO ===');
+    final count = int.tryParse(await prop('track-list/count')) ?? 0;
+    for (var i = 0; i < count; i++) {
+      if (await prop('track-list/$i/type') != 'audio') continue;
+      debugPrint(
+        'PROBE: audio[$i] id=${await prop('track-list/$i/id')} '
+        'lang=${await prop('track-list/$i/lang')} '
+        'codec=${await prop('track-list/$i/codec')} '
+        'title=${await prop('track-list/$i/title')} '
+        'selected=${await prop('track-list/$i/selected')}',
+      );
+    }
+    debugPrint('PROBE: aid = ${await prop('aid')}');
+    debugPrint('PROBE: current-ao = ${await prop('current-ao')}');
+    debugPrint('PROBE: audio-params/samplerate = ${await prop('audio-params/samplerate')}');
+    debugPrint('PROBE: audio-params/channels = ${await prop('audio-params/channels')}');
+    debugPrint('PROBE: volume = ${await prop('volume')}');
   }
 
   /// Oynatma hazır olduğunda kayıtlı konuma (varsa) döner ve ilerlemeyi

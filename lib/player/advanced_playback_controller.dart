@@ -815,8 +815,8 @@ class AdvancedPlaybackController {
     return value.isEmpty ? 'libmpv' : value;
   }
 
-  /// Yalnız entegrasyon testleri içindir: ham libmpv özellik okuması.
-  @visibleForTesting
+  /// Ham libmpv özellik okuması. Entegrasyon testleri ve geliştirici teşhis
+  /// kancası (ZANZIBARR_DEBUG_PROBE) kullanır.
   Future<String> debugGetProperty(String name) => _backend.getProperty(name);
 
   Future<void> setRate(double value) async {

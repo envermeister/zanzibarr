@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'dart:io';
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -18,9 +20,13 @@ import 'src/rust/frb_generated.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  // Geliştirici teşhis kancası: ZANZIBARR_DEBUG_NZB verilirse uygulama
+  // doğrudan oynatıcıyla açılır (release imzasıyla Keychain bölümü okunur).
+  final debugNzb = Platform.environment['ZANZIBARR_DEBUG_NZB'];
   runApp(
     ZanzibarrBootstrap(
       uiPreferences: UiPreferencesController(UiPreferencesStore()),
+      debugNzbPath: debugNzb?.isNotEmpty == true ? debugNzb : null,
     ),
   );
 }
@@ -40,10 +46,18 @@ Future<void> _initializeNativeEngine(
 /// İlk native çağrı hata verse veya takılsa bile boş pencere yerine anlaşılır
 /// bir durum ve güvenli yeniden-deneme yolu gösterir.
 class ZanzibarrBootstrap extends StatefulWidget {
-  const ZanzibarrBootstrap({super.key, this.initialize, this.uiPreferences});
+  const ZanzibarrBootstrap({
+    super.key,
+    this.initialize,
+    this.uiPreferences,
+    this.debugNzbPath,
+  });
 
   final Future<void> Function()? initialize;
   final UiPreferencesController? uiPreferences;
+
+  /// Teşhis kancası: verilirse uygulama doğrudan bu NZB ile açılır.
+  final String? debugNzbPath;
 
   @override
   State<ZanzibarrBootstrap> createState() => _ZanzibarrBootstrapState();
@@ -69,7 +83,12 @@ class _ZanzibarrBootstrapState extends State<ZanzibarrBootstrap> {
     builder: (context, snapshot) {
       if (snapshot.connectionState == ConnectionState.done &&
           !snapshot.hasError) {
-        return ZanzibarrApp(uiPreferences: widget.uiPreferences);
+        return ZanzibarrApp(
+          uiPreferences: widget.uiPreferences,
+          home: widget.debugNzbPath != null
+              ? PlayerScreen(nzbPath: widget.debugNzbPath!)
+              : null,
+        );
       }
       return ZanzibarrApp(
         uiPreferences: widget.uiPreferences,
