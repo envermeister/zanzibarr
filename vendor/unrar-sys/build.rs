@@ -18,7 +18,26 @@ fn main() {
             }
         }
         "android" => {
-            println!("cargo:rustc-link-lib=dylib=c++_shared");
+            // Paylaşımlı libc++ APK'ya ayrı .so paketlemeyi gerektirir
+            // (yoksa dlopen "libc++_shared.so not found" ile düşer). Motorun
+            // tek C++ bileşeni unrar olduğundan statik bağlarız; NDK'nın
+            // statik kitaplık dizini varsayılan arama yolunda değildir.
+            println!("cargo:rustc-link-lib=static=c++_static");
+            println!("cargo:rustc-link-lib=static=c++abi");
+            if let Ok(ndk) = std::env::var("ANDROID_NDK_HOME") {
+                let abi = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+                    Ok("aarch64") => "arm64-v8a",
+                    Ok("arm") => "armeabi-v7a",
+                    Ok("x86_64") => "x86_64",
+                    Ok("x86") => "x86",
+                    _ => "",
+                };
+                if !abi.is_empty() {
+                    println!(
+                        "cargo:rustc-link-search={ndk}/sources/cxx-stl/llvm-libc++/libs/{abi}"
+                    );
+                }
+            }
         }
         "macos" | "ios" | "tvos" | "watchos" | "visionos" => {
             println!("cargo:rustc-link-lib=c++");
