@@ -62,7 +62,8 @@ val libcxxAbis = mapOf(
     "x86" to "i686-linux-android",
     "x86_64" to "x86_64-linux-android",
 )
-val libcxxOut = layout.buildDirectory.dir("libcxx/jniLibs")
+// AGP SourceSet Provider kabul etmez; dizin somutlaştırılır.
+val libcxxOut = layout.buildDirectory.dir("libcxx/jniLibs").get().asFile
 val copyLibcxxShared = tasks.register("copyLibcxxShared") {
     doLast {
         libcxxAbis.forEach { (abi, triple) ->
@@ -70,7 +71,7 @@ val copyLibcxxShared = tasks.register("copyLibcxxShared") {
                 "$ndkHome/toolchains/llvm/prebuilt/$llvmHostTag/sysroot/usr/lib/$triple/libc++_shared.so",
             )
             if (src.exists()) {
-                val dst = File(libcxxOut.get().asFile, "$abi/libc++_shared.so")
+                val dst = File(libcxxOut, "$abi/libc++_shared.so")
                 dst.parentFile.mkdirs()
                 src.copyTo(dst, overwrite = true)
             } else {
