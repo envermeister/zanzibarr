@@ -1,0 +1,16 @@
+# Android NDK r26+ sürümlü libc sembolleri (memcpy@LIBC_N) ile rustc'nin
+# cdylib linkindeki --no-undefined-version çakışır ("symbol ... has
+# undefined version LIBC_N"). unrar C++ statik STL'i bu yolu açığa çıkardı;
+# tanımsız sürüme izin vermek NDK sürümlü sembollerinin standart
+# çalışma yoludur (Android loader sürüm adını yok sayar).
+[target.armv7-linux-androideabi]
+rustflags = ["-C", "link-args=-Wl,--undefined-version"]
+
+[target.aarch64-linux-android]
+rustflags = ["-C", "link-args=-Wl,--undefined-version"]
+
+[target.i686-linux-android]
+rustflags = ["-C", "link-args=-Wl,--undefined-version"]
+
+[target.x86_64-linux-android]
+rustflags = ["-C", "link-args=-Wl,--undefined-version"]
