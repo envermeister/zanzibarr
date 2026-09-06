@@ -18,46 +18,11 @@ fn main() {
             }
         }
         "android" => {
-            // Paylaşımlı libc++ APK'ya ayrı .so paketlemeyi gerektirir
-            // (yoksa dlopen "libc++_shared.so not found" ile düşer). Motorun
-            // tek C++ bileşeni unrar olduğundan statik bağlarız; NDK'nın
-            // statik kitaplık dizini sürüme göre değiştiğinden iki bilinen
-            // düzeni de dener.
-            println!("cargo:rustc-link-lib=static=c++_static");
-            println!("cargo:rustc-link-lib=static=c++abi");
-            if let Ok(ndk) = std::env::var("ANDROID_NDK_HOME") {
-                let triple = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
-                    Ok("aarch64") => "aarch64-linux-android",
-                    Ok("arm") => "arm-linux-androideabi",
-                    Ok("x86_64") => "x86_64-linux-android",
-                    Ok("x86") => "i686-linux-android",
-                    _ => "",
-                };
-                if !triple.is_empty() {
-                    let mut candidates: Vec<String> = Vec::new();
-                    // Klasik düzen (≤ r25): sources/cxx-stl/llvm-libc++/libs/<abi>
-                    let abi = triple
-                        .replace("aarch64-linux-android", "arm64-v8a")
-                        .replace("arm-linux-androideabi", "armeabi-v7a")
-                        .replace("x86_64-linux-android", "x86_64")
-                        .replace("i686-linux-android", "x86");
-                    candidates.push(format!(
-                        "{ndk}/sources/cxx-stl/llvm-libc++/libs/{abi}"
-                    ));
-                    // Yeni düzen (r26+): toolchains/llvm/prebuilt/<host>/sysroot/usr/lib/<triple>
-                    for host in ["linux-x86_64", "darwin-x86_64", "darwin-arm64", "windows-x86_64"] {
-                        candidates.push(format!(
-                            "{ndk}/toolchains/llvm/prebuilt/{host}/sysroot/usr/lib/{triple}"
-                        ));
-                    }
-                    for dir in candidates {
-                        if std::path::Path::new(&format!("{dir}/libc++_static.a")).exists() {
-                            println!("cargo:rustc-link-search={dir}");
-                            break;
-                        }
-                    }
-                }
-            }
+            // Paylaşımlı libc++ kullanılır; libc++_shared.so Gradle tarafında
+            // NDK'dan APK'nın jniLibs'ine kopyalanır (android/app/build.gradle.kts).
+            // Statik deneme kaldırıldı: armv7'de NDK sürümlü libc sembolleriyle
+            // (memcpy@LIBC_N) cdylib linkini kırıyordu.
+            println!("cargo:rustc-link-lib=dylib=c++_shared");
         }
         "macos" | "ios" | "tvos" | "watchos" | "visionos" => {
             println!("cargo:rustc-link-lib=c++");

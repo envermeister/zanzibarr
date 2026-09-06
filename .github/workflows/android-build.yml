@@ -30,17 +30,12 @@ jobs:
       - name: flutter pub get
         run: flutter pub get
 
-      # NDK r26+ sürümlü libc sembolleri (memcpy@LIBC_N) ile rustc'nin
-      # cdylib linkindeki --no-undefined-version çakışır; unrar C++ statik
-      # STL'i bu yolu açığa çıkardı. cargokit RUSTFLAGS'i YOK SAYAR ve
-      # CARGO_ENCODED_RUSTFLAGS kullanır (\x1f ayraçlı); bu yüzden bayrak
-      # oraya kodlanır. Android loader sürüm adını yok sayar.
       - name: flutter build apk (release, ABI bölünmüş)
-        run: CARGO_ENCODED_RUSTFLAGS=$'-C\x1flink-args=-Wl,--undefined-version' flutter build apk --release --split-per-abi
+        run: flutter build apk --release --split-per-abi
 
       # Paylaşım için tek dosya: yanlış ABI seçimini ortadan kaldırır.
       - name: flutter build apk (release, evrensel)
-        run: CARGO_ENCODED_RUSTFLAGS=$'-C\x1flink-args=-Wl,--undefined-version' flutter build apk --release
+        run: flutter build apk --release
 
       # TV box'lar için anlaşılır adlarla tek zip.
       - name: Paketle (zip)
