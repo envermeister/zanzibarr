@@ -21,21 +21,41 @@ fn main() {
             // Paylaşımlı libc++ APK'ya ayrı .so paketlemeyi gerektirir
             // (yoksa dlopen "libc++_shared.so not found" ile düşer). Motorun
             // tek C++ bileşeni unrar olduğundan statik bağlarız; NDK'nın
-            // statik kitaplık dizini varsayılan arama yolunda değildir.
+            // statik kitaplık dizini sürüme göre değiştiğinden iki bilinen
+            // düzeni de dener.
             println!("cargo:rustc-link-lib=static=c++_static");
             println!("cargo:rustc-link-lib=static=c++abi");
             if let Ok(ndk) = std::env::var("ANDROID_NDK_HOME") {
-                let abi = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
-                    Ok("aarch64") => "arm64-v8a",
-                    Ok("arm") => "armeabi-v7a",
-                    Ok("x86_64") => "x86_64",
-                    Ok("x86") => "x86",
+                let triple = match std::env::var("CARGO_CFG_TARGET_ARCH").as_deref() {
+                    Ok("aarch64") => "aarch64-linux-android",
+                    Ok("arm") => "arm-linux-androideabi",
+                    Ok("x86_64") => "x86_64-linux-android",
+                    Ok("x86") => "i686-linux-android",
                     _ => "",
                 };
-                if !abi.is_empty() {
-                    println!(
-                        "cargo:rustc-link-search={ndk}/sources/cxx-stl/llvm-libc++/libs/{abi}"
-                    );
+                if !triple.is_empty() {
+                    let mut candidates: Vec<String> = Vec::new();
+                    // Klasik düzen (≤ r25): sources/cxx-stl/llvm-libc++/libs/<abi>
+                    let abi = triple
+                        .replace("aarch64-linux-android", "arm64-v8a")
+                        .replace("arm-linux-androideabi", "armeabi-v7a")
+                        .replace("x86_64-linux-android", "x86_64")
+                        .replace("i686-linux-android", "x86");
+                    candidates.push(format!(
+                        "{ndk}/sources/cxx-stl/llvm-libc++/libs/{abi}"
+                    ));
+                    // Yeni düzen (r26+): toolchains/llvm/prebuilt/<host>/sysroot/usr/lib/<triple>
+                    for host in ["linux-x86_64", "darwin-x86_64", "darwin-arm64", "windows-x86_64"] {
+                        candidates.push(format!(
+                            "{ndk}/toolchains/llvm/prebuilt/{host}/sysroot/usr/lib/{triple}"
+                        ));
+                    }
+                    for dir in candidates {
+                        if std::path::Path::new(&format!("{dir}/libc++_static.a")).exists() {
+                            println!("cargo:rustc-link-search={dir}");
+                            break;
+                        }
+                    }
                 }
             }
         }
