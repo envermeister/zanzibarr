@@ -13,6 +13,7 @@
 
 - **zanzibarr** streams video from Usenet NZBs **without downloading**: seekable playback straight from NNTP segments, through a local range-aware HTTP server, into libmpv.
 - Repo: <https://github.com/envermeister/zanzibarr> (public) · Site: <https://zanzibarr.app> (GitHub Pages, served from `docs/`, download links point at `releases/latest`)
+- Local working copy: `~/Downloads/USENET/Zanzibarr` (renamed 2026-09-08; formerly `~/Downloads/CodexGPT/UseNews`). Sibling fork: **Usetopia** at `~/Downloads/USENET/Usetopia` (repo `envermeister/usetopia`) — a separate app developed with Claude/ChatGPT; never touch it during zanzibarr work.
 - Current release: **v1.4.0** (`pubspec.yaml` → `version: 1.4.0+5`). `main` is ahead — see §6.
 - Platforms: **macOS** (arm64, signed), **Windows**, **Android** (phone + Android TV leanback), **Linux** (new), **iOS** (unsigned package; no TestFlight yet). Web is intentionally out of scope (no raw NNTP in browsers).
 - The owner communicates in **Turkish** → always reply in Turkish. Repo artifacts (code comments, docs, release notes) in **English**. Commit messages: **Turkish conventional commits** (`feat(engine): …`, `fix(android): …`).
@@ -22,7 +23,7 @@
 
 - **UI:** Flutter (one codebase, no Electron). Entry `lib/main.dart`.
 - **Engine:** Rust, bridged via `flutter_rust_bridge` (FRB). Crate root `rust/`, FRB glue generated into `lib/src/rust/`. After changing any `rust/src/api/*.rs` signature, regenerate with `flutter_rust_bridge_codegen generate`.
-- **Player:** `media_kit` / libmpv, with **custom-built libmpv 0.41 + FFmpeg 8.1.2 + libplacebo** (TrueHD/Atmos, DTS-HD MA, AV1, Dolby Vision Profile 5). Android build produced in the separate repo `envermeister/libmpv-android-video-build`; vendored into `vendor/media_kit_libs_*_video/`.
+- **Player:** `media_kit` / libmpv, with **custom-built libmpv 0.41 + FFmpeg 8.1.2 + libplacebo** (TrueHD/Atmos, DTS-HD MA, AV1, Dolby Vision Profile 5). Android build produced in the separate repo `envermeister/libmpv-android-video-build` (local: `~/Downloads/USENET/libmpv-android-video-build`); vendored into `vendor/media_kit_libs_*_video/`.
 
 ```
  .nzb ─▶ NZB parser ─▶ segment map (yEnc begin/end)        rust/src/engine/nzb.rs, yenc.rs
@@ -132,6 +133,7 @@ Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z ST
 - **v1.3** — embedded-subtitle visibility fix on Android; TV remote key handling; released to all platforms.
 - **v1.4 (2026-08)** — continue-watching history, subtitle color, DV Profile 5 on Windows/Linux, first Linux + iOS (unsigned) packages, tag-push CI release pipeline (`release.yml` + reusable builders).
 - **2026-09 (unreleased, main)** — OTA updates; compressed RAR stream-seek (vendored libunrar, decode-ahead); TV remote focus fix; Android silent-start fix + fit/fill; `libc++_shared` APK packaging fix; debug hooks. Details in §6.
+- **2026-09-08** — Cross-AI continuity: added `AGENTS.md` (this file), `CLAUDE.md`, `docs/HANDOVER_PROMPT.md`. Local layout: project moved to `~/Downloads/USENET/Zanzibarr` (parent `CodexGPT` → `USENET`, `UseNews` → `Zanzibarr`). Forked 1:1 into **Usetopia** (`~/Downloads/USENET/Usetopia`, repo `envermeister/usetopia`) — developed as a separate app with Claude/ChatGPT; zanzibarr continues here with Kimi.
 
 ### Key technical decisions (the *why* — don't relitigate without cause)
 
@@ -152,4 +154,4 @@ Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z ST
 6. `pubspec.yaml`, `rust/Cargo.toml` — dependency ground truth (never assume a package exists).
 7. `.github/workflows/release.yml` — how releases actually happen.
 
-Working with the owner: replies in Turkish; test feedback arrives as screenshots/screen recordings from friends' devices (Samsung/Poco phones, Homatics Android TV box, Windows PC); test NZBs live under `~/Downloads/CodexGPT/`; use the §5 debug hooks to reproduce quickly. Commit + push is pre-authorized (Turkish conventional commits) — still never commit secrets, build outputs or the `kimi-export-*` session files.
+Working with the owner: replies in Turkish; test feedback arrives as screenshots/screen recordings from friends' devices (Samsung/Poco phones, Homatics Android TV box, Windows PC); test NZBs live under `~/Downloads/USENET/` (sibling of this repo); use the §5 debug hooks to reproduce quickly. Commit + push is pre-authorized (Turkish conventional commits) — still never commit secrets, build outputs or the `kimi-export-*` session files.

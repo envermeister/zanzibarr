@@ -27,7 +27,7 @@ SPEC CHECKSUMS:
   Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
   media_kit_libs_ios_video: 5a18affdb97d1f5d466dc79988b13eff6c5e2854
   media_kit_video: 1746e198cb697d1ffb734b1d05ec429d1fcd1474
-  rust_lib_zanzibarr: b2c84ac78a082cf8993635f52ce27d1bd586e91d
+  rust_lib_zanzibarr: 40810ac83e329932ad1cb7430619f662bd3784be
 
 PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
 

@@ -50,6 +50,7 @@ Hazırsan devralma doğrulamasıyla başla.
 
 ## Son notlar
 
+- **Yerel yol:** proje `~/Downloads/USENET/Zanzibarr` altında (eski yol: `~/Downloads/CodexGPT/UseNews`). Kardeş fork **Usetopia** (`~/Downloads/USENET/Usetopia`, repo `envermeister/usetopia`) Claude/ChatGPT ile ayrı bir uygulama olarak geliştiriliyor — bu dosya yalnız zanzibarr içindir.
 - **Oturum kapanışı:** Hangi araçla çalışırsan çalış, sohbeti bitirmeden önce ajana "AGENTS.md'yi güncelle ve commit'le" de. Prompt bunu emrediyor ama hatırlatmak işe yarar.
 - **ChatGPT web'de bağlam penceresi dolarsa:** yeni sohbet aç, aynı promptu + güncel AGENTS.md'yi yapıştır. AGENTS.md güncel olduğu sürece hiçbir şey kaybolmaz.
 - **Bu dosyayı güncelleme:** promptun kendisi değişirse (örn. yeni kural eklemek istersen) burayı düzenle; proje gerçekleri ise her zaman `AGENTS.md`'de tutulur — çift bakım yapma.

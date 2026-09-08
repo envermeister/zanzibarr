@@ -1,4 +1,4 @@
-# UseNews yerel çatalı: framework'ler artık CI'dan İNDİRİLMEZ.
+# zanzibarr yerel çatalı: framework'ler artık CI'dan İNDİRİLMEZ.
 # Mpv.xcframework, tools/bundle_mpv_framework.py ile homebrew libmpv 0.40 +
 # tam FFmpeg'ten üretilip depoya gömülüdür. Bu hedef yalnız media_kit_video
 # pod'unun beklediği .symlinks/mpv/macos bağını kurar.
