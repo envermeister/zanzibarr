@@ -1,0 +1,155 @@
+# AGENTS.md — zanzibarr
+
+**Living context document for every AI coding agent (Kimi, Claude, ChatGPT/Codex, …) that works on this repository.**
+
+> ## Agent protocol — read first
+> 1. Read this file **fully** before touching any code, then follow the onboarding order in §10.
+> 2. **Keep this file alive.** At the end of every work session, before handing off: update §6 (Current state), §7 (Known issues / watch list), §8 (Roadmap) and append a dated entry to §9 (History). This file is the project's memory across different AI tools and sessions — if you skip the update, the next agent starts blind.
+> 3. Obey the standing rules in §4. Each one was earned through a real production bug.
+
+---
+
+## 1. Project snapshot
+
+- **zanzibarr** streams video from Usenet NZBs **without downloading**: seekable playback straight from NNTP segments, through a local range-aware HTTP server, into libmpv.
+- Repo: <https://github.com/envermeister/zanzibarr> (public) · Site: <https://zanzibarr.app> (GitHub Pages, served from `docs/`, download links point at `releases/latest`)
+- Current release: **v1.4.0** (`pubspec.yaml` → `version: 1.4.0+5`). `main` is ahead — see §6.
+- Platforms: **macOS** (arm64, signed), **Windows**, **Android** (phone + Android TV leanback), **Linux** (new), **iOS** (unsigned package; no TestFlight yet). Web is intentionally out of scope (no raw NNTP in browsers).
+- The owner communicates in **Turkish** → always reply in Turkish. Repo artifacts (code comments, docs, release notes) in **English**. Commit messages: **Turkish conventional commits** (`feat(engine): …`, `fix(android): …`).
+- Donations: buymeacoffee.com/envermeister + ko-fi.com/envermeister (referenced in README/site only).
+
+## 2. Architecture
+
+- **UI:** Flutter (one codebase, no Electron). Entry `lib/main.dart`.
+- **Engine:** Rust, bridged via `flutter_rust_bridge` (FRB). Crate root `rust/`, FRB glue generated into `lib/src/rust/`. After changing any `rust/src/api/*.rs` signature, regenerate with `flutter_rust_bridge_codegen generate`.
+- **Player:** `media_kit` / libmpv, with **custom-built libmpv 0.41 + FFmpeg 8.1.2 + libplacebo** (TrueHD/Atmos, DTS-HD MA, AV1, Dolby Vision Profile 5). Android build produced in the separate repo `envermeister/libmpv-android-video-build`; vendored into `vendor/media_kit_libs_*_video/`.
+
+```
+ .nzb ─▶ NZB parser ─▶ segment map (yEnc begin/end)        rust/src/engine/nzb.rs, yenc.rs
+                          │
+             NNTP pool (TLS, pipelined, semaphore)          nntp/connection.rs, nntp/pool.rs
+                          │
+         fetch → yEnc decode → CRC32 verify                 locator.rs, seekable_decode.rs
+                          │
+   archive layer (RAR4/RAR5, 7z STORE/LZMA/AES,             archive.rs, rar.rs, rarcrypt.rs,
+   compressed RAR via vendored libunrar)                    sevenzip.rs, rarcompressed.rs
+                          │
+   PAR2 verify + Reed-Solomon repair overlay                par2.rs, repair.rs
+                          │
+        localhost HTTP server (Range requests)              http.rs, server.rs
+                          │
+                 libmpv / media_kit                         lib/player/*
+```
+
+Key directories:
+
+- `rust/src/engine/` — the whole streaming engine (see map above). `rust/src/api/` — FRB-exposed API surface (`streaming.rs`, `search.rs`, `repair.rs`, `simple.rs`).
+- `lib/player/` — player screen, controls (`gyuni_player_controls.dart`), keyboard/remote handling, Smart Canvas, subtitle overlay, PiP, media prefs, playback history ("continue watching").
+- `lib/settings/` — provider (NNTP) settings, indexer settings, UI prefs. `lib/search/` — Newznab search UI. `lib/update/update_service.dart` — OTA update check. `lib/l10n/` — 14 locales (en default, tr, es, de, fr, pt, it, ru, zh, ja, ko, hi, ar, fa; ar/fa RTL).
+- `vendor/` — `unrar-rs` + `unrar-sys` (**patched fork**, see §5), `media_kit_libs_android_video`, `media_kit_libs_macos_video`.
+- `rust_builder/` — cargokit bridge. `tools/` — `zanzibarr-cli` (NNTP/keychain CLI), asset scripts.
+- `docs/` — website (`index.html`, Vue via CDN), `docs/releases/vX.Y.md` (release notes, referenced by CI `body_path`), `docs/screenshots/`.
+- `.github/workflows/` — `android|windows|linux|ios-build.yml` (`workflow_dispatch` + reusable `workflow_call`) and `release.yml` (see §5).
+
+## 3. Provider, indexer, accounts
+
+- Provider of record: **Easynews**, `secure-eu.news.easynews.com:563` (TLS). Connection limit configured to 60 — plan support for that number was never verified; lower if auth/throttle errors appear.
+- NNTP engine (`:563`) and the Easynews **web search API** are separate code paths; web API integration is still on the roadmap.
+- Indexer: any **Newznab-compatible** one (developed against Miatrix): `?t=caps` discovery → search → release-name parser (resolution/codec/HDR/audio/group) → NZB straight into the player. Cross-indexer dedup is still open.
+- Metadata (TMDB + OMDb) is planned, not implemented.
+
+## 4. Standing rules (non-negotiable)
+
+1. **Secrets:** never in code, tests, files, CLI args, logs or `Debug` output. Credentials live only in the OS keychain (`flutter_secure_storage` in-app, `keyring` crate in the CLI, `rpassword` prompt). Test fixtures may use only the placeholder password `TESTPASS123`.
+2. **Seek offsets come only from decoded yEnc `begin/end`** (`YencPart` / `record_part`). NZB `bytes` (encoded article size) is used for download planning/progress only — never for offsets.
+3. **Lazy streaming:** serve segment-by-segment (`locator.decoded_span`); when the player pauses, network activity must stop. Never pre-fetch a whole open-ended range.
+4. **Test discipline:** every engine module is proven with offline unit tests before integration. Before calling any work done, the full gate must pass (§5). Fixture archives live in `rust/tests/fixtures/`.
+5. **Minimal diffs**, match surrounding style; no speculative refactors. Don't touch unrelated files.
+6. **Update this file** at the end of the session (see protocol at top).
+
+## 5. Build, test, release
+
+Verification gate (run all four, in order):
+
+```bash
+cd rust && cargo test                      # ~220 tests (run to confirm current count)
+cd rust && cargo clippy --all-targets -- -D warnings
+flutter analyze lib test
+flutter test                               # ~141 tests
+```
+
+Release pipeline (v1.4+):
+
+1. Write `docs/releases/vX.Y.md` (English release notes — CI uses it as `body_path`).
+2. Bump `pubspec.yaml` version, commit, `git tag vX.Y`, `git push --tags`.
+3. `release.yml` builds Windows / Android / Linux / iOS via the reusable `*-build.yml` workflows and publishes assets with `softprops/action-gh-release`.
+4. **macOS asset is built locally** (signing requires the local keychain — paid dev cert, team `8665FDLXA6`, `keychain-access-groups` entitlement; ad-hoc signing fails with `-34018`) and uploaded manually: `gh release upload vX.Y dist/macos/zanzibarr-macos-arm64.zip`.
+5. Sync `docs/index.html` (site) if features/roadmap changed — download URLs are `releases/latest`-based, so no link edits needed.
+
+Debug hooks (developer-only, env vars): `ZANZIBARR_DEBUG_NZB=/path/to.nzb` (open NZB directly at startup), `ZANZIBARR_DEBUG_PROBE=1` (dump video params + audio tracks to stdout).
+
+## 6. Current state (updated 2026-09-08)
+
+`main` is ahead of v1.4.0; everything below is implemented, tested locally and pushed, **not yet released** (candidate: v1.5):
+
+- `d20544c` OTA updates — GitHub Releases check, in-app one-tap install on Android (FileProvider), link-out elsewhere.
+- `33d1f83` + vendor fixes — **compressed RAR stream-seek**: volumes spool to a temp dir, vendored libunrar decodes ahead into a growing file, HTTP layer serves the decoded prefix instantly; temp disk reclaimed on close.
+- `0776acd` Android TV remote focus loss fix (focus returns to root when controls hide).
+- `3713b31` Android multi-audio silent-start fix (explicit track re-assert) + fit↔fill button in the top bar.
+- `17c959e` debug hooks (above).
+- `359cdc2`, `62f0200` — `libc++_shared.so` packaged into the APK (`copyLibcxxShared` in `android/app/build.gradle.kts`, NDK sysroot → jniLibs). Last Android CI run green; APKs in `dist/android/` verified to contain the lib.
+
+**Pending:** a friend is testing the fixed APK (engine-start crash). If clean → cut **v1.5** per §5.
+
+## 7. Known issues / watch list
+
+- *Awaiting friend test* of the `libc++_shared` APK (was: `dlopen failed: library "libc++_shared.so" not found` on armeabi-v7a).
+- *Pillarbox report* on `The.Runner.2026.1080p...` (16:9 content, bars on sides) — fit/fill button added in `3713b31`; if bars persist on a 16:9 TV, that's a render bug → get on-device logcat.
+- Owner's Mac keychain still holds a stale `usenews` entry (old password) — CLI gets 502; the release app reads its own `zanzibarr` entries and is unaffected.
+- Easynews 60-connection limit unverified (§3).
+- README test-count badge lags behind reality — update it when convenient, don't trust it.
+
+## 8. Roadmap (priority order, status)
+
+| # | Item | Status |
+|---|------|--------|
+| 1 | v1.5 release (OTA, compressed RAR, TV/audio/fit fixes) | ready once friend test passes |
+| 2 | Easynews web search API (separate code path) | open |
+| 3 | Cross-indexer dedup | open |
+| 4 | TMDB + OMDb metadata | open |
+| 5 | iOS TestFlight distribution | open |
+| 6 | OpenSubtitles integration | open |
+| 7 | Chromecast / AirPlay | open |
+| 8 | HDR10+ detection | open |
+
+Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z STORE/LZMA + AES-256, PAR2 Reed-Solomon repair, custom libmpv (TrueHD/DTS-HD/AV1), DV Profile 5 on macOS+Android+Windows+Linux, Android TV leanback + remote, 14 languages, dark/light themes, OTA updates, compressed RAR seek, subtitle color, Smart Canvas, continue-watching.
+
+## 9. History (append dated entries at the bottom — newest last)
+
+- **v1.0 (2026-07)** — Phase 0–2: FRB skeleton; NZB parser + yEnc decoder; NNTP pool (rustls/tokio); segment↔byte-range locator from yEnc begin/end; lazy localhost range server; media_kit playback+seek proven against real Easynews. Newznab search, 14 locales, dark/light, GitHub Pages site, Reddit launch.
+- **v1.1** — RAR5/RAR4 multi-volume STORE as one virtual seekable file; split 7z STORE + AES-256; PAR2 verify+repair (Reed-Solomon, byte-exact vs par2cmdline); Android TV leanback; Smart Canvas.
+- **v1.2** — Dolby Vision Profile 5 fixed on Android: custom mpv 0.41 + FFmpeg 8.1.2 + libplacebo build (repo `libmpv-android-video-build`), GPU reshaping with 8-bit path that survives drivers lacking 16-bit linear sampling (Samsung Xclipse) and Adreno. End of the pink/green saga.
+- **v1.3** — embedded-subtitle visibility fix on Android; TV remote key handling; released to all platforms.
+- **v1.4 (2026-08)** — continue-watching history, subtitle color, DV Profile 5 on Windows/Linux, first Linux + iOS (unsigned) packages, tag-push CI release pipeline (`release.yml` + reusable builders).
+- **2026-09 (unreleased, main)** — OTA updates; compressed RAR stream-seek (vendored libunrar, decode-ahead); TV remote focus fix; Android silent-start fix + fit/fill; `libc++_shared` APK packaging fix; debug hooks. Details in §6.
+
+### Key technical decisions (the *why* — don't relitigate without cause)
+
+- **Rust + FRB, on-device, no server:** mature crate ecosystem (NNTP/yEnc/RAR/7z/PAR2), clean FFI, no runtime. NZBDav (C#, MIT) is reference blueprint only — algorithms ported, code never copied.
+- **STORE first, archives later:** end-to-end playback was proven on STORE releases before any archive work; RAR/7z/AES/PAR2 came in phased afterwards. Keep this discipline for new media features.
+- **Custom libmpv builds:** stock media_kit libs lack TrueHD/DTS-HD and botch DV P5 (pink/green). P5 is reshaped on GPU via libplacebo; HDR10-based profiles ride the natural decoder path. Never "fix" DV by forcing SDR silently.
+- **Vendored unrar fork** (`vendor/unrar-rs`, `vendor/unrar-sys`): upstream unrar 0.5.8 + patches — `UCM_CHANGEVOLUMEW` handler must not touch `p1` (heisenbug SIGABRT), `USE_LUTIMES` off on Android, per-target link flags (`c++_shared` / `c++` / `stdc++`), `-fno-stack-check` on Apple targets. Prefer patching the fork over replacing the approach.
+- **Android C++ runtime:** engine `.so` links `libc++_shared`, which must be *packaged into the APK* (`copyLibcxxShared` task) — static linking was tried and abandoned (`--undefined-version` hacks in CI).
+- **OTA via GitHub Releases:** update check reads latest release; Android installs in-app through a FileProvider content URI; desktop links out.
+
+## 10. Onboarding order for a fresh agent
+
+1. This file.
+2. `README.md` — product surface and feature wording.
+3. `docs/releases/v1.4.md` (and any newer `v*.md`) — what shipped last.
+4. `rust/src/engine/mod.rs` → `server.rs` / `http.rs` / `locator.rs` — the streaming spine.
+5. `lib/main.dart` → `lib/player/player_screen.dart` — app shell and player wiring.
+6. `pubspec.yaml`, `rust/Cargo.toml` — dependency ground truth (never assume a package exists).
+7. `.github/workflows/release.yml` — how releases actually happen.
+
+Working with the owner: replies in Turkish; test feedback arrives as screenshots/screen recordings from friends' devices (Samsung/Poco phones, Homatics Android TV box, Windows PC); test NZBs live under `~/Downloads/CodexGPT/`; use the §5 debug hooks to reproduce quickly. Commit + push is pre-authorized (Turkish conventional commits) — still never commit secrets, build outputs or the `kimi-export-*` session files.
