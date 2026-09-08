@@ -151,4 +151,4 @@ Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z ST
 6. `pubspec.yaml`, `rust/Cargo.toml` — dependency ground truth (never assume a package exists).
 7. `.github/workflows/release.yml` — how releases actually happen.
 
-Working with the owner: replies in Turkish; test feedback arrives as screenshots/screen recordings from friends' devices (Samsung/Poco phones, Homatics Android TV box, Windows PC); test NZBs live under `~/Downloads/USENET/` (sibling of this repo); use the §5 debug hooks to reproduce quickly. Commit + push is pre-authorized (Turkish conventional commits) — still never commit secrets, build outputs or the `kimi-export-*` session files.
+Working with the owner: replies in Turkish; test feedback arrives as screenshots/screen recordings from friends' devices (Samsung/Poco phones, Homatics Android TV box, Windows PC); test NZBs live under `~/Downloads/USENET/` (parent of this repo); use the §5 debug hooks to reproduce quickly. Commit + push is pre-authorized (Turkish conventional commits) — still never commit secrets, build outputs or the `kimi-export-*` session files.
