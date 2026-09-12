@@ -174,5 +174,14 @@
   "errNzbUnreadable": "NZB 파일을 읽을 수 없거나 손상되었습니다. 유효하고 완전한 NZB 파일을 선택하세요.",
   "errArchiveNotPlayable": "NZB 내부의 아카이브(7z/RAR)를 재생할 수 없거나 구조가 손상되었습니다. 완전한 STORE 릴리스를 선택하세요.",
   "errNoPlayableMedia": "NZB에서 지원되는 비디오 스트림을 찾을 수 없습니다. 직접 미디어 또는 지원되는 STORE 아카이브가 포함된 릴리스를 선택하세요.",
-  "errStreamStartupGeneric": "스트림을 시작할 수 없습니다. NZB 내용과 제공업체 연결을 확인하세요."
+  "errStreamStartupGeneric": "스트림을 시작할 수 없습니다. NZB 내용과 제공업체 연결을 확인하세요.",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}"
 }

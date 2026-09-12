@@ -174,5 +174,14 @@
   "errNzbUnreadable": "Файл NZB не удалось прочитать или он повреждён. Выберите действительный, полный файл NZB.",
   "errArchiveNotPlayable": "Архив (7z/RAR) в NZB не воспроизводится или его структура повреждена. Выберите полный STORE-релиз.",
   "errNoPlayableMedia": "В NZB не найден поддерживаемый видеопоток. Выберите релиз с прямым видео или поддерживаемым STORE-архивом.",
-  "errStreamStartupGeneric": "Не удалось запустить поток. Проверьте содержимое NZB и подключение провайдера."
+  "errStreamStartupGeneric": "Не удалось запустить поток. Проверьте содержимое NZB и подключение провайдера.",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}"
 }

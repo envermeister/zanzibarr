@@ -174,5 +174,14 @@
   "errNzbUnreadable": "Die NZB-Datei konnte nicht gelesen werden oder ist beschädigt. Wähle eine gültige, vollständige NZB-Datei.",
   "errArchiveNotPlayable": "Das Archiv (7z/RAR) im NZB ist nicht abspielbar oder seine Struktur ist beschädigt. Wähle ein vollständiges STORE-Release.",
   "errNoPlayableMedia": "Im NZB wurde kein unterstützter Videostream gefunden. Wähle ein Release mit direkten Medien oder einem unterstützten STORE-Archiv.",
-  "errStreamStartupGeneric": "Der Stream konnte nicht gestartet werden. Prüfe den NZB-Inhalt und die Anbieterverbindung."
+  "errStreamStartupGeneric": "Der Stream konnte nicht gestartet werden. Prüfe den NZB-Inhalt und die Anbieterverbindung.",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}"
 }

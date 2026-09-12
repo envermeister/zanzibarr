@@ -174,5 +174,14 @@
   "errNzbUnreadable": "无法读取 NZB 文件或文件已损坏。请选择有效、完整的 NZB 文件。",
   "errArchiveNotPlayable": "NZB 内的压缩包（7z/RAR）无法播放或其结构已损坏。请选择完整的 STORE 发布。",
   "errNoPlayableMedia": "在 NZB 中找不到受支持的视频流。请选择带有直接媒体或受支持 STORE 压缩包的发布。",
-  "errStreamStartupGeneric": "无法启动该流。请检查 NZB 内容和提供商连接。"
+  "errStreamStartupGeneric": "无法启动该流。请检查 NZB 内容和提供商连接。",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}"
 }

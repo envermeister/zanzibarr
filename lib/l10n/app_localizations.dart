@@ -1309,6 +1309,60 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'The stream could not be started. Check the NZB content and the provider connection.'**
   String get errStreamStartupGeneric;
+
+  /// No description provided for @castTooltip.
+  ///
+  /// In en, this message translates to:
+  /// **'Cast to TV'**
+  String get castTooltip;
+
+  /// No description provided for @castDialogTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Cast to device'**
+  String get castDialogTitle;
+
+  /// No description provided for @castSearching.
+  ///
+  /// In en, this message translates to:
+  /// **'Searching for devices…'**
+  String get castSearching;
+
+  /// No description provided for @castNoDevices.
+  ///
+  /// In en, this message translates to:
+  /// **'No cast devices found on your network.'**
+  String get castNoDevices;
+
+  /// No description provided for @castUnavailable.
+  ///
+  /// In en, this message translates to:
+  /// **'Casting is unavailable for this stream'**
+  String get castUnavailable;
+
+  /// No description provided for @castConnecting.
+  ///
+  /// In en, this message translates to:
+  /// **'Connecting…'**
+  String get castConnecting;
+
+  /// No description provided for @castPlayingOn.
+  ///
+  /// In en, this message translates to:
+  /// **'Playing on {device}'**
+  String castPlayingOn(String device);
+
+  /// No description provided for @castDisconnect.
+  ///
+  /// In en, this message translates to:
+  /// **'Disconnect'**
+  String get castDisconnect;
+
+  /// No description provided for @castFailed.
+  ///
+  /// In en, this message translates to:
+  /// **'Casting failed: {error}'**
+  String castFailed(String error);
 }
 
 class _AppLocalizationsDelegate

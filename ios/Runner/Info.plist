@@ -73,5 +73,13 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<!-- Cast (TV'ye yansıtma): LAN cihaz keşfi için yerel ağ erişimi. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>zanzibarr discovers Chromecast and AirPlay devices on your local network to cast video to your TV.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+		<string>_airplay._tcp</string>
+	</array>
 </dict>
 </plist>

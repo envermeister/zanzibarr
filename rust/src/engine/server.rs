@@ -43,21 +43,37 @@ pub async fn bind_local(port: u16) -> io::Result<TcpListener> {
     TcpListener::bind(("127.0.0.1", port)).await
 }
 
+/// Tüm ağ arayüzlerinde dinler (LAN). Yalnız cast paylaşımı içindir: bu
+/// listener'dan gelen bağlantılar [`serve_until`] üzerinde token'lı bir yol
+/// öneki zorunlu kılarak korunur; LAN'a açılan tek kapı budur.
+pub async fn bind_lan(port: u16) -> io::Result<TcpListener> {
+    TcpListener::bind(("0.0.0.0", port)).await
+}
+
 /// Kabul döngüsü; her bağlantıyı izlenen ayrı bir görevde işler ve
 /// sonsuza dek çalışır.
 pub async fn serve<S: RangeSource>(listener: TcpListener, source: Arc<S>) -> io::Result<()> {
-    serve_until(listener, source, std::future::pending()).await
+    serve_until(listener, source, None, std::future::pending()).await
 }
 
 /// `shutdown` tamamlanana dek bağlantı kabul eder; kapanışta açık HTTP
 /// görevlerini iptal edip hepsini drain etmeden dönmez.
+///
+/// `required_prefix` verilirse her isteğin hedefi bu önekle başlamak zorundadır
+/// (LAN cast listener'ı için token'lı yol koruması); aksi hâlde 403 dönülür.
+/// Loopback listener'ı `None` ile çağrılır — davranışı değişmez.
 ///
 /// Yalnızca dış server görevini abort etmek, [`JoinSet`]'in child görevlere
 /// iptal isteği göndermesini sağlar ama onların future'larının gerçekten
 /// düşmesini beklemez. Normal shutdown yolu burada child görevleri join ederek
 /// taşıdıkları kaynakların ve bağlantıların dönüşten önce bırakılmasını
 /// garanti eder.
-pub async fn serve_until<S, F>(listener: TcpListener, source: Arc<S>, shutdown: F) -> io::Result<()>
+pub async fn serve_until<S, F>(
+    listener: TcpListener,
+    source: Arc<S>,
+    required_prefix: Option<Arc<str>>,
+    shutdown: F,
+) -> io::Result<()>
 where
     S: RangeSource,
     F: std::future::Future<Output = ()> + Send,
@@ -78,9 +94,10 @@ where
                 while connections.try_join_next().is_some() {}
 
                 let source = Arc::clone(&source);
+                let required_prefix = required_prefix.clone();
                 connections.spawn(async move {
                     // Bağlantı hatalarını (player erken kapatması vb.) yut.
-                    let _ = handle_connection(stream, source).await;
+                    let _ = handle_connection(stream, source, required_prefix).await;
                 });
             }
         }
@@ -103,6 +120,7 @@ struct RequestHead {
 async fn handle_connection<S: RangeSource>(
     mut stream: TcpStream,
     source: Arc<S>,
+    required_prefix: Option<Arc<str>>,
 ) -> io::Result<()> {
     let head_bytes = match read_head(&mut stream).await? {
         Some(bytes) => bytes,
@@ -114,6 +132,13 @@ async fn handle_connection<S: RangeSource>(
             return write_simple(&mut stream, 400, "Bad Request").await;
         }
     };
+
+    // LAN cast listener'ı koruması: token'lı önek olmadan servis yok.
+    if let Some(prefix) = required_prefix.as_deref() {
+        if !head.target.starts_with(prefix) {
+            return write_simple(&mut stream, 403, "Forbidden").await;
+        }
+    }
 
     let is_head = head.method.eq_ignore_ascii_case("HEAD");
     if !is_head && !head.method.eq_ignore_ascii_case("GET") {
@@ -674,7 +699,7 @@ mod tests {
         let listener = bind_local(0).await.unwrap();
         let port = listener.local_addr().unwrap().port();
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
-        let server = tokio::spawn(serve_until(listener, source, async move {
+        let server = tokio::spawn(serve_until(listener, source, None, async move {
             let _ = shutdown_rx.await;
         }));
 
@@ -692,5 +717,58 @@ mod tests {
             weak_source.upgrade().is_none(),
             "child GET task must not hold resources after graceful shutdown"
         );
+    }
+
+    // --- LAN cast listener'ı: token'lı yol koruması ---
+
+    async fn start_guarded_test_server(data: Vec<u8>, prefix: &str) -> u16 {
+        let source = Arc::new(InMemorySource {
+            data,
+            content_type: "video/x-matroska".into(),
+        });
+        // Koruma listener bazlıdır (LAN listener'ı prefix ister); testte aynı
+        // mantığı loopback listener'a uygulamak akışı uçtan uca denetler.
+        let listener = bind_local(0).await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let prefix: Arc<str> = Arc::from(prefix);
+        tokio::spawn(async move {
+            let _ = serve_until(listener, source, Some(prefix), std::future::pending()).await;
+        });
+        port
+    }
+
+    #[tokio::test]
+    async fn tokensiz_lan_istegi_403() {
+        let data: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
+        let port = start_guarded_test_server(data, "/cast/abc123/").await;
+        let (head, body) = request(port, "GET /f.mkv HTTP/1.1\r\nHost: x\r\n\r\n").await;
+        assert!(head.starts_with("HTTP/1.1 403 Forbidden"), "{head}");
+        assert!(body.is_empty());
+    }
+
+    #[tokio::test]
+    async fn yanlis_token_403() {
+        let data: Vec<u8> = (0..=255u8).cycle().take(4096).collect();
+        let port = start_guarded_test_server(data, "/cast/abc123/").await;
+        let (head, _) = request(
+            port,
+            "GET /cast/XYZ999/f.mkv HTTP/1.1\r\nHost: x\r\nRange: bytes=0-99\r\n\r\n",
+        )
+        .await;
+        assert!(head.starts_with("HTTP/1.1 403 Forbidden"), "{head}");
+    }
+
+    #[tokio::test]
+    async fn dogru_token_range_206() {
+        let data: Vec<u8> = (0..=255u8).cycle().take(10_000).collect();
+        let port = start_guarded_test_server(data.clone(), "/cast/abc123/").await;
+        let (head, body) = request(
+            port,
+            "GET /cast/abc123/f.mkv HTTP/1.1\r\nHost: x\r\nRange: bytes=100-199\r\n\r\n",
+        )
+        .await;
+        assert!(head.starts_with("HTTP/1.1 206 Partial Content"), "{head}");
+        assert!(head.contains("Content-Range: bytes 100-199/10000"));
+        assert_eq!(body, data[100..200]);
     }
 }

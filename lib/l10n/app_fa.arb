@@ -174,5 +174,14 @@
   "errNzbUnreadable": "فایل NZB خوانده نشد یا خراب است. یک فایل NZB معتبر و کامل انتخاب کنید.",
   "errArchiveNotPlayable": "آرشیو (7z/RAR) داخل NZB قابل پخش نیست یا ساختارش خراب است. یک انتشار STORE کامل انتخاب کنید.",
   "errNoPlayableMedia": "هیچ جریان ویدیویی پشتیبانی‌شده‌ای در NZB یافت نشد. انتشاری با رسانهٔ مستقیم یا آرشیو STORE پشتیبانی‌شده انتخاب کنید.",
-  "errStreamStartupGeneric": "جریان آغاز نشد. محتوای NZB و اتصال ارائه‌دهنده را بررسی کنید."
+  "errStreamStartupGeneric": "جریان آغاز نشد. محتوای NZB و اتصال ارائه‌دهنده را بررسی کنید.",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}"
 }

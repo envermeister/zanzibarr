@@ -5,6 +5,14 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <!-- OTA güncelleme: indirilen APK'nın sistem yükleyicisiyle kurulması. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
+    <!-- Cast (TV'ye yansıtma): mDNS cihaz keşfi ve LAN üzerinden medya
+         sunumu için gerekli. NEARBY_WIFI_DEVICES yalnız Android 13+'ta
+         etkili; eski sürümlerde yok sayılır. -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE"/>
+    <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES"
+        android:usesPermissionFlags="neverForLocation"/>
     <!-- Android TV: dokunmatik ekranı olmayan cihazlara (TV box) kurulabilsin;
          telefon/tablet desteği de korunur (required=false). -->
     <uses-feature android:name="android.hardware.touchscreen" android:required="false"/>

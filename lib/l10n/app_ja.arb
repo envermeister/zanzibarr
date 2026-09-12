@@ -174,5 +174,14 @@
   "errNzbUnreadable": "NZB ファイルを読み取れないか破損しています。有効で完全な NZB ファイルを選んでください。",
   "errArchiveNotPlayable": "NZB 内のアーカイブ（7z/RAR）は再生できないか、構造が破損しています。完全な STORE リリースを選んでください。",
   "errNoPlayableMedia": "NZB に対応する動画ストリームが見つかりませんでした。直接メディアまたは対応する STORE アーカイブを含むリリースを選んでください。",
-  "errStreamStartupGeneric": "ストリームを開始できませんでした。NZB の内容とプロバイダー接続を確認してください。"
+  "errStreamStartupGeneric": "ストリームを開始できませんでした。NZB の内容とプロバイダー接続を確認してください。",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}"
 }

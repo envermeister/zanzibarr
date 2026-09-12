@@ -24,6 +24,14 @@
 	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>$(PRODUCT_COPYRIGHT)</string>
+	<!-- Cast (TV'ye yansıtma): LAN cihaz keşfi için yerel ağ erişimi. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>zanzibarr discovers Chromecast and AirPlay devices on your local network to cast video to your TV.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_googlecast._tcp</string>
+		<string>_airplay._tcp</string>
+	</array>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>

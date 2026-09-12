@@ -174,5 +174,14 @@
   "errNzbUnreadable": "NZB फ़ाइल नहीं पढ़ी जा सकी या दूषित है। कोई मान्य, पूरी NZB फ़ाइल चुनें।",
   "errArchiveNotPlayable": "NZB के अंदर का आर्काइव (7z/RAR) चलाने योग्य नहीं है या उसकी संरचना दूषित है। कोई पूरा STORE रिलीज़ चुनें।",
   "errNoPlayableMedia": "NZB में कोई समर्थित वीडियो स्ट्रीम नहीं मिली। सीधे मीडिया या समर्थित STORE आर्काइव वाला रिलीज़ चुनें।",
-  "errStreamStartupGeneric": "स्ट्रीम शुरू नहीं हो सकी। NZB सामग्री और प्रदाता कनेक्शन जाँचें।"
+  "errStreamStartupGeneric": "स्ट्रीम शुरू नहीं हो सकी। NZB सामग्री और प्रदाता कनेक्शन जाँचें।",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}"
 }

@@ -174,5 +174,14 @@
   "errNzbUnreadable": "Le fichier NZB n'a pas pu être lu ou est corrompu. Choisissez un fichier NZB valide et complet.",
   "errArchiveNotPlayable": "L'archive (7z/RAR) dans le NZB n'est pas lisible ou sa structure est corrompue. Choisissez une release STORE complète.",
   "errNoPlayableMedia": "Aucun flux vidéo pris en charge n'a été trouvé dans le NZB. Choisissez une release avec des médias directs ou une archive STORE prise en charge.",
-  "errStreamStartupGeneric": "Le flux n'a pas pu démarrer. Vérifiez le contenu du NZB et la connexion du fournisseur."
+  "errStreamStartupGeneric": "Le flux n'a pas pu démarrer. Vérifiez le contenu du NZB et la connexion du fournisseur.",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}"
 }

@@ -73,6 +73,10 @@ pub struct StreamInfo {
     pub session_id: u64,
     /// media_kit'in açacağı localhost URL'i.
     pub url: String,
+    /// Cast cihazının (Chromecast/AirPlay) LAN üzerinden vuracağı token'lı URL.
+    /// LAN listener'ı kurulamadıysa (sandbox, ağ yok) boş string — cast
+    /// özelliği o oturumda kullanılamaz.
+    pub cast_url: String,
     /// Çözülmüş dosya boyutu (bayt).
     pub size: u64,
     pub filename: String,
@@ -485,9 +489,27 @@ async fn run_stream_session(
         }
     };
     let encoded_name = url_encode_path(&filename);
+
+    // Cast paylaşımı: LAN listener'ı token'lı `/cast/<token>/` öneki ister;
+    // kurulamazsa (sandbox, ağ yok) cast bu oturumda kapalı kalır, yerel
+    // oynatma etkilenmez.
+    let cast_token = generate_cast_token(session_id);
+    let lan_listener = server::bind_lan(0).await.ok();
+    let cast_url = match (&lan_listener, local_lan_ipv4()) {
+        (Some(lan), Some(ip)) => match lan.local_addr() {
+            Ok(address) => format!(
+                "http://{ip}:{}/cast/{cast_token}/{encoded_name}",
+                address.port()
+            ),
+            Err(_) => String::new(),
+        },
+        _ => String::new(),
+    };
+
     let info = StreamInfo {
         session_id,
         url: format!("http://127.0.0.1:{port}/{encoded_name}"),
+        cast_url,
         size,
         filename,
         segment_count,
@@ -498,12 +520,63 @@ async fn run_stream_session(
         return;
     }
 
-    let _ = server::serve_until(
-        listener,
-        Arc::new(source),
-        wait_for_cancellation(cancellation),
-    )
-    .await;
+    let source = Arc::new(source);
+    match lan_listener {
+        Some(lan) => {
+            let prefix: Arc<str> = Arc::from(format!("/cast/{cast_token}/"));
+            let _ = tokio::join!(
+                server::serve_until(
+                    listener,
+                    Arc::clone(&source),
+                    None,
+                    wait_for_cancellation(cancellation.clone()),
+                ),
+                server::serve_until(
+                    lan,
+                    source,
+                    Some(prefix),
+                    wait_for_cancellation(cancellation),
+                ),
+            );
+        }
+        None => {
+            let _ = server::serve_until(
+                listener,
+                source,
+                None,
+                wait_for_cancellation(cancellation),
+            )
+            .await;
+        }
+    }
+}
+
+/// Cast oturumu için 128-bit rastgele yol token'ı (hex). LAN tehdit modeli
+/// için kriptografik RNG şart değil; zaman + pid + oturum kimliği karması
+/// tahmin edilemezlik açısından yeterlidir.
+fn generate_cast_token(session_id: u64) -> String {
+    use sha2::Digest;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let hash = sha2::Sha256::digest(format!(
+        "zanzibarr-cast:{session_id}:{nanos}:{}",
+        std::process::id()
+    ));
+    hash[..16].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Cihazın LAN IPv4 adresini bulur. UDP connect hilesi paket göndermez;
+/// yalnızca yönlendirme tablosundan çıkış arayüzünü öğrenir.
+fn local_lan_ipv4() -> Option<std::net::Ipv4Addr> {
+    use std::net::UdpSocket;
+    let socket = UdpSocket::bind(("0.0.0.0", 0)).ok()?;
+    socket.connect(("8.8.8.8", 80)).ok()?;
+    match socket.local_addr().ok()?.ip() {
+        std::net::IpAddr::V4(v4) => Some(v4),
+        std::net::IpAddr::V6(_) => None,
+    }
 }
 
 fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
@@ -729,6 +802,7 @@ mod tests {
             .send(Ok(StreamInfo {
                 session_id: 7,
                 url: "http://127.0.0.1:1/movie.mkv".into(),
+                cast_url: String::new(),
                 size: 1,
                 filename: "movie.mkv".into(),
                 segment_count: 1,

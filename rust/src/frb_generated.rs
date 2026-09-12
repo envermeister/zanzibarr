@@ -775,6 +775,7 @@ impl SseDecode for crate::api::streaming::StreamInfo {
     fn sse_decode(deserializer: &mut flutter_rust_bridge::for_generated::SseDeserializer) -> Self {
         let mut var_sessionId = <u64>::sse_decode(deserializer);
         let mut var_url = <String>::sse_decode(deserializer);
+        let mut var_castUrl = <String>::sse_decode(deserializer);
         let mut var_size = <u64>::sse_decode(deserializer);
         let mut var_filename = <String>::sse_decode(deserializer);
         let mut var_segmentCount = <u32>::sse_decode(deserializer);
@@ -782,6 +783,7 @@ impl SseDecode for crate::api::streaming::StreamInfo {
         return crate::api::streaming::StreamInfo {
             session_id: var_sessionId,
             url: var_url,
+            cast_url: var_castUrl,
             size: var_size,
             filename: var_filename,
             segment_count: var_segmentCount,
@@ -1045,6 +1047,7 @@ impl flutter_rust_bridge::IntoDart for crate::api::streaming::StreamInfo {
         [
             self.session_id.into_into_dart().into_dart(),
             self.url.into_into_dart().into_dart(),
+            self.cast_url.into_into_dart().into_dart(),
             self.size.into_into_dart().into_dart(),
             self.filename.into_into_dart().into_dart(),
             self.segment_count.into_into_dart().into_dart(),
@@ -1246,6 +1249,7 @@ impl SseEncode for crate::api::streaming::StreamInfo {
     fn sse_encode(self, serializer: &mut flutter_rust_bridge::for_generated::SseSerializer) {
         <u64>::sse_encode(self.session_id, serializer);
         <String>::sse_encode(self.url, serializer);
+        <String>::sse_encode(self.cast_url, serializer);
         <u64>::sse_encode(self.size, serializer);
         <String>::sse_encode(self.filename, serializer);
         <u32>::sse_encode(self.segment_count, serializer);

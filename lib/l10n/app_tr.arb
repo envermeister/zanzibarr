@@ -207,5 +207,14 @@
   "errNzbUnreadable": "NZB dosyası okunamadı veya yapısı bozuk. Geçerli ve eksiksiz bir NZB dosyası seçin.",
   "errArchiveNotPlayable": "NZB içindeki arşiv (7z/RAR) oynatmaya uygun değil veya arşiv yapısı bozuk. Eksiksiz bir STORE yayını seçin.",
   "errNoPlayableMedia": "NZB içinde desteklenen bir video akışı bulunamadı. Doğrudan medya veya desteklenen STORE arşivi içeren bir yayın seçin.",
-  "errStreamStartupGeneric": "Akış başlatılamadı. NZB içeriğini ve sağlayıcı bağlantısını kontrol edin."
+  "errStreamStartupGeneric": "Akış başlatılamadı. NZB içeriğini ve sağlayıcı bağlantısını kontrol edin.",
+  "castTooltip": "TV'ye yansıt",
+  "castDialogTitle": "Cihaza yansıt",
+  "castSearching": "Cihazlar aranıyor…",
+  "castNoDevices": "Ağınızda yansıtma cihazı bulunamadı.",
+  "castUnavailable": "Bu yayın için yansıtma kullanılamıyor",
+  "castConnecting": "Bağlanıyor…",
+  "castPlayingOn": "{device} cihazında oynatılıyor",
+  "castDisconnect": "Bağlantıyı kes",
+  "castFailed": "Yansıtma başarısız: {error}"
 }

@@ -325,5 +325,24 @@
   "errNzbUnreadable": "The NZB file could not be read or is corrupt. Choose a valid, complete NZB file.",
   "errArchiveNotPlayable": "The archive (7z/RAR) inside the NZB is not playable or its structure is corrupt. Choose a complete STORE release.",
   "errNoPlayableMedia": "No supported video stream was found in the NZB. Choose a release with direct media or a supported STORE archive.",
-  "errStreamStartupGeneric": "The stream could not be started. Check the NZB content and the provider connection."
+  "errStreamStartupGeneric": "The stream could not be started. Check the NZB content and the provider connection.",
+  "castTooltip": "Cast to TV",
+  "castDialogTitle": "Cast to device",
+  "castSearching": "Searching for devices…",
+  "castNoDevices": "No cast devices found on your network.",
+  "castUnavailable": "Casting is unavailable for this stream",
+  "castConnecting": "Connecting…",
+  "castPlayingOn": "Playing on {device}",
+  "@castPlayingOn": {
+    "placeholders": {
+      "device": { "type": "String" }
+    }
+  },
+  "castDisconnect": "Disconnect",
+  "castFailed": "Casting failed: {error}",
+  "@castFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  }
 }

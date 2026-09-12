@@ -688,4 +688,35 @@ class AppLocalizationsTr extends AppLocalizations {
   @override
   String get errStreamStartupGeneric =>
       'Akış başlatılamadı. NZB içeriğini ve sağlayıcı bağlantısını kontrol edin.';
+
+  @override
+  String get castTooltip => 'TV\'ye yansıt';
+
+  @override
+  String get castDialogTitle => 'Cihaza yansıt';
+
+  @override
+  String get castSearching => 'Cihazlar aranıyor…';
+
+  @override
+  String get castNoDevices => 'Ağınızda yansıtma cihazı bulunamadı.';
+
+  @override
+  String get castUnavailable => 'Bu yayın için yansıtma kullanılamıyor';
+
+  @override
+  String get castConnecting => 'Bağlanıyor…';
+
+  @override
+  String castPlayingOn(String device) {
+    return '$device cihazında oynatılıyor';
+  }
+
+  @override
+  String get castDisconnect => 'Bağlantıyı kes';
+
+  @override
+  String castFailed(String error) {
+    return 'Yansıtma başarısız: $error';
+  }
 }

@@ -10,6 +10,8 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../cast/cast_device_picker.dart';
+import '../cast/cast_service.dart';
 import '../l10n/app_localizations.dart';
 import '../settings/provider_settings.dart';
 import '../src/rust/api/repair.dart';
@@ -38,6 +40,7 @@ class PlayerScreen extends StatefulWidget {
     this.preferenceStore,
     this.pictureInPictureWindow,
     this.historyStore,
+    this.castService,
     this.startupTimeout = const Duration(seconds: 45),
     this.streamPreparationTimeout = const Duration(seconds: 90),
   });
@@ -56,6 +59,9 @@ class PlayerScreen extends StatefulWidget {
   /// İzleme geçmişi (kaldığı yerden devam); testlerde sahte depo enjekte
   /// edilir.
   final PlaybackHistoryStore? historyStore;
+
+  /// Cast (TV'ye yansıtma) servisi; testlerde sahte enjekte edilir.
+  final CastController? castService;
 
   /// libmpv video izini tanıyamazsa sonsuz spinner yerine hata gösterilir.
   final Duration startupTimeout;
@@ -86,6 +92,24 @@ class _PlayerScreenState extends State<PlayerScreen>
   late final PlaybackStartupGuard _startupGuard;
   late final MediaPreferencesStore _preferenceStore;
   late final PlaybackHistoryStore _historyStore;
+  late final CastController _castService;
+
+  // Cast (TV'ye yansıtma) oturumu. Cast aktifken yerel player duraklatılır;
+  // kumanda komutları (oynat/seek/ses) cast oturumuna aynalanır ve pozisyon
+  // cast cihazından gelen yayınla beslenir (izleme geçmişi böylece cast
+  // sırasında da doğru kalır).
+  CastSession? _castSession;
+  String? _castDeviceName;
+  StreamSubscription<Duration>? _castPositionSubscription;
+  StreamSubscription<Duration>? _castDurationSubscription;
+  StreamSubscription<SessionState>? _castStateSubscription;
+  bool _castBusy = false;
+
+  bool get _casting => _castSession != null;
+
+  /// Cast düğmesi ancak motor LAN paylaşım URL'si üretebildiyse etkin.
+  bool get _castAvailable =>
+      _playbackReady && (_nativeStream?.castUrl.isNotEmpty ?? false);
 
   final _videoKey = GlobalKey<VideoState>();
   final _playButtonFocusNode = FocusNode(debugLabel: 'Oynat/Duraklat düğmesi');
@@ -245,6 +269,7 @@ class _PlayerScreenState extends State<PlayerScreen>
         widget.pictureInPictureWindow ?? NativePictureInPictureWindow();
     _preferenceStore = widget.preferenceStore ?? MediaPreferencesStore();
     _historyStore = widget.historyStore ?? PlaybackHistoryStore();
+    _castService = widget.castService ?? AppCastService();
     _startupGuard = PlaybackStartupGuard(widget.startupTimeout);
     _positionSubscription = _player.stream.position.listen((position) {
       if (!mounted || _scrubbing) return;
@@ -729,6 +754,158 @@ class _PlayerScreenState extends State<PlayerScreen>
     }
   }
 
+  // --- Cast (TV'ye yansıtma) ---
+
+  void _onCastButton() {
+    if (_castBusy) return;
+    _revealControls();
+    if (_casting) {
+      unawaited(_showCastStatusDialog());
+    } else {
+      unawaited(_showCastPicker());
+    }
+  }
+
+  Future<void> _showCastPicker() async {
+    final stream = _nativeStream;
+    if (stream == null || stream.castUrl.isEmpty) {
+      _showCastMessage(AppLocalizations.of(context).castUnavailable);
+      return;
+    }
+    final device = await CastDevicePicker.show(context, service: _castService);
+    _castService.stopDiscovery();
+    if (device != null && mounted) {
+      await _startCasting(device);
+    }
+  }
+
+  Future<void> _startCasting(CastDevice device) async {
+    final stream = _nativeStream;
+    if (stream == null || stream.castUrl.isEmpty || _castBusy) return;
+    setState(() => _castBusy = true);
+    try {
+      final session = await _castService.startCasting(
+        device,
+        url: stream.castUrl,
+        title: _info?.filename ?? stream.filename,
+        startPosition: _position,
+        duration: _duration,
+      );
+      if (!mounted) {
+        await session.disconnect();
+        return;
+      }
+      _castSession = session;
+      _castDeviceName = device.name;
+      _castPositionSubscription = session.positionStream.listen((position) {
+        if (!mounted || !_casting || _scrubbing) return;
+        setState(() => _position = position);
+      });
+      _castDurationSubscription = session.durationStream.listen((duration) {
+        if (!mounted || !_casting || duration == Duration.zero) return;
+        setState(() => _duration = duration);
+      });
+      _castStateSubscription = session.stateStream.listen(_onCastState);
+      // Yerel oynatma durur; görüntü TV'de.
+      await _player.pause();
+      if (!mounted) return;
+      setState(() {});
+      _showCastMessage(
+        AppLocalizations.of(context).castPlayingOn(device.name),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      _showCastMessage(
+        AppLocalizations.of(context).castFailed(error.toString()),
+      );
+    } finally {
+      if (mounted) setState(() => _castBusy = false);
+    }
+  }
+
+  void _onCastState(SessionState state) {
+    if (!mounted) return;
+    switch (state) {
+      case SessionState.playing:
+      case SessionState.buffering:
+      case SessionState.loading:
+        setState(() => _playing = true);
+      case SessionState.paused:
+      case SessionState.idle:
+      case SessionState.connected:
+      case SessionState.connecting:
+        setState(() => _playing = false);
+      case SessionState.disconnected:
+        // Cihaz tarafında oturum koptu; kaldığımız yerden yerelde devam
+        // edilebilsin diye yerel player'ı son cast konumuna getir.
+        unawaited(_endCastSession(seekLocal: true));
+    }
+  }
+
+  /// Cast oturumunu kapatır. `seekLocal` true ise yerel player son cast
+  /// konumuna getirilir (duraklatılmış halde); kullanıcı play ile devam eder.
+  Future<void> _endCastSession({bool seekLocal = false}) async {
+    final session = _castSession;
+    if (session == null) return;
+    _castSession = null;
+    _castDeviceName = null;
+    await _castPositionSubscription?.cancel();
+    await _castDurationSubscription?.cancel();
+    await _castStateSubscription?.cancel();
+    _castPositionSubscription = null;
+    _castDurationSubscription = null;
+    _castStateSubscription = null;
+    // _position cast yayınından beslendiği için geçmiş yazımı cast konumunu
+    // korur.
+    unawaited(_saveHistoryPosition());
+    try {
+      await _castService.stopCasting();
+    } catch (_) {
+      // Cihaz zaten kopmuş olabilir; temizlik hatası akışı kesmesin.
+    }
+    if (!mounted) return;
+    if (seekLocal && _playbackReady) {
+      try {
+        await _player.seek(_position);
+      } catch (_) {}
+    }
+    setState(() => _playing = _player.state.playing);
+  }
+
+  Future<void> _showCastStatusDialog() async {
+    final l10n = AppLocalizations.of(context);
+    final deviceName = _castDeviceName ?? '';
+    final disconnect = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.castDialogTitle),
+        content: Text(l10n.castPlayingOn(deviceName)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: Text(
+              MaterialLocalizations.of(dialogContext).cancelButtonLabel,
+            ),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(l10n.castDisconnect),
+          ),
+        ],
+      ),
+    );
+    if (disconnect ?? false) {
+      await _endCastSession(seekLocal: true);
+    }
+  }
+
+  void _showCastMessage(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), duration: const Duration(seconds: 4)),
+    );
+  }
+
   Future<void> _configureNativeEngine() async {
     var engineVersion = 'libmpv';
     var streamingReady = false;
@@ -931,6 +1108,12 @@ class _PlayerScreenState extends State<PlayerScreen>
     // çalışmalı ki yazma atlanmasın.
     unawaited(_saveHistoryPosition());
     _historySaveTimer?.cancel();
+    // Cast oturumu ekranla birlikte kapanır; alıcıya stop gönderilir.
+    _castSession = null;
+    _castPositionSubscription?.cancel();
+    _castDurationSubscription?.cancel();
+    _castStateSubscription?.cancel();
+    unawaited(_castService.dispose());
     _disposing = true;
     _scrubGeneration++;
     _canvasGeneration++;
@@ -1086,6 +1269,19 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _togglePlay() async {
     if (!_playbackReady) return;
     _revealControls();
+    final castSession = _castSession;
+    if (castSession != null) {
+      try {
+        if (_playing) {
+          await castSession.pause();
+        } else {
+          await castSession.play();
+        }
+      } catch (error) {
+        _showControlError(error);
+      }
+      return;
+    }
     try {
       await _player.playOrPause();
     } catch (error) {
@@ -1096,6 +1292,20 @@ class _PlayerScreenState extends State<PlayerScreen>
   Future<void> _seekRelative(Duration offset, {bool exact = true}) async {
     if (!_playbackReady) return;
     _revealControls();
+    final castSession = _castSession;
+    if (castSession != null) {
+      var target = _position + offset;
+      if (target < Duration.zero) target = Duration.zero;
+      if (_duration > Duration.zero && target > _duration) {
+        target = _duration;
+      }
+      try {
+        await castSession.seek(target);
+      } catch (error) {
+        _showControlError(error);
+      }
+      return;
+    }
     try {
       await _playback.seekRelative(offset, exact: exact);
     } catch (error) {
@@ -1106,6 +1316,12 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _onVolumeChanged(double value) {
     final clamped = value.clamp(0.0, 100.0);
     if (clamped > 0.5) _lastNonZeroVolume = clamped;
+    final castSession = _castSession;
+    if (castSession != null) {
+      setState(() => _volume = clamped);
+      unawaited(castSession.setVolume(clamped / 100));
+      return;
+    }
     unawaited(_player.setVolume(clamped));
   }
 
@@ -1113,9 +1329,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     _revealControls();
     if (_volume > 0.5) {
       _lastNonZeroVolume = _volume;
-      unawaited(_player.setVolume(0));
+      _onVolumeChanged(0);
     } else {
-      unawaited(_player.setVolume(_lastNonZeroVolume));
+      _onVolumeChanged(_lastNonZeroVolume);
     }
   }
 
@@ -1651,6 +1867,12 @@ class _PlayerScreenState extends State<PlayerScreen>
     _scrubGeneration++;
     _scrubbing = true;
     _wasPlayingBeforeScrub = _playing;
+    if (_casting) {
+      // Cast sırasında yerel önizleme/thumbnail işi yapılmaz; cihaz scrub
+      // sonunda tek seek alır.
+      setState(() => _position = target);
+      return;
+    }
     unawaited(_player.pause());
     setState(() {
       _position = target;
@@ -1661,6 +1883,10 @@ class _PlayerScreenState extends State<PlayerScreen>
 
   void _onScrubUpdate(Duration target) {
     if (!_scrubbing) return;
+    if (_casting) {
+      setState(() => _position = target);
+      return;
+    }
     setState(() {
       _position = target;
       _previewPosition = target;
@@ -1671,6 +1897,19 @@ class _PlayerScreenState extends State<PlayerScreen>
   void _onScrubEnd(Duration target) {
     if (!_scrubbing) return;
     _scrubbing = false;
+    final castSession = _castSession;
+    if (castSession != null) {
+      setState(() => _position = target);
+      unawaited(() async {
+        try {
+          await castSession.seek(target);
+          if (_wasPlayingBeforeScrub) await castSession.play();
+        } catch (error) {
+          _showControlError(error);
+        }
+      }());
+      return;
+    }
     final generation = ++_scrubGeneration;
     _previewDebounce?.cancel();
     _queuedPreviewTarget = null;
@@ -2866,6 +3105,9 @@ class _PlayerScreenState extends State<PlayerScreen>
                 canvasActive: _canvasEditing,
                 subtitleControlsActive: _subtitleControlsVisible,
                 pictureInPictureSupported: _pictureInPictureWindow.isSupported,
+                castAvailable: _castAvailable,
+                casting: _casting,
+                onCast: _onCastButton,
                 playButtonFocusNode: _playButtonFocusNode,
                 onActivity: _revealControls,
                 onVideoTap: _touchPrimary

@@ -46,7 +46,7 @@ Key directories:
 
 - `rust/src/engine/` — the whole streaming engine (see map above). `rust/src/api/` — FRB-exposed API surface (`streaming.rs`, `search.rs`, `repair.rs`, `simple.rs`).
 - `lib/player/` — player screen, controls (`gyuni_player_controls.dart`), keyboard/remote handling, Smart Canvas, subtitle overlay, PiP, media prefs, playback history ("continue watching").
-- `lib/settings/` — provider (NNTP) settings, indexer settings, UI prefs. `lib/search/` — Newznab search UI. `lib/update/update_service.dart` — OTA update check. `lib/l10n/` — 14 locales (en default, tr, es, de, fr, pt, it, ru, zh, ja, ko, hi, ar, fa; ar/fa RTL).
+- `lib/settings/` — provider (NNTP) settings, indexer settings, UI prefs. `lib/search/` — Newznab search UI. `lib/cast/` — Chromecast/AirPlay discovery + session control (`dart_cast`). `lib/update/update_service.dart` — OTA update check. `lib/l10n/` — 14 locales (en default, tr, es, de, fr, pt, it, ru, zh, ja, ko, hi, ar, fa; ar/fa RTL).
 - `vendor/` — `unrar-rs` + `unrar-sys` (**patched fork**, see §5), `media_kit_libs_android_video`, `media_kit_libs_macos_video`.
 - `rust_builder/` — cargokit bridge. `tools/` — `zanzibarr-cli` (NNTP/keychain CLI), asset scripts.
 - `docs/` — website (`index.html`, Vue via CDN), `docs/releases/vX.Y.md` (release notes, referenced by CI `body_path`), `docs/screenshots/`.
@@ -64,19 +64,20 @@ Key directories:
 1. **Secrets:** never in code, tests, files, CLI args, logs or `Debug` output. Credentials live only in the OS keychain (`flutter_secure_storage` in-app, `keyring` crate in the CLI, `rpassword` prompt). Test fixtures may use only the placeholder password `TESTPASS123`.
 2. **Seek offsets come only from decoded yEnc `begin/end`** (`YencPart` / `record_part`). NZB `bytes` (encoded article size) is used for download planning/progress only — never for offsets.
 3. **Lazy streaming:** serve segment-by-segment (`locator.decoded_span`); when the player pauses, network activity must stop. Never pre-fetch a whole open-ended range.
-4. **Test discipline:** every engine module is proven with offline unit tests before integration. Before calling any work done, the full gate must pass (§5). Fixture archives live in `rust/tests/fixtures/`.
-5. **Minimal diffs**, match surrounding style; no speculative refactors. Don't touch unrelated files.
-6. **Update this file** at the end of the session (see protocol at top).
+4. **LAN exposure is token-gated:** the engine's second listener (`bind_lan`, for casting) only serves paths under `/cast/<128-bit-token>/`; loopback stays unauthenticated. Never serve LAN requests without the token check.
+5. **Test discipline:** every engine module is proven with offline unit tests before integration. Before calling any work done, the full gate must pass (§5). Fixture archives live in `rust/tests/fixtures/`.
+6. **Minimal diffs**, match surrounding style; no speculative refactors. Don't touch unrelated files.
+7. **Update this file** at the end of the session (see protocol at top).
 
 ## 5. Build, test, release
 
 Verification gate (run all four, in order):
 
 ```bash
-cd rust && cargo test                      # ~220 tests (run to confirm current count)
+cd rust && cargo test                      # ~223 tests (run to confirm current count)
 cd rust && cargo clippy --all-targets -- -D warnings
 flutter analyze lib test
-flutter test                               # ~141 tests
+flutter test                               # ~148 tests
 ```
 
 Release pipeline (v1.4+):
@@ -89,18 +90,17 @@ Release pipeline (v1.4+):
 
 Debug hooks (developer-only, env vars): `ZANZIBARR_DEBUG_NZB=/path/to.nzb` (open NZB directly at startup), `ZANZIBARR_DEBUG_PROBE=1` (dump video params + audio tracks to stdout).
 
-## 6. Current state (updated 2026-09-08)
+## 6. Current state (updated 2026-09-12)
 
-**v1.5 shipped** (tag `v1.5`, release notes `docs/releases/v1.5.md`). `main` == v1.5. Contents:
+**v1.5 shipped** (tag `v1.5`, release notes `docs/releases/v1.5.md`). `main` is ahead with **Chromecast/AirPlay casting** (v1.6 candidate, unreleased):
 
-- `d20544c` OTA updates — GitHub Releases check, in-app one-tap install on Android (FileProvider), link-out elsewhere.
-- `33d1f83` + vendor fixes — **compressed RAR stream-seek**: volumes spool to a temp dir, vendored libunrar decodes ahead into a growing file, HTTP layer serves the decoded prefix instantly; temp disk reclaimed on close.
-- `0776acd` Android TV remote focus loss fix (focus returns to root when controls hide).
-- `3713b31` Android multi-audio silent-start fix (explicit track re-assert) + fit↔fill button in the top bar.
-- `17c959e` debug hooks (above).
-- `359cdc2`, `62f0200` — `libc++_shared.so` packaged into the APK (`copyLibcxxShared` in `android/app/build.gradle.kts`, NDK sysroot → jniLibs). Friend test passed — engine-start crash resolved.
+- `dart_cast` (MIT, pure Dart) added for discovery + remote control; Chromecast primary, AirPlay best-effort (dart_cast's AirPlay video path is unverified on real hardware; we have no Apple TV to test).
+- Engine: `server.rs` gains `bind_lan` (0.0.0.0) + per-session 128-bit path token — LAN listener requires `/cast/<token>/` prefix (403 otherwise), loopback behavior unchanged. `StreamInfo.cast_url` carries the LAN URL (empty if LAN bind failed). dart_cast's MediaProxy is bypassed via a `_DirectUrlTransformer` — receivers fetch straight from the engine's range server.
+- Flutter: `lib/cast/` (`cast_service.dart` `CastController` interface + `AppCastService`, `cast_device_picker.dart` dialog); cast button in the player top toolbar next to PiP; local playback pauses while casting, play/pause/seek/volume mirror to the receiver, cast position feeds `_position` so continue-watching stays correct; disconnect re-syncs the local player to the cast position.
+- Platform plumbing: Android manifest gains `ACCESS_WIFI_STATE` / `CHANGE_WIFI_MULTICAST_STATE` / `ACCESS_NETWORK_STATE` / `NEARBY_WIFI_DEVICES`; iOS + macOS `Info.plist` gain `NSLocalNetworkUsageDescription` + `NSBonjourServices` (`_googlecast._tcp`, `_airplay._tcp`); macOS entitlements already had `network.server`.
+- i18n: `cast*` keys added to all 14 locales (en+tr translated, rest English fallback).
 
-Verification gate at release time: 220 Rust tests, clippy clean, flutter analyze clean, 141 Flutter tests. No unreleased work on `main`; next up is the roadmap (§8).
+Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 148 Flutter tests. **Pending: on-device test** (Homatics Android TV box has Chromecast built-in) before any v1.6 cut.
 
 ## 7. Known issues / watch list
 
@@ -117,7 +117,7 @@ Verification gate at release time: 220 Rust tests, clippy clean, flutter analyze
 | 3 | TMDB + OMDb metadata | open |
 | 4 | iOS TestFlight distribution | open |
 | 5 | OpenSubtitles integration | open |
-| 6 | Chromecast / AirPlay | open |
+| 6 | Chromecast / AirPlay | implemented on `main` — awaiting on-device test (§6) |
 | 7 | HDR10+ detection | open |
 
 Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z STORE/LZMA + AES-256, PAR2 Reed-Solomon repair, custom libmpv (TrueHD/DTS-HD/AV1), DV Profile 5 on macOS+Android+Windows+Linux, Android TV leanback + remote, 14 languages, dark/light themes, OTA updates, compressed RAR seek, subtitle color, Smart Canvas, continue-watching.
@@ -131,6 +131,7 @@ Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z ST
 - **v1.4 (2026-08)** — continue-watching history, subtitle color, DV Profile 5 on Windows/Linux, first Linux + iOS (unsigned) packages, tag-push CI release pipeline (`release.yml` + reusable builders).
 - **v1.5 (2026-09-08)** — OTA updates (GitHub Releases check, in-app install on Android); compressed RAR stream-seek (vendored libunrar, decode-ahead); Android TV remote focus fix; Android silent-start fix + fit/fill toggle; `libc++_shared` APK packaging fix (friend-tested); debug hooks. README test badge corrected (220 Rust + 141 Flutter).
 - **2026-09-08** — Cross-AI continuity: added `AGENTS.md` (this file), `CLAUDE.md`, `docs/HANDOVER_PROMPT.md`. Local layout: project moved to `~/Downloads/USENET/Zanzibarr` (parent `CodexGPT` → `USENET`, `UseNews` → `Zanzibarr`). Forked 1:1 into **Usetopia** (`~/Downloads/USENET/Usetopia`, repo `envermeister/usetopia`) — developed as a separate app with Claude/ChatGPT; zanzibarr continues here with Kimi.
+- **2026-09-12 (unreleased, main)** — Chromecast/AirPlay casting: engine `bind_lan` + token-gated `/cast/<token>/` prefix, `StreamInfo.cast_url`; `dart_cast` for discovery/control with a direct-URL transformer (receiver fetches straight from the engine range server — no MediaProxy hop); cast button in the player toolbar, control mirroring, position sync into continue-watching; platform permissions for Android/iOS/macOS. Gate: 223 Rust + 148 Flutter. Awaiting on-device test (Homatics box).
 
 ### Key technical decisions (the *why* — don't relitigate without cause)
 

@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `cancel_active_stream`, `cancellation_requested`, `ensure_stream_not_cancelled`, `filename`, `install_overlay`, `is_compressed`, `load_stream_selection_blocking`, `load_stream_selection`, `next_session_id`, `prepare_stream_source`, `read_nzb_bytes`, `run_stream_session`, `segment_count`, `select_stream`, `terminate_stream`, `url_encode_path`, `wait_for_cancellation`, `wait_for_stream_ready`
+// These functions are ignored because they are not marked as `pub`: `cancel_active_stream`, `cancellation_requested`, `ensure_stream_not_cancelled`, `filename`, `generate_cast_token`, `install_overlay`, `is_compressed`, `load_stream_selection_blocking`, `load_stream_selection`, `local_lan_ipv4`, `next_session_id`, `prepare_stream_source`, `read_nzb_bytes`, `run_stream_session`, `segment_count`, `select_stream`, `terminate_stream`, `url_encode_path`, `wait_for_cancellation`, `wait_for_stream_ready`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ActiveStream`, `StreamSelection`, `StreamSource`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `content_type`, `total_len`, `write_range`
@@ -88,6 +88,11 @@ class StreamInfo {
   /// media_kit'in açacağı localhost URL'i.
   final String url;
 
+  /// Cast cihazının (Chromecast/AirPlay) LAN üzerinden vuracağı token'lı URL.
+  /// LAN listener'ı kurulamadıysa (sandbox, ağ yok) boş string — cast
+  /// özelliği o oturumda kullanılamaz.
+  final String castUrl;
+
   /// Çözülmüş dosya boyutu (bayt).
   final BigInt size;
   final String filename;
@@ -100,6 +105,7 @@ class StreamInfo {
   const StreamInfo({
     required this.sessionId,
     required this.url,
+    required this.castUrl,
     required this.size,
     required this.filename,
     required this.segmentCount,
@@ -110,6 +116,7 @@ class StreamInfo {
   int get hashCode =>
       sessionId.hashCode ^
       url.hashCode ^
+      castUrl.hashCode ^
       size.hashCode ^
       filename.hashCode ^
       segmentCount.hashCode ^
@@ -122,6 +129,7 @@ class StreamInfo {
           runtimeType == other.runtimeType &&
           sessionId == other.sessionId &&
           url == other.url &&
+          castUrl == other.castUrl &&
           size == other.size &&
           filename == other.filename &&
           segmentCount == other.segmentCount &&

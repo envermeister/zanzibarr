@@ -693,4 +693,35 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get errStreamStartupGeneric =>
       'Não foi possível iniciar a transmissão. Verifique o conteúdo do NZB e a conexão do provedor.';
+
+  @override
+  String get castTooltip => 'Cast to TV';
+
+  @override
+  String get castDialogTitle => 'Cast to device';
+
+  @override
+  String get castSearching => 'Searching for devices…';
+
+  @override
+  String get castNoDevices => 'No cast devices found on your network.';
+
+  @override
+  String get castUnavailable => 'Casting is unavailable for this stream';
+
+  @override
+  String get castConnecting => 'Connecting…';
+
+  @override
+  String castPlayingOn(String device) {
+    return 'Playing on $device';
+  }
+
+  @override
+  String get castDisconnect => 'Disconnect';
+
+  @override
+  String castFailed(String error) {
+    return 'Casting failed: $error';
+  }
 }

@@ -696,4 +696,35 @@ class AppLocalizationsFr extends AppLocalizations {
   @override
   String get errStreamStartupGeneric =>
       'Le flux n\'a pas pu démarrer. Vérifiez le contenu du NZB et la connexion du fournisseur.';
+
+  @override
+  String get castTooltip => 'Cast to TV';
+
+  @override
+  String get castDialogTitle => 'Cast to device';
+
+  @override
+  String get castSearching => 'Searching for devices…';
+
+  @override
+  String get castNoDevices => 'No cast devices found on your network.';
+
+  @override
+  String get castUnavailable => 'Casting is unavailable for this stream';
+
+  @override
+  String get castConnecting => 'Connecting…';
+
+  @override
+  String castPlayingOn(String device) {
+    return 'Playing on $device';
+  }
+
+  @override
+  String get castDisconnect => 'Disconnect';
+
+  @override
+  String castFailed(String error) {
+    return 'Casting failed: $error';
+  }
 }

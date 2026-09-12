@@ -785,15 +785,16 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   StreamInfo dco_decode_stream_info(dynamic raw) {
     // Codec=Dco (DartCObject based), see doc to use other codecs
     final arr = raw as List<dynamic>;
-    if (arr.length != 6)
-      throw Exception('unexpected arr length: expect 6 but see ${arr.length}');
+    if (arr.length != 7)
+      throw Exception('unexpected arr length: expect 7 but see ${arr.length}');
     return StreamInfo(
       sessionId: dco_decode_u_64(arr[0]),
       url: dco_decode_String(arr[1]),
-      size: dco_decode_u_64(arr[2]),
-      filename: dco_decode_String(arr[3]),
-      segmentCount: dco_decode_u_32(arr[4]),
-      compressed: dco_decode_bool(arr[5]),
+      castUrl: dco_decode_String(arr[2]),
+      size: dco_decode_u_64(arr[3]),
+      filename: dco_decode_String(arr[4]),
+      segmentCount: dco_decode_u_32(arr[5]),
+      compressed: dco_decode_bool(arr[6]),
     );
   }
 
@@ -1096,6 +1097,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     var var_sessionId = sse_decode_u_64(deserializer);
     var var_url = sse_decode_String(deserializer);
+    var var_castUrl = sse_decode_String(deserializer);
     var var_size = sse_decode_u_64(deserializer);
     var var_filename = sse_decode_String(deserializer);
     var var_segmentCount = sse_decode_u_32(deserializer);
@@ -1103,6 +1105,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     return StreamInfo(
       sessionId: var_sessionId,
       url: var_url,
+      castUrl: var_castUrl,
       size: var_size,
       filename: var_filename,
       segmentCount: var_segmentCount,
@@ -1392,6 +1395,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     // Codec=Sse (Serialization based), see doc to use other codecs
     sse_encode_u_64(self.sessionId, serializer);
     sse_encode_String(self.url, serializer);
+    sse_encode_String(self.castUrl, serializer);
     sse_encode_u_64(self.size, serializer);
     sse_encode_String(self.filename, serializer);
     sse_encode_u_32(self.segmentCount, serializer);

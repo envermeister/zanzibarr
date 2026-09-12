@@ -53,6 +53,9 @@ class GyuniPlayerChrome extends StatelessWidget {
     this.subtitleControlsActive = false,
     this.videoFill = false,
     this.pictureInPictureSupported = false,
+    this.castAvailable = false,
+    this.casting = false,
+    this.onCast,
     this.engineBadge,
     this.onLoadExternalAudio,
     this.onLoadExternalSubtitle,
@@ -69,6 +72,16 @@ class GyuniPlayerChrome extends StatelessWidget {
   final bool subtitleControlsActive;
   final bool videoFill;
   final bool pictureInPictureSupported;
+
+  /// Cast düğmesi ancak motor LAN paylaşım URL'si üretebildiyse görünür.
+  final bool castAvailable;
+
+  /// Aktif bir cast oturumu varken true; düğme seçili gösterilir ve
+  /// dokunma cihaz durumunu/bağlantı kesmeyi açar.
+  final bool casting;
+
+  /// Cast düğmesi callback'i: cast yoksa cihaz seçici, varsa durum menüsü.
+  final VoidCallback? onCast;
   final String filename;
   final String status;
   final String? engineBadge;
@@ -202,6 +215,9 @@ class GyuniPlayerChrome extends StatelessWidget {
                           subtitleControlsActive: subtitleControlsActive,
                           videoFill: videoFill,
                           pictureInPictureSupported: pictureInPictureSupported,
+                          castAvailable: castAvailable,
+                          casting: casting,
+                          onCast: onCast,
                           isPictureInPicture: isPictureInPicture,
                           onClose: onClose,
                           onToggleCanvas: onToggleCanvas,
@@ -408,6 +424,9 @@ class _TopToolbar extends StatelessWidget {
     required this.pictureInPictureSupported,
     required this.videoFill,
     required this.isPictureInPicture,
+    required this.castAvailable,
+    required this.casting,
+    required this.onCast,
     required this.onClose,
     required this.onToggleCanvas,
     required this.onToggleSubtitleControls,
@@ -424,6 +443,9 @@ class _TopToolbar extends StatelessWidget {
   final bool pictureInPictureSupported;
   final bool isPictureInPicture;
   final bool videoFill;
+  final bool castAvailable;
+  final bool casting;
+  final VoidCallback? onCast;
   final VoidCallback onClose;
   final VoidCallback onToggleCanvas;
   final VoidCallback onToggleSubtitleControls;
@@ -516,6 +538,15 @@ class _TopToolbar extends StatelessWidget {
                       selected: subtitleControlsActive,
                       onPressed: ready ? onToggleSubtitleControls : null,
                     ),
+                    if (castAvailable)
+                      _CompactIconButton(
+                        icon: casting
+                            ? Icons.cast_connected_rounded
+                            : Icons.cast_rounded,
+                        tooltip: l10n.castTooltip,
+                        selected: casting,
+                        onPressed: ready ? onCast : null,
+                      ),
                     if (pictureInPictureSupported)
                       _CompactIconButton(
                         icon: isPictureInPicture
