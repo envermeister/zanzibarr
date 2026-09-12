@@ -113,15 +113,21 @@ Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 152 
 
 | # | Item | Status |
 |---|------|--------|
-| 1 | Easynews web search API (separate code path) | open |
-| 2 | Cross-indexer dedup | open |
-| 3 | TMDB + OMDb metadata | open |
-| 4 | iOS TestFlight distribution | open |
-| 5 | OpenSubtitles integration | open |
-| 6 | Chromecast / AirPlay | implemented on `main` — awaiting on-device test (§6) |
-| 7 | HDR10+ detection | open |
+| 1 | Multi-file NZB picker — choose episode/file inside a season pack (engine currently auto-picks the largest) | proposed |
+| 2 | Play queue / auto-play next episode (natural follow-up to #1) | proposed |
+| 3 | NZB completion pre-check — sample STAT on segments before playback, health badge in search results | proposed |
+| 4 | Easynews web search API (separate code path) | open |
+| 5 | Cross-indexer dedup | open |
+| 6 | TMDB + OMDb metadata | open |
+| 7 | OpenSubtitles integration | open |
+| 8 | Sleep timer (TV-friendly) | proposed |
+| 9 | Search history / saved searches | proposed |
+| 10 | iOS TestFlight distribution | open |
+| 11 | Android TV Play Store listing | proposed |
+| 12 | Chromecast / AirPlay | implemented on `main` — awaiting on-device test (§6) |
+| 13 | HDR10+ detection | research: mpv exposes no ST 2094-40 signal at runtime (see `HdrCapabilities`); release-name badge possible, true detection likely needs container-level parsing |
 
-Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z STORE/LZMA + AES-256, PAR2 Reed-Solomon repair, custom libmpv (TrueHD/DTS-HD/AV1), DV Profile 5 on macOS+Android+Windows+Linux, Android TV leanback + remote, 14 languages, dark/light themes, OTA updates, compressed RAR seek, subtitle color, Smart Canvas, continue-watching.
+Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z STORE/LZMA + AES-256, PAR2 Reed-Solomon repair, custom libmpv (TrueHD/DTS-HD/AV1), DV Profile 5 on macOS+Android+Windows+Linux, Android TV leanback + remote, 14 languages, dark/light themes, OTA updates, compressed RAR seek, subtitle color, Smart Canvas, continue-watching, Chromecast/AirPlay casting, subtitle font picker.
 
 ## 9. History (append dated entries at the bottom — newest last)
 
