@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 
 import '../l10n/app_localizations.dart';
+import 'subtitle_fonts.dart';
 
 class SubtitleControlsOverlay extends StatefulWidget {
   const SubtitleControlsOverlay({
@@ -10,12 +11,14 @@ class SubtitleControlsOverlay extends StatefulWidget {
     required this.position,
     required this.delay,
     required this.color,
+    required this.font,
     required this.tracks,
     required this.selectedTrack,
     required this.onScaleChanged,
     required this.onPositionChanged,
     required this.onDelayChanged,
     required this.onColorChanged,
+    required this.onFontChanged,
     required this.onTrackSelected,
     required this.onClose,
   });
@@ -24,12 +27,16 @@ class SubtitleControlsOverlay extends StatefulWidget {
   final double position;
   final Duration delay;
   final String color;
+
+  /// Seçili altyazı fontunun katalog kimliği (`subtitle_fonts.dart`).
+  final String font;
   final List<SubtitleTrack> tracks;
   final SubtitleTrack selectedTrack;
   final ValueChanged<double> onScaleChanged;
   final ValueChanged<double> onPositionChanged;
   final ValueChanged<Duration> onDelayChanged;
   final ValueChanged<String> onColorChanged;
+  final ValueChanged<String> onFontChanged;
   final ValueChanged<SubtitleTrack> onTrackSelected;
   final VoidCallback onClose;
 
@@ -236,6 +243,12 @@ class _SubtitleControlsOverlayState extends State<SubtitleControlsOverlay> {
                         onSelected: widget.onColorChanged,
                       ),
                       const _Divider(),
+                      _FontMenu(
+                        tooltip: l10n.subtitleFont,
+                        selected: widget.font,
+                        onSelected: widget.onFontChanged,
+                      ),
+                      const _Divider(),
                       _OverlayButton(
                         icon: Icons.close_rounded,
                         tooltip: l10n.closeSubtitleControlsTooltip,
@@ -353,6 +366,56 @@ class _ColorMenu extends StatelessWidget {
           color: _toColor(selected),
           size: 18,
         ),
+      ),
+    );
+  }
+}
+
+/// Altyazı fontu seçici: katalogdaki her font menüde kendi ailesiyle
+/// önizlenir (TTF'ler pubspec `fonts:` kaydıyla Flutter'a da tanıtılır).
+/// mpv tarafında `sub-font` düz metin altyazılara uygulanır; kendi stilini
+/// taşıyan ASS izleri etkilenmez.
+class _FontMenu extends StatelessWidget {
+  const _FontMenu({
+    required this.tooltip,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String tooltip;
+  final String selected;
+  final ValueChanged<String> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return PopupMenuButton<String>(
+      tooltip: tooltip,
+      color: const Color(0xF2242427),
+      onSelected: onSelected,
+      itemBuilder: (context) => kSubtitleFonts
+          .map(
+            (font) => PopupMenuItem<String>(
+              value: font.id,
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 20,
+                    child: font.id == selected
+                        ? const Icon(Icons.check, size: 16)
+                        : null,
+                  ),
+                  Text(
+                    font.family,
+                    style: TextStyle(fontFamily: font.family, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(growable: false),
+      child: const Padding(
+        padding: EdgeInsets.all(7),
+        child: Icon(Icons.text_fields_rounded, color: Colors.white70, size: 18),
       ),
     );
   }

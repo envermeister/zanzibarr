@@ -77,7 +77,7 @@ Verification gate (run all four, in order):
 cd rust && cargo test                      # ~223 tests (run to confirm current count)
 cd rust && cargo clippy --all-targets -- -D warnings
 flutter analyze lib test
-flutter test                               # ~148 tests
+flutter test                               # ~152 tests
 ```
 
 Release pipeline (v1.4+):
@@ -99,8 +99,9 @@ Debug hooks (developer-only, env vars): `ZANZIBARR_DEBUG_NZB=/path/to.nzb` (open
 - Flutter: `lib/cast/` (`cast_service.dart` `CastController` interface + `AppCastService`, `cast_device_picker.dart` dialog); cast button in the player top toolbar next to PiP; local playback pauses while casting, play/pause/seek/volume mirror to the receiver, cast position feeds `_position` so continue-watching stays correct; disconnect re-syncs the local player to the cast position.
 - Platform plumbing: Android manifest gains `ACCESS_WIFI_STATE` / `CHANGE_WIFI_MULTICAST_STATE` / `ACCESS_NETWORK_STATE` / `NEARBY_WIFI_DEVICES`; iOS + macOS `Info.plist` gain `NSLocalNetworkUsageDescription` + `NSBonjourServices` (`_googlecast._tcp`, `_airplay._tcp`); macOS entitlements already had `network.server`.
 - i18n: `cast*` keys added to all 14 locales (en+tr translated, rest English fallback).
+- **Subtitle font picker** (same wave): catalog `sans`/`serif`/`mono` (bundled Noto TTFs, OFL) extracted to app support dir and applied via `sub-fonts-dir` + `sub-font` (`lib/player/subtitle_fonts.dart`, `AdvancedPlaybackController.setSubtitleFont`); persisted per-title in `MediaPreferences.subtitleFont`; menu in the subtitle controls overlay next to the color picker. Text subs only — ASS keeps authored styles.
 
-Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 148 Flutter tests. **Pending: on-device test** (Homatics Android TV box has Chromecast built-in) before any v1.6 cut.
+Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 152 Flutter tests. **Pending: on-device test** (Homatics Android TV box has Chromecast built-in) before any v1.6 cut.
 
 ## 7. Known issues / watch list
 
@@ -131,7 +132,7 @@ Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z ST
 - **v1.4 (2026-08)** — continue-watching history, subtitle color, DV Profile 5 on Windows/Linux, first Linux + iOS (unsigned) packages, tag-push CI release pipeline (`release.yml` + reusable builders).
 - **v1.5 (2026-09-08)** — OTA updates (GitHub Releases check, in-app install on Android); compressed RAR stream-seek (vendored libunrar, decode-ahead); Android TV remote focus fix; Android silent-start fix + fit/fill toggle; `libc++_shared` APK packaging fix (friend-tested); debug hooks. README test badge corrected (220 Rust + 141 Flutter).
 - **2026-09-08** — Cross-AI continuity: added `AGENTS.md` (this file), `CLAUDE.md`, `docs/HANDOVER_PROMPT.md`. Local layout: project moved to `~/Downloads/USENET/Zanzibarr` (parent `CodexGPT` → `USENET`, `UseNews` → `Zanzibarr`). Forked 1:1 into **Usetopia** (`~/Downloads/USENET/Usetopia`, repo `envermeister/usetopia`) — developed as a separate app with Claude/ChatGPT; zanzibarr continues here with Kimi.
-- **2026-09-12 (unreleased, main)** — Chromecast/AirPlay casting: engine `bind_lan` + token-gated `/cast/<token>/` prefix, `StreamInfo.cast_url`; `dart_cast` for discovery/control with a direct-URL transformer (receiver fetches straight from the engine range server — no MediaProxy hop); cast button in the player toolbar, control mirroring, position sync into continue-watching; platform permissions for Android/iOS/macOS. Gate: 223 Rust + 148 Flutter. Awaiting on-device test (Homatics box).
+- **2026-09-12 (unreleased, main)** — Chromecast/AirPlay casting: engine `bind_lan` + token-gated `/cast/<token>/` prefix, `StreamInfo.cast_url`; `dart_cast` for discovery/control with a direct-URL transformer (receiver fetches straight from the engine range server — no MediaProxy hop); cast button in the player toolbar, control mirroring, position sync into continue-watching; platform permissions for Android/iOS/macOS. Subtitle font picker (bundled Noto Sans/Serif/Mono via `sub-fonts-dir` + `sub-font`). Gate: 223 Rust + 152 Flutter. Awaiting on-device test (Homatics box).
 
 ### Key technical decisions (the *why* — don't relitigate without cause)
 

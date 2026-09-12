@@ -91,6 +91,22 @@ flutter:
   assets:
     - assets/zanzibarr-logo.png
     - assets/fonts/subtitle.ttf
+    - assets/fonts/subtitle_serif.ttf
+    - assets/fonts/subtitle_mono.ttf
+
+  # Altyazı font kataloğu (lib/player/subtitle_fonts.dart): aynı TTF'ler hem
+  # Flutter UI önizlemesi (menüde kendi fontuyla gösterim) hem de libmpv
+  # tarafına çıkarılıp `sub-fonts-dir` ile verilir.
+  fonts:
+    - family: Noto Sans
+      fonts:
+        - asset: assets/fonts/subtitle.ttf
+    - family: Noto Serif
+      fonts:
+        - asset: assets/fonts/subtitle_serif.ttf
+    - family: Noto Sans Mono
+      fonts:
+        - asset: assets/fonts/subtitle_mono.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

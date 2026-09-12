@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanzibarr/player/media_preferences.dart';
+import 'package:zanzibarr/player/subtitle_fonts.dart';
 
 class _MemoryPreferenceStorage implements PlayerPreferenceStorage {
   final Map<String, String> values = <String, String>{};
@@ -66,6 +67,7 @@ void main() {
       subtitlePosition: 88,
       subtitleDelaySeconds: -0.35,
       subtitleColor: '#00E5FF',
+      subtitleFont: 'serif',
       audioDelaySeconds: 0.125,
     );
 
@@ -123,6 +125,7 @@ void main() {
         subtitlePosition: 500,
         subtitleDelaySeconds: -1000,
         subtitleColor: 'red',
+        subtitleFont: 'Comic Sans MS',
         audioDelaySeconds: 1000,
       );
 
@@ -142,6 +145,7 @@ void main() {
       expect(preferences.subtitlePosition, 150);
       expect(preferences.subtitleDelaySeconds, -600);
       expect(preferences.subtitleColor, MediaPreferences.defaultSubtitleColor);
+      expect(preferences.subtitleFont, kDefaultSubtitleFontId);
       expect(preferences.audioDelaySeconds, 600);
     });
   });
@@ -159,6 +163,15 @@ void main() {
       MediaPreferences(subtitleColor: '  #ffd54F ').subtitleColor,
       '#FFD54F',
     );
+  });
+
+  test('subtitle font falls back to the catalog default', () {
+    expect(MediaPreferences(subtitleFont: 'mono').subtitleFont, 'mono');
+    expect(
+      MediaPreferences(subtitleFont: ' Papyrus ').subtitleFont,
+      kDefaultSubtitleFontId,
+    );
+    expect(MediaPreferences().subtitleFont, kDefaultSubtitleFontId);
   });
 
   test('clear deletes only the hashed media key', () async {

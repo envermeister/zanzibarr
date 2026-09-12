@@ -723,4 +723,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String castFailed(String error) {
     return 'Casting failed: $error';
   }
+
+  @override
+  String get subtitleFont => 'Subtitle font';
 }

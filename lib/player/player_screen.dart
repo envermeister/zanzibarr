@@ -26,6 +26,7 @@ import 'player_keyboard_controls.dart';
 import 'smart_canvas.dart';
 import 'smart_canvas_overlay.dart';
 import 'subtitle_controls_overlay.dart';
+import 'subtitle_fonts.dart';
 
 /// Seçilen NZB'yi Rust localhost server üzerinden media_kit ile oynatır.
 ///
@@ -150,6 +151,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   double _subtitlePosition = 100.0;
   Duration _subtitleDelay = Duration.zero;
   String _subtitleColor = MediaPreferences.defaultSubtitleColor;
+  String _subtitleFont = kDefaultSubtitleFontId;
   Duration _audioDelay = Duration.zero;
   Tracks _tracks = const Tracks();
   Track _track = const Track();
@@ -220,6 +222,7 @@ class _PlayerScreenState extends State<PlayerScreen>
   double? _queuedSubtitlePosition;
   Duration? _queuedSubtitleDelay;
   String? _queuedSubtitleColor;
+  String? _queuedSubtitleFont;
   bool _subtitleUpdateRunning = false;
   Future<void>? _subtitleDrainFuture;
 
@@ -980,6 +983,7 @@ class _PlayerScreenState extends State<PlayerScreen>
               .round(),
     );
     _subtitleColor = preferences.subtitleColor;
+    _subtitleFont = preferences.subtitleFont;
     _audioDelay = Duration(
       microseconds:
           (preferences.audioDelaySeconds * Duration.microsecondsPerSecond)
@@ -1019,6 +1023,9 @@ class _PlayerScreenState extends State<PlayerScreen>
     );
     await _tryNativePreference(
       () => _playback.setSubtitleColor(_subtitleColor),
+    );
+    await _tryNativePreference(
+      () => _playback.setSubtitleFont(_subtitleFont),
     );
     await _tryNativePreference(
       () => _playback.setAudioDelay(
@@ -1077,6 +1084,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       subtitleDelaySeconds:
           _subtitleDelay.inMicroseconds / Duration.microsecondsPerSecond,
       subtitleColor: _subtitleColor,
+      subtitleFont: _subtitleFont,
       audioDelaySeconds:
           _audioDelay.inMicroseconds / Duration.microsecondsPerSecond,
     );
@@ -1466,11 +1474,18 @@ class _PlayerScreenState extends State<PlayerScreen>
     _startSubtitleDrain();
   }
 
+  void _queueSubtitleFont(String value) {
+    _queuedSubtitleFont = value;
+    if (mounted) setState(() => _subtitleFont = value);
+    _startSubtitleDrain();
+  }
+
   bool get _hasQueuedSubtitleUpdate =>
       _queuedSubtitleScale != null ||
       _queuedSubtitlePosition != null ||
       _queuedSubtitleDelay != null ||
-      _queuedSubtitleColor != null;
+      _queuedSubtitleColor != null ||
+      _queuedSubtitleFont != null;
 
   void _startSubtitleDrain() {
     if (_disposing || _subtitleUpdateRunning || !_hasQueuedSubtitleUpdate) {
@@ -1543,6 +1558,21 @@ class _PlayerScreenState extends State<PlayerScreen>
           } catch (_) {
             if (_queuedSubtitleColor == null && mounted) {
               setState(() => _subtitleColor = _playback.subtitleColor);
+            }
+            rethrow;
+          }
+          continue;
+        }
+
+        final font = _queuedSubtitleFont;
+        if (font != null) {
+          _queuedSubtitleFont = null;
+          try {
+            await _playback.setSubtitleFont(font);
+            applied = true;
+          } catch (_) {
+            if (_queuedSubtitleFont == null && mounted) {
+              setState(() => _subtitleFont = _playback.subtitleFont);
             }
             rethrow;
           }
@@ -3164,12 +3194,14 @@ class _PlayerScreenState extends State<PlayerScreen>
         position: _subtitlePosition,
         delay: _subtitleDelay,
         color: _subtitleColor,
+        font: _subtitleFont,
         tracks: _tracks.subtitle,
         selectedTrack: _track.subtitle,
         onScaleChanged: _queueSubtitleScale,
         onPositionChanged: _queueSubtitlePosition,
         onDelayChanged: _queueSubtitleDelay,
         onColorChanged: _queueSubtitleColor,
+        onFontChanged: _queueSubtitleFont,
         onTrackSelected: (track) => unawaited(_selectSubtitle(track)),
         onClose: _toggleSubtitleControls,
       );

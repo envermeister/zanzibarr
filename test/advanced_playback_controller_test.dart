@@ -4,6 +4,18 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:zanzibarr/player/advanced_playback_controller.dart';
+import 'package:zanzibarr/player/subtitle_fonts.dart';
+
+/// Asset/disk erişimi olmadan font çözümünü taklit eder.
+class _FakeSubtitleFontResolver implements SubtitleFontResolver {
+  const _FakeSubtitleFontResolver();
+
+  @override
+  Future<SubtitleFontTarget> resolve(String id) async => SubtitleFontTarget(
+    fontsDir: '/tmp/test-fonts',
+    family: subtitleFontFor(id).family,
+  );
+}
 
 class _FakeBackend implements PlaybackBackend {
   final calls = <String>[];
@@ -338,6 +350,27 @@ void main() {
     // Reddedilen değerler motor tarafına yazılmaz ve durum değişmez.
     expect(controller.subtitleColor, '#FFD54F');
     expect(backend.calls, hasLength(1));
+  });
+
+  test('altyazı fontu katalog kimliğiyle fonts-dir ve aile adıyla uygulanır', () async {
+    final backend = _FakeBackend();
+    final controller = AdvancedPlaybackController(
+      backend,
+      subtitleFontResolver: const _FakeSubtitleFontResolver(),
+    );
+
+    await controller.setSubtitleFont('serif');
+
+    expect(controller.subtitleFont, 'serif');
+    expect(backend.calls, [
+      'set:sub-fonts-dir=/tmp/test-fonts',
+      'set:sub-font=Noto Serif',
+    ]);
+
+    // Bilinmeyen kimlik katalog varsayılanına (sans) düşer.
+    await controller.setSubtitleFont('bozuk-font');
+    expect(controller.subtitleFont, 'sans');
+    expect(backend.properties['sub-font'], 'Noto Sans');
   });
 
   test('ses senkronu artı eksi beş saniyeyle sınırlı', () async {

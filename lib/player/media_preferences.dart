@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
+import 'subtitle_fonts.dart';
+
 /// Minimal persistence surface used by [MediaPreferencesStore].
 ///
 /// Keeping this interface independent from the platform storage makes the
@@ -173,6 +175,7 @@ class MediaPreferences {
     double subtitlePosition = defaultSubtitlePosition,
     double subtitleDelaySeconds = 0,
     String subtitleColor = defaultSubtitleColor,
+    String subtitleFont = kDefaultSubtitleFontId,
     double audioDelaySeconds = 0,
   }) => MediaPreferences._(
     crop: crop,
@@ -199,6 +202,7 @@ class MediaPreferences {
       0,
     ).clamp(-maximumDelaySeconds, maximumDelaySeconds).toDouble(),
     subtitleColor: _sanitizeSubtitleColor(subtitleColor),
+    subtitleFont: _sanitizeSubtitleFont(subtitleFont),
     audioDelaySeconds: _finiteOr(
       audioDelaySeconds,
       0,
@@ -219,6 +223,7 @@ class MediaPreferences {
     required this.subtitlePosition,
     required this.subtitleDelaySeconds,
     required this.subtitleColor,
+    required this.subtitleFont,
     required this.audioDelaySeconds,
   });
 
@@ -259,6 +264,10 @@ class MediaPreferences {
   final double subtitlePosition;
   final double subtitleDelaySeconds;
   final String subtitleColor;
+
+  /// Altyazı font kataloğu kimliği (`subtitle_fonts.dart`); bilinmeyen
+  /// kimlikler varsayılana (`sans`) düşer.
+  final String subtitleFont;
   final double audioDelaySeconds;
 
   bool get periodicInfoEnabled => periodicInfoInterval != null;
@@ -280,6 +289,7 @@ class MediaPreferences {
     'subtitlePosition': subtitlePosition,
     'subtitleDelaySeconds': subtitleDelaySeconds,
     'subtitleColor': subtitleColor,
+    'subtitleFont': subtitleFont,
     'audioDelaySeconds': audioDelaySeconds,
   };
 
@@ -324,6 +334,7 @@ class MediaPreferences {
         ),
         subtitleDelaySeconds: _numberOr(value['subtitleDelaySeconds'], 0),
         subtitleColor: _stringOr(value['subtitleColor'], defaultSubtitleColor),
+        subtitleFont: _stringOr(value['subtitleFont'], kDefaultSubtitleFontId),
         audioDelaySeconds: _numberOr(value['audioDelaySeconds'], 0),
       );
     } on FormatException {
@@ -355,6 +366,9 @@ class MediaPreferences {
           ? value.trim().toUpperCase()
           : defaultSubtitleColor;
 
+  static String _sanitizeSubtitleFont(String value) =>
+      subtitleFontFor(value.trim()).id;
+
   @override
   bool operator ==(Object other) =>
       other is MediaPreferences &&
@@ -371,6 +385,7 @@ class MediaPreferences {
       subtitlePosition == other.subtitlePosition &&
       subtitleDelaySeconds == other.subtitleDelaySeconds &&
       subtitleColor == other.subtitleColor &&
+      subtitleFont == other.subtitleFont &&
       audioDelaySeconds == other.audioDelaySeconds;
 
   @override
@@ -388,6 +403,7 @@ class MediaPreferences {
     subtitlePosition,
     subtitleDelaySeconds,
     subtitleColor,
+    subtitleFont,
     audioDelaySeconds,
   );
 }

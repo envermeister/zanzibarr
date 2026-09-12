@@ -216,5 +216,6 @@
   "castConnecting": "Bağlanıyor…",
   "castPlayingOn": "{device} cihazında oynatılıyor",
   "castDisconnect": "Bağlantıyı kes",
-  "castFailed": "Yansıtma başarısız: {error}"
+  "castFailed": "Yansıtma başarısız: {error}",
+  "subtitleFont": "Altyazı yazı tipi"
 }

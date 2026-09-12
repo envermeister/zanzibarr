@@ -719,4 +719,7 @@ class AppLocalizationsTr extends AppLocalizations {
   String castFailed(String error) {
     return 'Yansıtma başarısız: $error';
   }
+
+  @override
+  String get subtitleFont => 'Altyazı yazı tipi';
 }

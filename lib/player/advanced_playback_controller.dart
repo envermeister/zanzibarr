@@ -4,6 +4,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 
+import 'subtitle_fonts.dart';
+
 abstract interface class PlaybackBackend {
   Future<void> setRate(double rate);
 
@@ -121,7 +123,10 @@ class HdrCapabilities {
 /// libmpv'nin gelişmiş oynatma yüzeyini doğrulanabilir, test edilebilir bir
 /// API altında toplar.
 class AdvancedPlaybackController {
-  AdvancedPlaybackController(this._backend);
+  AdvancedPlaybackController(this._backend, {SubtitleFontResolver? subtitleFontResolver})
+    : _subtitleFontResolver = subtitleFontResolver ?? AssetSubtitleFontResolver();
+
+  final SubtitleFontResolver _subtitleFontResolver;
 
   static const double minimumRate = 0.5;
   static const double maximumRate = 16.0;
@@ -312,6 +317,10 @@ class AdvancedPlaybackController {
   double subtitlePosition = 100.0;
   Duration subtitleDelay = Duration.zero;
   String subtitleColor = defaultSubtitleColor;
+
+  /// Altyazı font kataloğu kimliği (`subtitle_fonts.dart`); varsayılan
+  /// `sans` (Noto Sans) — Android'de media_kit'in zaten kurduğu font.
+  String subtitleFont = kDefaultSubtitleFontId;
   Duration audioDelay = Duration.zero;
   double videoPanX = 0.0;
   double videoPanY = 0.0;
@@ -931,6 +940,18 @@ class AdvancedPlaybackController {
     }
     await _backend.setProperty('sub-color', normalized);
     subtitleColor = normalized;
+  }
+
+  /// Altyazı fontunu katalog kimliğiyle değiştirir. Font TTF'si destek
+  /// dizinine çıkarılır ve `sub-fonts-dir` + `sub-font` birlikte verilir —
+  /// Android'de fontconfig olmadığından yalnız `sub-font` yazmak yetersizdir.
+  /// ASS stillerini ezmez; düz metin altyazılara uygulanır.
+  Future<void> setSubtitleFont(String id) async {
+    final font = subtitleFontFor(id);
+    final target = await _subtitleFontResolver.resolve(font.id);
+    await _backend.setProperty('sub-fonts-dir', target.fontsDir);
+    await _backend.setProperty('sub-font', target.family);
+    subtitleFont = font.id;
   }
 
   Future<void> setAudioDelay(Duration value) async {

@@ -183,5 +183,6 @@
   "castConnecting": "Connecting…",
   "castPlayingOn": "Playing on {device}",
   "castDisconnect": "Disconnect",
-  "castFailed": "Casting failed: {error}"
+  "castFailed": "Casting failed: {error}",
+  "subtitleFont": "Subtitle font"
 }

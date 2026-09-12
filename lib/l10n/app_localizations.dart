@@ -1363,6 +1363,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Casting failed: {error}'**
   String castFailed(String error);
+
+  /// No description provided for @subtitleFont.
+  ///
+  /// In en, this message translates to:
+  /// **'Subtitle font'**
+  String get subtitleFont;
 }
 
 class _AppLocalizationsDelegate
