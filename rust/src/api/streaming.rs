@@ -306,10 +306,16 @@ async fn prepare_stream_source(
             volumes,
             password,
         } => {
-            let (kind, volumes) =
+            let (kind, volumes, trace) =
                 probe_numbered_set(&pool, &base_name, volumes, &cancellation).await?;
             match kind {
-                ArchiveKind::Rar => build_rar_source(pool, volumes, password, cancellation).await,
+                // Kurulum hatasına koklama izini iliştir: obfuske setlerde
+                // cihaz üzerindeki hata iletisi (ekran görüntüsü) tek canlı
+                // teşhis kanalıdır; iz, sıralamanın hangi aşamayla
+                // kurulduğunu söyler.
+                ArchiveKind::Rar => build_rar_source(pool, volumes, password, cancellation)
+                    .await
+                    .map_err(|error| format!("{error} [{trace}]")),
                 ArchiveKind::SevenZip => {
                     build_sevenzip_source(pool, volumes, password, cancellation).await
                 }
@@ -381,14 +387,25 @@ async fn probe_numbered_set(
     base_name: &str,
     volumes: Vec<NzbFile>,
     cancellation: &watch::Receiver<bool>,
-) -> Result<(ArchiveKind, Vec<NzbFile>), String> {
+) -> Result<(ArchiveKind, Vec<NzbFile>, String), String> {
+    /// Rol koklamasının kısa iz gösterimi: H=ana cilt, C=devam, ?=çözülemedi.
+    fn role_mark(role: Option<bool>) -> &'static str {
+        match role {
+            Some(true) => "H",
+            Some(false) => "C",
+            None => "?",
+        }
+    }
+
     let head = fetch_first_segment(pool, &volumes[0], cancellation).await?;
     let head_kind = sniff_archive_kind(&head);
     match head_kind {
-        Some(ArchiveKind::SevenZip) => return Ok((ArchiveKind::SevenZip, volumes)),
+        Some(ArchiveKind::SevenZip) => {
+            return Ok((ArchiveKind::SevenZip, volumes, "7z head-ok".into()));
+        }
         // İlk cilt doğrulanmış ana ciltse sayısal sıralamaya güven (ucuz yol).
         Some(ArchiveKind::Rar) if rar::sniff_rar_volume_role(&head) == Some(true) => {
-            return Ok((ArchiveKind::Rar, volumes));
+            return Ok((ArchiveKind::Rar, volumes, "rar h=H cheap".into()));
         }
         _ => {}
     }
@@ -407,21 +424,26 @@ async fn probe_numbered_set(
     };
     if tail_is_archive_start {
         let kind = tail_kind.expect("tail kind just matched");
+        let trace = match kind {
+            ArchiveKind::SevenZip => "7z rotated".to_string(),
+            ArchiveKind::Rar => "rar rotated h=C t=H".to_string(),
+        };
         let mut rotated = Vec::with_capacity(volumes.len() + 1);
         rotated.push(last);
         rotated.extend(volumes);
-        return Ok((kind, rotated));
+        return Ok((kind, rotated, trace));
     }
 
     // İki ucun rolü de ana cildi göstermiyor: poster'ın numaralandırması
     // arşiv sırasıyla ilgisiz olabilir (karışık/kaydırmalı) ya da başlıklar
-    // şifrelidir. RAR5 her cildin ana başlığına cilt numarasını yazar ve bu
-    // alan -hp'de de açık kalır; orta ciltlerin de ilk segmentlerini çekip
-    // kümeyi numaraya göre dizeriz. Numaralar eksik ya da tekrarlıysa
-    // (RAR4, numarasız araçlar) içerikten sıralama çözülemez — özgün
-    // sırayla devam edip zincir doğrulamasının gerçek hatayı vermesine
-    // bırakılır.
+    // şifrelidir. RAR5 her cildin ana başlığına cilt numarasını yazar; orta
+    // ciltlerin de ilk segmentlerini çekip kümeyi numaraya göre dizeriz.
+    // Numaralar eksik ya da tekrarlıysa (RAR4, numarasız araçlar) içerikten
+    // sıralama çözülemez — özgün sırayla devam edip zincir doğrulamasının
+    // gerçek hatayı vermesine bırakılır.
     if head_kind == Some(ArchiveKind::Rar) {
+        let head_role = rar::sniff_rar_volume_role(&head);
+        let tail_role = rar::sniff_rar_volume_role(&tail);
         let mut all = Vec::with_capacity(volumes.len() + 1);
         all.extend(volumes);
         all.push(last);
@@ -434,15 +456,36 @@ async fn probe_numbered_set(
         for (index, middle_head) in middle_heads.iter().enumerate() {
             numbers[index + 1] = rar::sniff_rar_volume_number(middle_head);
         }
+        let found = numbers.iter().flatten().count();
+        let trace_prefix = format!(
+            "rar h={} t={} nums={found}/{}",
+            role_mark(head_role),
+            role_mark(tail_role),
+            all.len()
+        );
         if let Some(permutation) = volume_number_permutation(&numbers) {
+            let min = numbers.iter().flatten().min().copied().unwrap_or(0);
+            let max = numbers.iter().flatten().max().copied().unwrap_or(0);
             let mut slots: Vec<Option<NzbFile>> = all.into_iter().map(Some).collect();
-            let ordered = permutation
+            let ordered: Vec<NzbFile> = permutation
                 .iter()
                 .map(|&index| slots[index].take().expect("permutation indices are unique"))
                 .collect();
-            return Ok((ArchiveKind::Rar, ordered));
+            let first_name = ordered
+                .first()
+                .and_then(|file| file.filename().map(str::to_owned))
+                .unwrap_or_else(|| "?".into());
+            return Ok((
+                ArchiveKind::Rar,
+                ordered,
+                format!("{trace_prefix} sorted {min}..{max} first={first_name}"),
+            ));
         }
-        return Ok((ArchiveKind::Rar, all));
+        return Ok((
+            ArchiveKind::Rar,
+            all,
+            format!("{trace_prefix} unsortable, original order"),
+        ));
     }
 
     Err(format!(

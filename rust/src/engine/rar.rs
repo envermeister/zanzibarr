@@ -1476,11 +1476,17 @@ fn validate_and_build(parts: &[FragmentPart], password: Option<&str>) -> Result<
                 part.entry.split_before && part.entry.split_after
             };
             if !flags_ok {
+                // Bayrakları iletiye dök: obfuske setlerde hata iletisinin
+                // ekran görüntüsü tek canlı teşhis kanalıdır; part 1'de
+                // split_before=true görülmesi NZB'nin ilk cilt(ler)i
+                // eksik olduğu anlamına gelir.
                 return Err(RarError::InvalidLayout(format!(
-                    "`{}` split chain flags are corrupt (part {}/{})",
+                    "`{}` split chain flags are corrupt (part {}/{}: split_before={}, split_after={})",
                     part.entry.name,
                     index + 1,
-                    parts.len()
+                    parts.len(),
+                    part.entry.split_before,
+                    part.entry.split_after,
                 )));
             }
         }
@@ -2580,6 +2586,26 @@ mod tests {
             let map = build_fragment_map(&mut Cursor::new(bytes.clone()), &layout(&volumes), password)
                 .unwrap_or_else(|error| panic!("could not open fixture set: {error}"));
             (bytes, map)
+        }
+
+        /// Gerçek WinRAR baytlarıyla koklama doğrulaması: düz ciltte rol
+        /// ana cilt çıkmalı; -hp ciltlerinde ise ilk blok ENCRYPTION olduğundan
+        /// rol de cilt numarası da çözülememeli (ana başlık şifrelidir).
+        #[test]
+        fn gercek_fixture_ciltlerinde_koklama_izleri() {
+            let plain = read_fixture("plain_single.rar");
+            assert_eq!(sniff_rar_volume_role(&plain), Some(true));
+            assert_eq!(sniff_rar_volume_number(&plain), None);
+
+            for name in ["hp_single.rar", "hp_multi.part1.rar", "hp_multi.part2.rar"] {
+                let bytes = read_fixture(name);
+                assert_eq!(sniff_rar_volume_role(&bytes), None, "{name}");
+                assert_eq!(sniff_rar_volume_number(&bytes), None, "{name}");
+                // -hp düzeninde ilk blok ENCRYPTION'dır.
+                let (ty, _flags, _body, _next) =
+                    peek_rar5_block(&bytes, RAR5_SIGNATURE.len()).expect("{name} ilk blok");
+                assert_eq!(ty, HEAD_TYPE_ENCRYPTION, "{name}");
+            }
         }
 
         #[test]
