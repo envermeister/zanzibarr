@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../player/player_screen.dart';
@@ -88,11 +89,18 @@ class _SearchScreenState extends State<SearchScreen> {
     IndexerConfigDto config,
     String nzbUrl,
     String suggestedName,
-  ) => newznabDownloadNzb(
-    config: config,
-    nzbUrl: nzbUrl,
-    suggestedName: suggestedName,
-  );
+  ) async {
+    // Android'de Rust tarafının std::env::temp_dir() kullanımı çalışmaz
+    // (TMPDIR yok, /tmp yazılamaz); NZB uygulamanın önbellek dizinine iner.
+    // Masaüstünde de aynı dizin kullanılır (izin gerektirmez).
+    final cacheDir = await getTemporaryDirectory();
+    return newznabDownloadNzb(
+      config: config,
+      nzbUrl: nzbUrl,
+      suggestedName: suggestedName,
+      downloadDir: cacheDir.path,
+    );
+  }
 
   @override
   void initState() {

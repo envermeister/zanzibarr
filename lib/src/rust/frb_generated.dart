@@ -113,6 +113,7 @@ abstract class RustLibApi extends BaseApi {
     required IndexerConfigDto config,
     required String nzbUrl,
     required String suggestedName,
+    String? downloadDir,
   });
 
   Future<SearchPageDto> crateApiSearchNewznabSearch({
@@ -407,6 +408,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
     required IndexerConfigDto config,
     required String nzbUrl,
     required String suggestedName,
+    String? downloadDir,
   }) {
     return handler.executeNormal(
       NormalTask(
@@ -415,6 +417,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           sse_encode_box_autoadd_indexer_config_dto(config, serializer);
           sse_encode_String(nzbUrl, serializer);
           sse_encode_String(suggestedName, serializer);
+          sse_encode_opt_String(downloadDir, serializer);
           pdeCallFfi(
             generalizedFrbRustBinding,
             serializer,
@@ -427,7 +430,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
           decodeErrorData: sse_decode_String,
         ),
         constMeta: kCrateApiSearchNewznabDownloadNzbConstMeta,
-        argValues: [config, nzbUrl, suggestedName],
+        argValues: [config, nzbUrl, suggestedName, downloadDir],
         apiImpl: this,
       ),
     );
@@ -436,7 +439,7 @@ class RustLibApiImpl extends RustLibApiImplPlatform implements RustLibApi {
   TaskConstMeta get kCrateApiSearchNewznabDownloadNzbConstMeta =>
       const TaskConstMeta(
         debugName: "newznab_download_nzb",
-        argNames: ["config", "nzbUrl", "suggestedName"],
+        argNames: ["config", "nzbUrl", "suggestedName", "downloadDir"],
       );
 
   @override

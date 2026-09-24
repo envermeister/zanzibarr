@@ -373,6 +373,7 @@ fn wire__crate__api__search__newznab_download_nzb_impl(
             let api_config = <crate::api::search::IndexerConfigDto>::sse_decode(&mut deserializer);
             let api_nzb_url = <String>::sse_decode(&mut deserializer);
             let api_suggested_name = <String>::sse_decode(&mut deserializer);
+            let api_download_dir = <Option<String>>::sse_decode(&mut deserializer);
             deserializer.end();
             move |context| {
                 transform_result_sse::<_, String>((move || {
@@ -380,6 +381,7 @@ fn wire__crate__api__search__newznab_download_nzb_impl(
                         api_config,
                         api_nzb_url,
                         api_suggested_name,
+                        api_download_dir,
                     )?;
                     Ok(output_ok)
                 })())

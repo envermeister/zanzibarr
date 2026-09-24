@@ -149,10 +149,16 @@ pub fn newznab_search(
 /// Arama sonucunun NZB'sini geçici dizine indirir ve dosya yolunu döndürür.
 /// Yanıtın gerçekten NZB olduğu kök öğe kokusuyla doğrulanır; HTML hata
 /// sayfaları oynatıcıya kadar ilerleyemez.
+///
+/// `download_dir`: Dart tarafının `path_provider` ile verdiği uygulama önbellek
+/// dizini. Android'de `std::env::temp_dir()` kullanılamaz (`TMPDIR` yok, `/tmp`
+/// yazılamaz — Android TV raporu); None/boş ise masaüstünde çalışan eski
+/// davranışa (sistem temp + `zanzibarr-nzb`) düşülür.
 pub fn newznab_download_nzb(
     config: IndexerConfigDto,
     nzb_url: String,
     suggested_name: String,
+    download_dir: Option<String>,
 ) -> Result<String, String> {
     // Bazı indexer'lar feed'deki bağlantıya anahtarı gömmez.
     let url = if nzb_url.contains("apikey=") || config.api_key.is_empty() {
@@ -173,7 +179,7 @@ pub fn newznab_download_nzb(
         return Err("downloaded content is not an NZB".to_string());
     }
 
-    let dir = std::env::temp_dir().join("zanzibarr-nzb");
+    let dir = download_dir_path(download_dir);
     std::fs::create_dir_all(&dir).map_err(|error| format!("could not create temp directory: {error}"))?;
     let filename = format!(
         "{}-{}.nzb",
@@ -186,6 +192,15 @@ pub fn newznab_download_nzb(
     let path = dir.join(filename);
     std::fs::write(&path, body).map_err(|error| format!("could not write NZB: {error}"))?;
     Ok(path.to_string_lossy().into_owned())
+}
+
+/// NZB indirme dizinini seçer: Dart'ın verdiği geçerli yol öncelikli; yoksa
+/// sistem temp'i altında `zanzibarr-nzb` (masaüstü/CLI davranışı).
+fn download_dir_path(download_dir: Option<String>) -> std::path::PathBuf {
+    download_dir
+        .filter(|dir| !dir.trim().is_empty())
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::temp_dir().join("zanzibarr-nzb"))
 }
 
 /// Dosya adını platform-güvenli karakterlere indirger (en çok 60 karakter).
@@ -220,5 +235,18 @@ mod tests {
         assert_eq!(sanitize_filename("   "), "arama-sonucu");
         assert_eq!(sanitize_filename("...___"), "arama-sonucu");
         assert_eq!(sanitize_filename(&"x".repeat(200)).len(), 60);
+    }
+
+    #[test]
+    fn indirme_dizini_secimi() {
+        // Dart'ın verdiği dizin aynen kullanılır.
+        assert_eq!(
+            download_dir_path(Some("/data/user/0/app/cache".into())),
+            std::path::PathBuf::from("/data/user/0/app/cache")
+        );
+        // Boş/boşluklu dizin ve None sistem temp'ine düşer.
+        let fallback = std::env::temp_dir().join("zanzibarr-nzb");
+        assert_eq!(download_dir_path(None), fallback);
+        assert_eq!(download_dir_path(Some("   ".into())), fallback);
     }
 }

@@ -6,7 +6,7 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `fetch_checked`, `map_http_error`, `sanitize_filename`
+// These functions are ignored because they are not marked as `pub`: `download_dir_path`, `fetch_checked`, `map_http_error`, `sanitize_filename`
 
 /// Indexer'ın yeteneklerini sorgular (`?t=caps`). Bağlantı ve API anahtarı
 /// doğrulaması için de kullanılır.
@@ -30,14 +30,21 @@ Future<SearchPageDto> newznabSearch({
 /// Arama sonucunun NZB'sini geçici dizine indirir ve dosya yolunu döndürür.
 /// Yanıtın gerçekten NZB olduğu kök öğe kokusuyla doğrulanır; HTML hata
 /// sayfaları oynatıcıya kadar ilerleyemez.
+///
+/// `download_dir`: Dart tarafının `path_provider` ile verdiği uygulama önbellek
+/// dizini. Android'de `std::env::temp_dir()` kullanılamaz (`TMPDIR` yok, `/tmp`
+/// yazılamaz — Android TV raporu); None/boş ise masaüstünde çalışan eski
+/// davranışa (sistem temp + `zanzibarr-nzb`) düşülür.
 Future<String> newznabDownloadNzb({
   required IndexerConfigDto config,
   required String nzbUrl,
   required String suggestedName,
+  String? downloadDir,
 }) => RustLib.instance.api.crateApiSearchNewznabDownloadNzb(
   config: config,
   nzbUrl: nzbUrl,
   suggestedName: suggestedName,
+  downloadDir: downloadDir,
 );
 
 /// `?t=caps` özeti; UI hangi arama türlerinin açık olduğunu buna göre gösterir.
