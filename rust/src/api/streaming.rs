@@ -359,18 +359,23 @@ async fn build_rar_source(
 }
 
 /// Sayısal ekli obfuske setin gerçek arşiv biçimini içerik imzasından
-/// belirler. Poster'ların çoğu ciltleri arşiv sırasıyla numaralar; eski usul
-/// `.rNN` + `.rar` adlandırma alfabetik numaralandığında ise ana cilt sona
-/// düşer — bu yüzden önce ilk, gerekirse son cildin ilk segmenti koklanır ve
-/// ikincisi arşiv başı çıkarsa set döndürülerek (son cilt başa) arşiv sırası
-/// kurulur.
+/// belirler ve ciltleri arşiv sırasına dizer. Sıralama üç aşamalıdır:
+///
+/// 1. İlk cilt doğrulanmış ana ciltse sayısal sıralama kullanılır (ucuz yol,
+///    poster'ların çoğu arşiv sırasıyla numaralar).
+/// 2. Son cilt doğrulanmış ana ciltse set döndürülür (eski usul `.rNN`+`.rar`
+///    adlandırmayı alfabetik numaralayan paylaşımlar).
+/// 3. İki uç da çözülemezse tüm ciltlerin RAR5 ana başlığındaki **cilt
+///    numarası** okunup küme numaraya göre dizilir — poster numaraları
+///    karışık/kaydırmalı olduğunda ya da dosya başlıkları -hp ile şifreli
+///    olduğunda (ana başlık açık kalır) bile yetkin sıralamayı verir.
+///    Numaralar okunamazsa (RAR4) özgün sıralama korunur ve zincir
+///    doğrulaması gerçek düzen hatasını raporlar.
 ///
 /// Dikkat: RAR'da **her** cilt `Rar!` imzasını taşır; imza tek başına ana
-/// cildi göstermez. Bu yüzden RAR koklamasında ayrıca ilk dosya başlığının
-/// `split_before` bayrağına bakılır (`rar::sniff_rar_volume_role`) — ana cilt
-/// olmayan bir ciltle başa kurulan zincir "split chain flags are corrupt"
-/// hatasıyla patlardı. 7z'de imza yalnız ilk ciltte bulunduğundan ek
-/// doğrulama gerekmez.
+/// cildi göstermez. Ana cilt doğrulaması ilk dosya başlığının `split_before`
+/// bayrağına bakar (`rar::sniff_rar_volume_role`). 7z'de imza yalnız ilk
+/// ciltte bulunduğundan ek doğrulama gerekmez.
 async fn probe_numbered_set(
     pool: &Arc<NntpPool<TlsNntpConnector>>,
     base_name: &str,
@@ -381,20 +386,22 @@ async fn probe_numbered_set(
     let head_kind = sniff_archive_kind(&head);
     match head_kind {
         Some(ArchiveKind::SevenZip) => return Ok((ArchiveKind::SevenZip, volumes)),
-        // Rol çözülemezse (şifreli başlık vb.) sayısal sıralamaya güven.
-        Some(ArchiveKind::Rar) if rar::sniff_rar_volume_role(&head) != Some(false) => {
+        // İlk cilt doğrulanmış ana ciltse sayısal sıralamaya güven (ucuz yol).
+        Some(ArchiveKind::Rar) if rar::sniff_rar_volume_role(&head) == Some(true) => {
             return Ok((ArchiveKind::Rar, volumes));
         }
         _ => {}
     }
 
+    // İlk cilt ana cilt çıkmadı (devam cildi ya da rolü çözülemedi — -hp'de
+    // dosya başlıkları şifrelidir). Son cilt doğrulanmış bir ana ciltse eski
+    // usul (.rar sonda) sayılıp set döndürülür.
     let mut volumes = volumes;
     let last = volumes.pop().expect("numbered set has at least two volumes");
     let tail = fetch_first_segment(pool, &last, cancellation).await?;
     let tail_kind = sniff_archive_kind(&tail);
     let tail_is_archive_start = match tail_kind {
         Some(ArchiveKind::SevenZip) => true,
-        // Sonda da olsa yalnızca doğrulanmış ana cilt başa alınır.
         Some(ArchiveKind::Rar) => rar::sniff_rar_volume_role(&tail) == Some(true),
         None => false,
     };
@@ -406,20 +413,85 @@ async fn probe_numbered_set(
         return Ok((kind, rotated));
     }
 
-    // İki uç da doğrulanmış bir ana cilt çıkmadı. Set RAR ise (ilk cilt
-    // imza taşıyordu ama devam cildiydi ve ana cilt ortalarda kaldı, ya da
-    // rolleri çözülemedi) özgün sıralamayla devam et: zincir doğrulaması
-    // "ne RAR ne 7z" yerine gerçek düzen hatasını raporlar.
+    // İki ucun rolü de ana cildi göstermiyor: poster'ın numaralandırması
+    // arşiv sırasıyla ilgisiz olabilir (karışık/kaydırmalı) ya da başlıklar
+    // şifrelidir. RAR5 her cildin ana başlığına cilt numarasını yazar ve bu
+    // alan -hp'de de açık kalır; orta ciltlerin de ilk segmentlerini çekip
+    // kümeyi numaraya göre dizeriz. Numaralar eksik ya da tekrarlıysa
+    // (RAR4, numarasız araçlar) içerikten sıralama çözülemez — özgün
+    // sırayla devam edip zincir doğrulamasının gerçek hatayı vermesine
+    // bırakılır.
     if head_kind == Some(ArchiveKind::Rar) {
-        let mut original = Vec::with_capacity(volumes.len() + 1);
-        original.extend(volumes);
-        original.push(last);
-        return Ok((ArchiveKind::Rar, original));
+        let mut all = Vec::with_capacity(volumes.len() + 1);
+        all.extend(volumes);
+        all.push(last);
+        let mut numbers: Vec<Option<u64>> = vec![None; all.len()];
+        numbers[0] = rar::sniff_rar_volume_number(&head);
+        let last_index = all.len() - 1;
+        numbers[last_index] = rar::sniff_rar_volume_number(&tail);
+        let middle_heads =
+            fetch_middle_first_segments(pool, &all[1..last_index], cancellation).await?;
+        for (index, middle_head) in middle_heads.iter().enumerate() {
+            numbers[index + 1] = rar::sniff_rar_volume_number(middle_head);
+        }
+        if let Some(permutation) = volume_number_permutation(&numbers) {
+            let mut slots: Vec<Option<NzbFile>> = all.into_iter().map(Some).collect();
+            let ordered = permutation
+                .iter()
+                .map(|&index| slots[index].take().expect("permutation indices are unique"))
+                .collect();
+            return Ok((ArchiveKind::Rar, ordered));
+        }
+        return Ok((ArchiveKind::Rar, all));
     }
 
     Err(format!(
         "numbered volume set `{base_name}` is neither a RAR nor a 7z archive; unsupported obfuscated content"
     ))
+}
+
+/// Cilt numaralarından arşiv sırası permütasyonu üretir. Numarasız cilt
+/// varsa ya da numaralar tekrarlıysa `None` — çağıran ad-tabanlı sıraya
+/// düşer. Başlangıç değeri (0/1) önemsizdir; yalnızca göreli sıra kullanılır.
+fn volume_number_permutation(numbers: &[Option<u64>]) -> Option<Vec<usize>> {
+    if numbers.len() < 2 || numbers.iter().any(Option::is_none) {
+        return None;
+    }
+    let mut order: Vec<usize> = (0..numbers.len()).collect();
+    order.sort_by_key(|&index| numbers[index].expect("checked for None above"));
+    let mut seen = std::collections::HashSet::with_capacity(order.len());
+    if !order
+        .iter()
+        .all(|&index| seen.insert(numbers[index].expect("checked for None above")))
+    {
+        return None;
+    }
+    Some(order)
+}
+
+/// Orta ciltlerin ilk segmentlerini eşzamanlı çeker; dönüş `files` ile aynı
+/// sıradadır. Havuz semaforu gerçek eşzamanlılığı sınırlar; görevler yalnızca
+/// sıralamayı kurmak için başlık baytları taşır.
+async fn fetch_middle_first_segments(
+    pool: &Arc<NntpPool<TlsNntpConnector>>,
+    files: &[NzbFile],
+    cancellation: &watch::Receiver<bool>,
+) -> Result<Vec<Vec<u8>>, String> {
+    let mut set = tokio::task::JoinSet::new();
+    for (index, file) in files.iter().enumerate() {
+        let pool = Arc::clone(pool);
+        let file = file.clone();
+        let cancellation = cancellation.clone();
+        set.spawn(
+            async move { fetch_first_segment(&pool, &file, &cancellation).await.map(|head| (index, head)) },
+        );
+    }
+    let mut indexed = Vec::with_capacity(files.len());
+    while let Some(result) = set.join_next().await {
+        indexed.push(result.map_err(|error| format!("probe task failed to complete: {error}"))??);
+    }
+    indexed.sort_by_key(|(index, _)| *index);
+    Ok(indexed.into_iter().map(|(_, head)| head).collect())
 }
 
 /// Koklama için tek segment çekip yEnc çözer. Yalnızca ilk baytlar gerekse de
@@ -920,6 +992,29 @@ mod tests {
         let config: ProviderConfig = dto.into();
         assert_eq!(config.max_connections, 1);
         assert_eq!(config.port, 563);
+    }
+
+    #[test]
+    fn cilt_numarasi_permutasyonu_arsiv_sirasina_dizer() {
+        // Poster numaraları karışık: NZB sırası cilt [2, 0, 1].
+        let numbers = vec![Some(2), Some(0), Some(1)];
+        assert_eq!(volume_number_permutation(&numbers), Some(vec![1, 2, 0]));
+
+        // Zaten sıralı küme kimlik permütasyonu verir.
+        let identity = vec![Some(10), Some(11), Some(12)];
+        assert_eq!(volume_number_permutation(&identity), Some(vec![0, 1, 2]));
+
+        // 1'den başlayan numaralandırma da geçerli (göreli sıra yeterli).
+        let one_based = vec![Some(3), Some(1), Some(2)];
+        assert_eq!(volume_number_permutation(&one_based), Some(vec![1, 2, 0]));
+    }
+
+    #[test]
+    fn cilt_numarasi_eksik_veya_tekrarliysa_permutasyon_yok() {
+        assert_eq!(volume_number_permutation(&[Some(0), None, Some(2)]), None);
+        assert_eq!(volume_number_permutation(&[Some(1), Some(1)]), None);
+        assert_eq!(volume_number_permutation(&[Some(0)]), None);
+        assert_eq!(volume_number_permutation(&[]), None);
     }
 
     #[test]
