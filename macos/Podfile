@@ -1,4 +1,4 @@
-platform :osx, '10.15'
+platform :osx, '12.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -42,6 +42,9 @@ post_install do |installer|
     # (aksi halde Release link'i _mpv_* sembollerinde patlar).
     target.build_configurations.each do |config|
       config.build_settings['EXCLUDED_ARCHS[sdk=macosx*]'] = 'x86_64'
+      # Xcode 27, 12.0 öncesi deployment target'ları reddediyor; podspec'lerin
+      # eski 10.15 değerlerini Podfile platformuna hizala.
+      config.build_settings['MACOSX_DEPLOYMENT_TARGET'] = '12.0'
     end
   end
 end
