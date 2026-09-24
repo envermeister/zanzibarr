@@ -103,10 +103,12 @@ Debug hooks (developer-only, env vars): `ZANZIBARR_DEBUG_NZB=/path/to.nzb` (open
 
 Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 152 Flutter tests. **Pending: on-device test** (Homatics Android TV box has Chromecast built-in) before any v1.6 cut.
 
+**Obfuscated NZB support** (2026-09-24, Pixel 8a bug report): posts whose files are renamed to `hash.NN` (real extensions stripped) previously died at selection with "no direct video or supported split 7z/RAR STORE set". The engine now falls back to a content probe: `Nzb::numbered_volume_sets()` groups digit-extension files (contiguity required, start number free), `prepare_stream_source` fetches the first segment of the first (then, for alphabetically-renamed old-style `.rNN`+`.rar` posts, the last) volume and `archive::sniff_archive_kind` recognizes RAR4/RAR5/7z magic; last-volume hits rotate the set into archive order. The resolved set flows into the unchanged RAR/7z pipelines (STORE and compressed both work). Fixture: `rust/tests/fixtures/obfuscated-numbered-set.nzb` (the actual report NZB, 42 volumes `.10`–`.51`). Gate: **231 Rust** + 152 Flutter, clippy/analyze clean. Live NNTP verification still pending — the CLI keychain entry is stale (§7), so `zanzibarr-cli stream-check` gets 502 until the owner reruns `zanzibarr-cli setup`.
+
 ## 7. Known issues / watch list
 
 - *Pillarbox report* on `The.Runner.2026.1080p...` (16:9 content, bars on sides) — fit/fill button added in `3713b31`; if bars persist on a 16:9 TV, that's a render bug → get on-device logcat.
-- Owner's Mac keychain still holds a stale `usenews` entry (old password) — CLI gets 502; the release app reads its own `zanzibarr` entries and is unaffected.
+- Owner's Mac keychain still holds a stale `usenews` entry (old password) — CLI gets 502; the release app reads its own `zanzibarr` entries and is unaffected. Confirmed 2026-09-24: `zanzibarr` service has no keyring-visible entries at all, `usenews` holds the old password; this now also blocks live `stream-check` verification of the obfuscated-set fix. Fix: owner runs `zanzibarr-cli setup` once with the current Easynews password.
 - Easynews 60-connection limit unverified (§3).
 
 ## 8. Roadmap (priority order, status)
@@ -127,7 +129,7 @@ Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 152 
 | 12 | Chromecast / AirPlay | implemented on `main` — awaiting on-device test (§6) |
 | 13 | HDR10+ detection | research: mpv exposes no ST 2094-40 signal at runtime (see `HdrCapabilities`); release-name badge possible, true detection likely needs container-level parsing |
 
-Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z STORE/LZMA + AES-256, PAR2 Reed-Solomon repair, custom libmpv (TrueHD/DTS-HD/AV1), DV Profile 5 on macOS+Android+Windows+Linux, Android TV leanback + remote, 14 languages, dark/light themes, OTA updates, compressed RAR seek, subtitle color, Smart Canvas, continue-watching, Chromecast/AirPlay casting, subtitle font picker.
+Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z STORE/LZMA + AES-256, PAR2 Reed-Solomon repair, custom libmpv (TrueHD/DTS-HD/AV1), DV Profile 5 on macOS+Android+Windows+Linux, Android TV leanback + remote, 14 languages, dark/light themes, OTA updates, compressed RAR seek, subtitle color, Smart Canvas, continue-watching, Chromecast/AirPlay casting, subtitle font picker, obfuscated (`hash.NN`) NZB sets via content sniffing.
 
 ## 9. History (append dated entries at the bottom — newest last)
 
@@ -139,6 +141,7 @@ Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z ST
 - **v1.5 (2026-09-08)** — OTA updates (GitHub Releases check, in-app install on Android); compressed RAR stream-seek (vendored libunrar, decode-ahead); Android TV remote focus fix; Android silent-start fix + fit/fill toggle; `libc++_shared` APK packaging fix (friend-tested); debug hooks. README test badge corrected (220 Rust + 141 Flutter).
 - **2026-09-08** — Cross-AI continuity: added `AGENTS.md` (this file), `CLAUDE.md`, `docs/HANDOVER_PROMPT.md`. Local layout: project moved to `~/Downloads/USENET/Zanzibarr` (parent `CodexGPT` → `USENET`, `UseNews` → `Zanzibarr`). Forked 1:1 into **Usetopia** (`~/Downloads/USENET/Usetopia`, repo `envermeister/usetopia`) — developed as a separate app with Claude/ChatGPT; zanzibarr continues here with Kimi.
 - **2026-09-12 (unreleased, main)** — Chromecast/AirPlay casting: engine `bind_lan` + token-gated `/cast/<token>/` prefix, `StreamInfo.cast_url`; `dart_cast` for discovery/control with a direct-URL transformer (receiver fetches straight from the engine range server — no MediaProxy hop); cast button in the player toolbar, control mirroring, position sync into continue-watching; platform permissions for Android/iOS/macOS. Subtitle font picker (bundled Noto Sans/Serif/Mono via `sub-fonts-dir` + `sub-font`). Gate: 223 Rust + 152 Flutter. Awaiting on-device test (Homatics box).
+- **2026-09-24 (unreleased, main)** — Obfuscated NZB fix (Pixel 8a report, `Martyrs.2008...H265-FW.nzb`): selection now falls back to content sniffing for `hash.NN` numbered sets — `numbered_volume_sets()` grouping + `sniff_archive_kind()` (RAR4/RAR5/7z magic) probing first/last volume's first segment, with rotation for alphabetically-renamed old-style posts. New `StreamSelection::Probe`; RAR/7z builder arms factored into `build_rar_source`/`build_sevenzip_source`. Real NZB added as fixture. Gate: 231 Rust + 152 Flutter. Live NNTP check blocked by stale CLI keychain entry (§7); on-device confirmation pending. First Kimi desktop session (takeover from Kimi Code CLI per `docs/HANDOVER_PROMPT.md`); `.gitignore` gains `kimi-export-*.zip` + `/debug/`.
 
 ### Key technical decisions (the *why* — don't relitigate without cause)
 

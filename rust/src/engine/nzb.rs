@@ -82,6 +82,27 @@ pub struct SplitRarSet<'a> {
     pub volumes: Vec<SplitRarVolume<'a>>,
 }
 
+/// Sayısal ek sırasıyla obfuske bir parça.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NumberedVolume<'a> {
+    pub number: u32,
+    pub file: &'a NzbFile,
+}
+
+/// Sayısal ekli obfuske dosya seti (`hash.10`, `hash.11`, …).
+///
+/// Bazı poster'lar RAR/7z ciltlerinin gerçek uzantısını silip dosyaları
+/// ardışık sayılarla adlandırır; bu durumda ne doğrudan medya ne de tanınmış
+/// bir arşiv seti çözümlenemez. Setin gerçek biçimi, ilk cildin ilk segmenti
+/// indirilip içerik imzası koklanarak belirlenir (`archive::sniff_archive_kind`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NumberedVolumeSet<'a> {
+    /// Uzantı öncesi ortak taban ad (setin ilk dosyasından, özgün biçimiyle).
+    pub base_name: String,
+    /// Sayısal ek sırasına göre artan, kesintisiz ciltler.
+    pub volumes: Vec<NumberedVolume<'a>>,
+}
+
 #[derive(Clone, PartialEq, Eq)]
 pub struct Nzb {
     /// `<head><meta type="...">` çiftleri (ör. title, password).
@@ -237,6 +258,55 @@ impl Nzb {
             });
         }
         Ok(sets)
+    }
+
+    /// Adından türü anlaşılamayan, sayısal ekli obfuske dosyaları taban ada
+    /// göre gruplar (`hash.10`, `hash.11`, …). Poster'lar başlangıç numarasını
+    /// serbest seçebildiğinden yalnızca ardışıklık şartı aranır; `1`'den
+    /// başlama zorunluluğu yoktur. `video`/`par2`/`rar` gibi tanınan uzantılar
+    /// sayısal olmadığından elenir; `7z.NNN` ciltleri bu süzgeçten geçebilir
+    /// ama `select_stream` onlara daha önce `split_7z_sets` ile ulaşır.
+    pub fn numbered_volume_sets(&self) -> Vec<NumberedVolumeSet<'_>> {
+        let mut groups: BTreeMap<String, (String, Vec<NumberedVolume<'_>>)> = BTreeMap::new();
+
+        for file in &self.files {
+            let Some(filename) = file.filename() else {
+                continue;
+            };
+            let Some((base_name, number)) = numbered_volume_name(filename) else {
+                continue;
+            };
+            let entry = groups
+                .entry(base_name.to_ascii_lowercase())
+                .or_insert_with(|| (base_name.to_string(), Vec::new()));
+            entry.1.push(NumberedVolume { number, file });
+        }
+
+        let mut sets = Vec::with_capacity(groups.len());
+        for (_, (base_name, mut volumes)) in groups {
+            // Tek dosya set olmaz; doğrudan-medya ve tek-cilt adlandırmaları
+            // daha önceki seçim adımlarında ele alınır.
+            if volumes.len() < 2 {
+                continue;
+            }
+            volumes.sort_by_key(|volume| volume.number);
+            let contiguous = volumes
+                .windows(2)
+                .all(|pair| pair[1].number == pair[0].number.saturating_add(1));
+            if !contiguous {
+                continue;
+            }
+            // Bozuk segment listeli bir grup tüm NZB'yi değil yalnız kendini
+            // diskalifiye eder; bu yol zaten son çare (sezgisel) çözümüdür.
+            if volumes
+                .iter()
+                .any(|volume| volume.file.validate_segments().is_err())
+            {
+                continue;
+            }
+            sets.push(NumberedVolumeSet { base_name, volumes });
+        }
+        sets
     }
 }
 
@@ -461,6 +531,22 @@ pub fn split_rar_volume_name(filename: &str) -> Option<(&str, u32)> {
         return Some((&filename[..stem.len()], number.checked_add(2)?));
     }
     None
+}
+
+/// `hash.10` biçimindeki sayısal ekli adı `(taban ad, numara)` olarak ayırır.
+/// Obfuske gönderilerde RAR/7z ciltleri gerçek uzantıları silinip ardışık
+/// sayılarla adlandırılır. Yalnızca tamamı rakam olan, en çok 5 haneli ekler
+/// kabul edilir; gerçek uzantılar (`mkv`, `par2`, `rar`, …) sayısal değildir.
+pub fn numbered_volume_name(filename: &str) -> Option<(&str, u32)> {
+    let (stem, extension) = filename.rsplit_once('.')?;
+    if stem.is_empty() || extension.is_empty() || extension.len() > 5 {
+        return None;
+    }
+    if !extension.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    let number = extension.parse::<u32>().ok()?;
+    Some((stem, number))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1063,5 +1149,122 @@ mod tests {
             nzb.split_rar_sets(),
             Err(NzbContentError::DuplicateSplitRarVolume { number: 1, .. })
         ));
+    }
+
+    #[test]
+    fn sayisal_ekli_obfuske_ad_cozulur() {
+        assert_eq!(
+            numbered_volume_name("33dce3ecfd2d186566653db06253ceba.10"),
+            Some(("33dce3ecfd2d186566653db06253ceba", 10))
+        );
+        assert_eq!(numbered_volume_name("hash.007"), Some(("hash", 7)));
+        // Tanınan uzantılar ve bozuk biçimler sayısal volume değildir.
+        assert_eq!(numbered_volume_name("film.mkv"), None);
+        assert_eq!(numbered_volume_name("hash.par2"), None);
+        assert_eq!(numbered_volume_name("hash.vol00+02.par2"), None);
+        assert_eq!(numbered_volume_name("film.part01.rar"), None);
+        assert_eq!(numbered_volume_name(".10"), None);
+        assert_eq!(numbered_volume_name("hash."), None);
+        assert_eq!(numbered_volume_name("hash.123456"), None);
+    }
+
+    #[test]
+    fn sayisal_setler_taban_ada_gore_gruplanir_ve_siralanir() {
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![
+                file("33dce3ecfd2d186566653db06253ceba.11", &[1], 100),
+                file("33dce3ecfd2d186566653db06253ceba.10", &[1], 100),
+                file("33dce3ecfd2d186566653db06253ceba.12", &[1], 100),
+                file("33dce3ecfd2d186566653db06253ceba.par2", &[1], 100),
+                file("33dce3ecfd2d186566653db06253ceba.txt", &[1], 100),
+            ],
+        };
+
+        let sets = nzb.numbered_volume_sets();
+        assert_eq!(sets.len(), 1);
+        let set = &sets[0];
+        assert_eq!(set.base_name, "33dce3ecfd2d186566653db06253ceba");
+        assert_eq!(
+            set.volumes
+                .iter()
+                .map(|volume| volume.file.filename())
+                .collect::<Vec<_>>(),
+            vec![
+                Some("33dce3ecfd2d186566653db06253ceba.10"),
+                Some("33dce3ecfd2d186566653db06253ceba.11"),
+                Some("33dce3ecfd2d186566653db06253ceba.12"),
+            ]
+        );
+    }
+
+    #[test]
+    fn sayisal_set_baslangic_numarasi_serbesttir() {
+        // Kullanıcının gerçek NZB'sindeki gibi `.10`'dan başlayan set.
+        let nzb = Nzb {
+            meta: Vec::new(),
+            files: vec![file("hash.10", &[1], 100), file("hash.11", &[1], 100)],
+        };
+        assert_eq!(nzb.numbered_volume_sets().len(), 1);
+    }
+
+    #[test]
+    fn sayisal_set_bosluklu_tekli_ve_tekrarli_gruplari_elir() {
+        let gapped = Nzb {
+            meta: Vec::new(),
+            files: vec![file("hash.10", &[1], 100), file("hash.12", &[1], 100)],
+        };
+        assert!(gapped.numbered_volume_sets().is_empty());
+
+        let single = Nzb {
+            meta: Vec::new(),
+            files: vec![file("hash.10", &[1], 100)],
+        };
+        assert!(single.numbered_volume_sets().is_empty());
+
+        let duplicate = Nzb {
+            meta: Vec::new(),
+            files: vec![file("hash.10", &[1], 100), file("HASH.10", &[1], 100)],
+        };
+        assert!(duplicate.numbered_volume_sets().is_empty());
+
+        let broken_segments = Nzb {
+            meta: Vec::new(),
+            files: vec![file("hash.10", &[1, 3], 100), file("hash.11", &[1], 100)],
+        };
+        assert!(broken_segments.numbered_volume_sets().is_empty());
+    }
+
+    #[test]
+    fn sayisal_set_gercek_obfuske_nzbden_cozumlenir() {
+        // Pixel 8a hata raporundaki gerçek NZB: uzantıları silinmiş 42 cilt
+        // (.10–.51) + par2/txt. Ad çözümü hiçbir tanınmış set bulamaz.
+        let xml = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/obfuscated-numbered-set.nzb"
+        ))
+        .expect("fixture NZB okunamadı");
+        let nzb = parse_nzb(&xml).unwrap();
+
+        assert_eq!(
+            nzb.select_playable_media(),
+            Err(NzbContentError::NoPlayableMedia)
+        );
+        assert!(nzb.split_7z_sets().unwrap().is_empty());
+        assert!(nzb.split_rar_sets().unwrap().is_empty());
+
+        let sets = nzb.numbered_volume_sets();
+        assert_eq!(sets.len(), 1);
+        let set = &sets[0];
+        assert_eq!(set.base_name, "33dce3ecfd2d186566653db06253ceba");
+        assert_eq!(set.volumes.len(), 42);
+        assert_eq!(
+            set.volumes.first().unwrap().file.filename(),
+            Some("33dce3ecfd2d186566653db06253ceba.10")
+        );
+        assert_eq!(
+            set.volumes.last().unwrap().file.filename(),
+            Some("33dce3ecfd2d186566653db06253ceba.51")
+        );
     }
 }

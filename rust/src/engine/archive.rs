@@ -24,6 +24,32 @@ pub(crate) const ARCHIVE_VOLUME_CACHE_SEGMENTS: usize = 8;
 pub(crate) const MAX_ARCHIVE_VOLUMES: usize = 4096;
 pub(crate) const BLOCKING_READER_MAX_CHUNK: usize = 1024 * 1024;
 
+/// İçerik imzasından tanınan arşiv biçimi. Adı çözülemeyen (obfuske) cilt
+/// setlerinde gerçek biçim, ilk cildin çözülmüş ilk baytlarından belirlenir.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ArchiveKind {
+    Rar,
+    SevenZip,
+}
+
+/// Bir cildin çözülmüş ilk baytlarına bakar: RAR4/RAR5 ve 7z imzalarını
+/// tanır. İmzalar `rar.rs` sabitleri ve `zesven::format::SIGNATURE` ile aynı
+/// biçim tanımlarıdır; burada yerel tutulur çünkü koklama, biçim-özel
+/// ayrıştırıcılardan önce (ve onlardan bağımsız) çalışır.
+pub(crate) fn sniff_archive_kind(head: &[u8]) -> Option<ArchiveKind> {
+    const RAR4_SIGNATURE: &[u8] = b"Rar!\x1A\x07\x00";
+    const RAR5_SIGNATURE: &[u8] = b"Rar!\x1A\x07\x01\x00";
+    const SEVENZIP_SIGNATURE: &[u8] = b"7z\xBC\xAF\x27\x1C";
+
+    if head.starts_with(RAR4_SIGNATURE) || head.starts_with(RAR5_SIGNATURE) {
+        return Some(ArchiveKind::Rar);
+    }
+    if head.starts_with(SEVENZIP_SIGNATURE) {
+        return Some(ArchiveKind::SevenZip);
+    }
+    None
+}
+
 /// Sıkıştırılmış RAR yolunun ciltleri diske kopyalarken kullandığı soyut
 /// okuyucu; NNTP dışında bellek içi sahtelerle de test edilebilir.
 /// (RPITIT dyn-uyumlu olmadığından boxed future döner.)
@@ -608,5 +634,25 @@ mod tests {
             finished.load(Ordering::SeqCst),
             "outer future must not return before the blocking parser finishes"
         );
+    }
+
+    #[test]
+    fn icerik_imzasi_rar_ve_7z_tanir() {
+        assert_eq!(
+            sniff_archive_kind(b"Rar!\x1A\x07\x00remaining header"),
+            Some(ArchiveKind::Rar)
+        );
+        assert_eq!(
+            sniff_archive_kind(b"Rar!\x1A\x07\x01\x00remaining"),
+            Some(ArchiveKind::Rar)
+        );
+        assert_eq!(
+            sniff_archive_kind(b"7z\xBC\xAF\x27\x1C\x00\x04"),
+            Some(ArchiveKind::SevenZip)
+        );
+        // Video imzaları ve kısa/bilinmeyen içerik arşiv sayılmaz.
+        assert_eq!(sniff_archive_kind(b"\x1A\x45\xDF\xA3mkv-ebml"), None);
+        assert_eq!(sniff_archive_kind(b""), None);
+        assert_eq!(sniff_archive_kind(b"Rar!"), None);
     }
 }

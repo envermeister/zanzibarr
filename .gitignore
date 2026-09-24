@@ -65,3 +65,8 @@ credentials.*
 
 # Oturum dışa aktarımları repoya girmez
 kimi-export-session_*.md
+kimi-export-*.zip
+
+# Hata ayıklama sırasında kopyalanan kullanıcı dosyaları (NZB, ekran
+# görüntüsü vb.) repoya girmez
+/debug/

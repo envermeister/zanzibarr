@@ -17,13 +17,17 @@ use tokio::runtime::Runtime;
 use tokio::sync::{oneshot, watch};
 use tokio::task::JoinHandle;
 
-use crate::engine::nntp::{ProviderConfig, TlsNntpConnector};
-use crate::engine::nntp_source::{NntpByteSource, DEFAULT_PREFETCH_DEPTH};
+use crate::engine::archive::{sniff_archive_kind, ArchiveKind};
+use crate::engine::nntp::{NntpPool, ProviderConfig, TlsNntpConnector};
+use crate::engine::nntp_source::{
+    read_body_with_timeout, NntpByteSource, BODY_READ_TIMEOUT, DEFAULT_PREFETCH_DEPTH,
+};
 use crate::engine::nzb::{self, NzbContentError, NzbFile};
 use crate::engine::rar::{RarEntrySource, RarError};
 use crate::engine::rarcompressed::CompressedRarEntrySource;
 use crate::engine::server::{self, RangeSource};
 use crate::engine::sevenzip::SevenZipEntrySource;
+use crate::engine::yenc;
 
 /// Tüm ağ/stream işleri bu global çok-iş-parçacıklı runtime'da yürür.
 /// Server görevleri, başlatan çağrı bitse de burada yaşamaya devam eder.
@@ -256,6 +260,14 @@ enum StreamSelection {
         volumes: Vec<NzbFile>,
         password: Option<String>,
     },
+    /// Adından türü anlaşılamayan sayısal ekli obfuske set; gerçek biçim
+    /// `prepare_stream_source` içinde ilk cildin içerik imzası koklanarak
+    /// belirlenir (bkz. `probe_numbered_set`).
+    Probe {
+        base_name: String,
+        volumes: Vec<NzbFile>,
+        password: Option<String>,
+    },
 }
 
 async fn prepare_stream_source(
@@ -283,37 +295,136 @@ async fn prepare_stream_source(
             };
             Ok(StreamSource::Direct(source))
         }
-        StreamSelection::SevenZip { volumes, password } => Ok(StreamSource::SevenZip(
-            SevenZipEntrySource::new_cancellable(pool, volumes, password, cancellation)
+        StreamSelection::SevenZip { volumes, password } => {
+            build_sevenzip_source(pool, volumes, password, cancellation).await
+        }
+        StreamSelection::Rar { volumes, password } => {
+            build_rar_source(pool, volumes, password, cancellation).await
+        }
+        StreamSelection::Probe {
+            base_name,
+            volumes,
+            password,
+        } => {
+            let (kind, volumes) =
+                probe_numbered_set(&pool, &base_name, volumes, &cancellation).await?;
+            match kind {
+                ArchiveKind::Rar => build_rar_source(pool, volumes, password, cancellation).await,
+                ArchiveKind::SevenZip => {
+                    build_sevenzip_source(pool, volumes, password, cancellation).await
+                }
+            }
+        }
+    }
+}
+
+async fn build_sevenzip_source(
+    pool: Arc<NntpPool<TlsNntpConnector>>,
+    volumes: Vec<NzbFile>,
+    password: Option<String>,
+    cancellation: watch::Receiver<bool>,
+) -> Result<StreamSource, String> {
+    Ok(StreamSource::SevenZip(
+        SevenZipEntrySource::new_cancellable(pool, volumes, password, cancellation)
+            .await
+            .map_err(|error| error.to_string())?,
+    ))
+}
+
+async fn build_rar_source(
+    pool: Arc<NntpPool<TlsNntpConnector>>,
+    volumes: Vec<NzbFile>,
+    password: Option<String>,
+    cancellation: watch::Receiver<bool>,
+) -> Result<StreamSource, String> {
+    match RarEntrySource::new_cancellable(
+        pool.clone(),
+        volumes.clone(),
+        password.clone(),
+        cancellation.clone(),
+    )
+    .await
+    {
+        Ok(source) => Ok(StreamSource::Rar(source)),
+        // STORE olmayan setler decode-ahead yoluna düşer: ciltler
+        // geçici diske kopyalanır, libunrar hedef üyeyi büyüyen çıktı
+        // dosyasına çözer, oynatıcı çıktıyı Range ile okur.
+        Err(RarError::UnsupportedCompression) => Ok(StreamSource::RarCompressed(
+            CompressedRarEntrySource::new_cancellable(pool, volumes, password, cancellation)
                 .await
                 .map_err(|error| error.to_string())?,
         )),
-        StreamSelection::Rar { volumes, password } => {
-            match RarEntrySource::new_cancellable(
-                pool.clone(),
-                volumes.clone(),
-                password.clone(),
-                cancellation.clone(),
-            )
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// Sayısal ekli obfuske setin gerçek arşiv biçimini içerik imzasından
+/// belirler. Poster'ların çoğu ciltleri arşiv sırasıyla numaralar; eski usul
+/// `.rNN` + `.rar` adlandırma alfabetik numaralandığında ise imzayı taşıyan
+/// ana cilt sona düşer — bu yüzden önce ilk, gerekirse son cildin ilk
+/// segmenti koklanır ve ikincisi tanınırsa set döndürülerek (son cilt başa)
+/// arşiv sırası kurulur.
+async fn probe_numbered_set(
+    pool: &Arc<NntpPool<TlsNntpConnector>>,
+    base_name: &str,
+    volumes: Vec<NzbFile>,
+    cancellation: &watch::Receiver<bool>,
+) -> Result<(ArchiveKind, Vec<NzbFile>), String> {
+    let head = fetch_first_segment(pool, &volumes[0], cancellation).await?;
+    if let Some(kind) = sniff_archive_kind(&head) {
+        return Ok((kind, volumes));
+    }
+
+    let mut volumes = volumes;
+    let last = volumes.pop().expect("numbered set has at least two volumes");
+    let tail = fetch_first_segment(pool, &last, cancellation).await?;
+    if let Some(kind) = sniff_archive_kind(&tail) {
+        let mut rotated = Vec::with_capacity(volumes.len() + 1);
+        rotated.push(last);
+        rotated.extend(volumes);
+        return Ok((kind, rotated));
+    }
+
+    Err(format!(
+        "numbered volume set `{base_name}` is neither a RAR nor a 7z archive; unsupported obfuscated content"
+    ))
+}
+
+/// Koklama için tek segment çekip yEnc çözer. Yalnızca ilk baytlar gerekse de
+/// NNTP'nin aralık okuması yoktur; bir article'ın tamamı alınır (~1 MB).
+async fn fetch_first_segment(
+    pool: &Arc<NntpPool<TlsNntpConnector>>,
+    file: &NzbFile,
+    cancellation: &watch::Receiver<bool>,
+) -> Result<Vec<u8>, String> {
+    let segment = file.segments.first().ok_or_else(|| {
+        format!(
+            "`{}` has no segments",
+            file.filename().unwrap_or("file with unknown name")
+        )
+    })?;
+    let message_id = segment.message_id.clone();
+
+    let work = async {
+        let mut conn = pool.checkout().await.map_err(|error| error.to_string())?;
+        let body = read_body_with_timeout(BODY_READ_TIMEOUT, conn.body_by_message_id(&message_id))
             .await
-            {
-                Ok(source) => Ok(StreamSource::Rar(source)),
-                // STORE olmayan setler decode-ahead yoluna düşer: ciltler
-                // geçici diske kopyalanır, libunrar hedef üyeyi büyüyen çıktı
-                // dosyasına çözer, oynatıcı çıktıyı Range ile okur.
-                Err(RarError::UnsupportedCompression) => Ok(StreamSource::RarCompressed(
-                    CompressedRarEntrySource::new_cancellable(
-                        pool,
-                        volumes,
-                        password,
-                        cancellation,
-                    )
-                    .await
-                    .map_err(|error| error.to_string())?,
-                )),
-                Err(error) => Err(error.to_string()),
-            }
+            .map_err(|error| error.to_string())?;
+        // Durum satırı ve multiline sonlandırıcısı eksiksiz okundu; bağlantı
+        // havuza dönebilir.
+        conn.mark_reusable();
+        drop(conn);
+        yenc::decode(&body)
+            .map(|part| part.data)
+            .map_err(|error| error.to_string())
+    };
+
+    tokio::select! {
+        biased;
+        _ = wait_for_cancellation(cancellation.clone()) => {
+            Err("stream startup cancelled".into())
         }
+        result = work => result,
     }
 }
 
@@ -602,7 +713,27 @@ fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
             }
 
             let sets = parsed.split_rar_sets().map_err(|error| error.to_string())?;
-            let set = sets
+            if let Some(set) = sets.into_iter().max_by_key(|set| {
+                set.volumes.iter().fold(0u64, |total, volume| {
+                    total.saturating_add(volume.file.encoded_bytes())
+                })
+            }) {
+                return Ok(StreamSelection::Rar {
+                    volumes: set
+                        .volumes
+                        .into_iter()
+                        .map(|volume| volume.file.clone())
+                        .collect(),
+                    password: parsed.meta_value("password").map(str::to_owned),
+                });
+            }
+
+            // Ad çözümü tamamen başarısız: gerçek uzantıları silinmiş obfuske
+            // bir sayısal set olabilir. En büyük set seçilir; gerçek biçim,
+            // ağ erişiminin kurulduğu prepare aşamasında içerik imzası
+            // koklanarak belirlenir.
+            let set = parsed
+                .numbered_volume_sets()
                 .into_iter()
                 .max_by_key(|set| {
                     set.volumes.iter().fold(0u64, |total, volume| {
@@ -612,7 +743,8 @@ fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
                 .ok_or_else(|| {
                     "no direct video or supported split 7z/RAR STORE set in the NZB".to_string()
                 })?;
-            Ok(StreamSelection::Rar {
+            Ok(StreamSelection::Probe {
+                base_name: set.base_name,
                 volumes: set
                     .volumes
                     .into_iter()
@@ -931,5 +1063,49 @@ mod tests {
             select_stream(&parsed).unwrap(),
             StreamSelection::SevenZip { .. }
         ));
+    }
+
+    #[test]
+    fn obfuske_sayisal_set_probe_secimine_duser() {
+        let parsed = nzb::Nzb {
+            meta: vec![("password".into(), "TESTPASS123".into())],
+            files: vec![
+                file("\"33dce3ecfd2d186566653db06253ceba.par2\" yEnc (1/1)", 1, 10),
+                file("\"33dce3ecfd2d186566653db06253ceba.11\" yEnc (1/1)", 1, 1000),
+                file("\"33dce3ecfd2d186566653db06253ceba.10\" yEnc (1/1)", 1, 1000),
+            ],
+        };
+        let selection = select_stream(&parsed).unwrap();
+        let StreamSelection::Probe {
+            base_name,
+            volumes,
+            password,
+        } = selection
+        else {
+            panic!("expected Probe selection");
+        };
+        assert_eq!(base_name, "33dce3ecfd2d186566653db06253ceba");
+        assert_eq!(volumes.len(), 2);
+        assert_eq!(
+            volumes[0].filename(),
+            Some("33dce3ecfd2d186566653db06253ceba.10")
+        );
+        assert_eq!(
+            volumes[1].filename(),
+            Some("33dce3ecfd2d186566653db06253ceba.11")
+        );
+        assert_eq!(password.as_deref(), Some("TESTPASS123"));
+    }
+
+    #[test]
+    fn taninmayan_icerik_hala_acik_hata_verir() {
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![file("\"readme.nfo\" yEnc (1/1)", 1, 10)],
+        };
+        let Err(error) = select_stream(&parsed) else {
+            panic!("unknown content must keep the explicit error");
+        };
+        assert!(error.contains("no direct video or supported split 7z/RAR STORE set"));
     }
 }
