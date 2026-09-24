@@ -750,6 +750,95 @@ fn parse_volume<R: Read + Seek>(
     Ok(entries)
 }
 
+/// Çözülmüş cilt başına bakar: bu cilt çok ciltli RAR setinin **başlangıç**
+/// cildi mi?
+///
+/// Obfuske numaralı setlerde (`hash.10`, `hash.11`, …) `sniff_archive_kind`
+/// yalnızca türü verir; her RAR cildi `Rar!` imzasını taşıdığından sıralamayı
+/// vermez. Poster ciltleri arşiv sırasıyla numaralamışsa ilk cilt başlangıç
+/// cildidir; eski usul `.rNN` + `.rar` adlandırmayı alfabetik numaraladıysa
+/// başlangıç cildi (`.rar`) sona düşer. Ayırt edici iz, ilk dosya başlığı:
+/// başlangıç cildinde `split_before` yoktur, devam ciltleri bölünmüş dosyanın
+/// kalan parçasıyla açılır.
+///
+/// Başlık şifreliyse (-hp) ya da düzen tanınmıyorsa `None` döner — çağıran
+/// var olan sayısal sıralamayı korur.
+pub(crate) fn sniff_rar_volume_role(head: &[u8]) -> Option<bool> {
+    if head.starts_with(RAR4_SIGNATURE) {
+        return sniff_rar4_volume_role(head);
+    }
+    if head.starts_with(RAR5_SIGNATURE) {
+        return sniff_rar5_volume_role(head);
+    }
+    None
+}
+
+fn sniff_rar4_volume_role(head: &[u8]) -> Option<bool> {
+    let main = head.get(RAR4_SIGNATURE.len()..RAR4_SIGNATURE.len() + 7)?;
+    let main_flags = u16::from_le_bytes([main[3], main[4]]);
+    if main[2] != RAR4_HEAD_TYPE_MAIN || main_flags & RAR4_MAIN_FLAG_PASSWORD != 0 {
+        return None;
+    }
+    let main_size = usize::from(u16::from_le_bytes([main[5], main[6]]));
+    if main_size < 7 {
+        return None;
+    }
+    let file = head.get(RAR4_SIGNATURE.len() + main_size..)?.get(..7)?;
+    if file[2] != RAR4_HEAD_TYPE_FILE {
+        return None;
+    }
+    let file_flags = u16::from_le_bytes([file[3], file[4]]);
+    Some(file_flags & RAR4_LHD_SPLIT_BEFORE == 0)
+}
+
+/// `head[offset..]` içindeki RAR5 bloğunun (tür, bayraklar, bir sonraki
+/// bloğun ofseti) özetini döndürür. CRC doğrulanmaz; koklama yalnızca düzeni
+/// çözer, tam ayrıştırma kurulum aşamasında CRC'yi doğrular.
+fn peek_rar5_block(head: &[u8], offset: usize) -> Option<(u64, u64, usize)> {
+    let size_start = offset.checked_add(4)?;
+    let mut cursor = io::Cursor::new(head.get(size_start..)?);
+    let header_size = read_vint_slice(&mut cursor).ok()?;
+    if header_size == 0 || header_size > MAX_BLOCK_HEADER_SIZE {
+        return None;
+    }
+    let body_start = size_start.checked_add(cursor.position() as usize)?;
+    let body_len = usize::try_from(header_size).ok()?;
+    let body = head.get(body_start..body_start.checked_add(body_len)?)?;
+
+    let mut body_cursor = io::Cursor::new(body);
+    let head_type = read_vint_slice(&mut body_cursor).ok()?;
+    let head_flags = read_vint_slice(&mut body_cursor).ok()?;
+    if head_flags & 0x01 != 0 {
+        read_vint_slice(&mut body_cursor).ok()?; // EXTRA_SIZE
+    }
+    let data_size = if head_flags & 0x02 != 0 {
+        read_vint_slice(&mut body_cursor).ok()?
+    } else {
+        0
+    };
+    let next = body_start.checked_add(body_len)?.checked_add(usize::try_from(data_size).ok()?)?;
+    Some((head_type, head_flags, next))
+}
+
+fn sniff_rar5_volume_role(head: &[u8]) -> Option<bool> {
+    let (head_type, _flags, mut offset) = peek_rar5_block(head, RAR5_SIGNATURE.len())?;
+    if head_type != HEAD_TYPE_MAIN {
+        return None;
+    }
+    // MAIN ile ilk FILE arasında servis blokları (CMT, QO, …) durabilir;
+    // birkaç bloğu atlayarak ilk dosya başlığını ara. ENCRYPTION görülürse
+    // sonraki başlıklar şifrelidir, rol çözülemez.
+    for _ in 0..8 {
+        let (head_type, head_flags, next) = peek_rar5_block(head, offset)?;
+        match head_type {
+            HEAD_TYPE_FILE => return Some(head_flags & HEAD_FLAG_SPLIT_BEFORE == 0),
+            HEAD_TYPE_ENCRYPTION | HEAD_TYPE_ENDARC => return None,
+            _ => offset = next,
+        }
+    }
+    None
+}
+
 /// RAR4/RAR3 cildini blok blok okuyup STORE parça adaylarını toplar.
 ///
 /// Blok düzeni: HEAD_CRC(2, HEAD_TYPE..başlık sonu CRC32'sinin alt 16 bit'i),
@@ -1834,6 +1923,78 @@ mod tests {
             build_fragment_map(&mut Cursor::new(bytes), &[(0, len)], None),
             Err(RarError::UnsupportedCompression)
         ));
+    }
+
+    // -- Cilt rolü koklaması (obfuske numaralı setler) -----------------------
+
+    #[test]
+    fn koklama_rar5_ana_ve_devam_cildini_ayirir() {
+        let data = vec![0x11; 100];
+        let mut first = store_spec("film.mkv", 300, &data);
+        first.split_after = true;
+        let mut cont = store_spec("film.mkv", 300, &data);
+        cont.split_before = true;
+
+        let head_volume = volume(&[file_block(&first)]);
+        let cont_volume = volume(&[file_block(&cont)]);
+        assert_eq!(sniff_rar_volume_role(&head_volume), Some(true));
+        assert_eq!(sniff_rar_volume_role(&cont_volume), Some(false));
+    }
+
+    #[test]
+    fn koklama_rar5_servis_blogunu_atlar() {
+        // MAIN ile FILE arasında servis bloğu (CMT, QO, …) durabilir.
+        let data = vec![0x22; 50];
+        let spec = store_spec("film.mkv", 50, &data);
+        let service = block(HEAD_TYPE_SERVICE, 0, &[], &[], &vint(0));
+        let bytes = volume(&[service, file_block(&spec)]);
+        assert_eq!(sniff_rar_volume_role(&bytes), Some(true));
+    }
+
+    #[test]
+    fn koklama_rar5_sifreli_baslikta_none_doner() {
+        // -hp düzeninde ENCRYPTION'dan sonraki başlıklar şifrelidir.
+        let mut bytes = RAR5_SIGNATURE.to_vec();
+        bytes.extend(main_block());
+        bytes.extend(block(HEAD_TYPE_ENCRYPTION, 0, &[], &[], &vint(0)));
+        assert_eq!(sniff_rar_volume_role(&bytes), None);
+    }
+
+    #[test]
+    fn koklama_rar4_ana_ve_devam_cildini_ayirir() {
+        let head_volume = rar4_volume(&[
+            rar4_main_block(),
+            rar4_file_block("movie.mkv", &[0xAA; 100], 200, RAR4_METHOD_STORE, RAR4_LHD_SPLIT_AFTER),
+            rar4_endarc_block(),
+        ]);
+        let cont_volume = rar4_volume(&[
+            rar4_main_block(),
+            rar4_file_block("movie.mkv", &[0xBB; 100], 200, RAR4_METHOD_STORE, RAR4_LHD_SPLIT_BEFORE),
+            rar4_endarc_block(),
+        ]);
+        assert_eq!(sniff_rar_volume_role(&head_volume), Some(true));
+        assert_eq!(sniff_rar_volume_role(&cont_volume), Some(false));
+    }
+
+    #[test]
+    fn koklama_taninmaz_icerikte_none_doner() {
+        assert_eq!(sniff_rar_volume_role(b"7z\xBC\xAF\x27\x1C\x00\x04"), None);
+        assert_eq!(sniff_rar_volume_role(b"Rar!"), None);
+        assert_eq!(sniff_rar_volume_role(b""), None);
+        // İmza doğru ama blok düzeni çözülemiyor.
+        assert_eq!(sniff_rar_volume_role(b"Rar!\x1A\x07\x00\xFF\xFF"), None);
+        assert_eq!(sniff_rar_volume_role(b"Rar!\x1A\x07\x01\x00\xFF"), None);
+    }
+
+    #[test]
+    fn koklama_rar4_sifreli_ana_blokta_none_doner() {
+        let bytes = rar4_volume(&[rar4_block(
+            RAR4_HEAD_TYPE_MAIN,
+            RAR4_MAIN_FLAG_PASSWORD,
+            &[0u8; 6],
+            &[],
+        )]);
+        assert_eq!(sniff_rar_volume_role(&bytes), None);
     }
 
     #[test]

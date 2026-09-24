@@ -23,7 +23,7 @@ use crate::engine::nntp_source::{
     read_body_with_timeout, NntpByteSource, BODY_READ_TIMEOUT, DEFAULT_PREFETCH_DEPTH,
 };
 use crate::engine::nzb::{self, NzbContentError, NzbFile};
-use crate::engine::rar::{RarEntrySource, RarError};
+use crate::engine::rar::{self, RarEntrySource, RarError};
 use crate::engine::rarcompressed::CompressedRarEntrySource;
 use crate::engine::server::{self, RangeSource};
 use crate::engine::sevenzip::SevenZipEntrySource;
@@ -360,10 +360,17 @@ async fn build_rar_source(
 
 /// Sayısal ekli obfuske setin gerçek arşiv biçimini içerik imzasından
 /// belirler. Poster'ların çoğu ciltleri arşiv sırasıyla numaralar; eski usul
-/// `.rNN` + `.rar` adlandırma alfabetik numaralandığında ise imzayı taşıyan
-/// ana cilt sona düşer — bu yüzden önce ilk, gerekirse son cildin ilk
-/// segmenti koklanır ve ikincisi tanınırsa set döndürülerek (son cilt başa)
-/// arşiv sırası kurulur.
+/// `.rNN` + `.rar` adlandırma alfabetik numaralandığında ise ana cilt sona
+/// düşer — bu yüzden önce ilk, gerekirse son cildin ilk segmenti koklanır ve
+/// ikincisi arşiv başı çıkarsa set döndürülerek (son cilt başa) arşiv sırası
+/// kurulur.
+///
+/// Dikkat: RAR'da **her** cilt `Rar!` imzasını taşır; imza tek başına ana
+/// cildi göstermez. Bu yüzden RAR koklamasında ayrıca ilk dosya başlığının
+/// `split_before` bayrağına bakılır (`rar::sniff_rar_volume_role`) — ana cilt
+/// olmayan bir ciltle başa kurulan zincir "split chain flags are corrupt"
+/// hatasıyla patlardı. 7z'de imza yalnız ilk ciltte bulunduğundan ek
+/// doğrulama gerekmez.
 async fn probe_numbered_set(
     pool: &Arc<NntpPool<TlsNntpConnector>>,
     base_name: &str,
@@ -371,18 +378,43 @@ async fn probe_numbered_set(
     cancellation: &watch::Receiver<bool>,
 ) -> Result<(ArchiveKind, Vec<NzbFile>), String> {
     let head = fetch_first_segment(pool, &volumes[0], cancellation).await?;
-    if let Some(kind) = sniff_archive_kind(&head) {
-        return Ok((kind, volumes));
+    let head_kind = sniff_archive_kind(&head);
+    match head_kind {
+        Some(ArchiveKind::SevenZip) => return Ok((ArchiveKind::SevenZip, volumes)),
+        // Rol çözülemezse (şifreli başlık vb.) sayısal sıralamaya güven.
+        Some(ArchiveKind::Rar) if rar::sniff_rar_volume_role(&head) != Some(false) => {
+            return Ok((ArchiveKind::Rar, volumes));
+        }
+        _ => {}
     }
 
     let mut volumes = volumes;
     let last = volumes.pop().expect("numbered set has at least two volumes");
     let tail = fetch_first_segment(pool, &last, cancellation).await?;
-    if let Some(kind) = sniff_archive_kind(&tail) {
+    let tail_kind = sniff_archive_kind(&tail);
+    let tail_is_archive_start = match tail_kind {
+        Some(ArchiveKind::SevenZip) => true,
+        // Sonda da olsa yalnızca doğrulanmış ana cilt başa alınır.
+        Some(ArchiveKind::Rar) => rar::sniff_rar_volume_role(&tail) == Some(true),
+        None => false,
+    };
+    if tail_is_archive_start {
+        let kind = tail_kind.expect("tail kind just matched");
         let mut rotated = Vec::with_capacity(volumes.len() + 1);
         rotated.push(last);
         rotated.extend(volumes);
         return Ok((kind, rotated));
+    }
+
+    // İki uç da doğrulanmış bir ana cilt çıkmadı. Set RAR ise (ilk cilt
+    // imza taşıyordu ama devam cildiydi ve ana cilt ortalarda kaldı, ya da
+    // rolleri çözülemedi) özgün sıralamayla devam et: zincir doğrulaması
+    // "ne RAR ne 7z" yerine gerçek düzen hatasını raporlar.
+    if head_kind == Some(ArchiveKind::Rar) {
+        let mut original = Vec::with_capacity(volumes.len() + 1);
+        original.extend(volumes);
+        original.push(last);
+        return Ok((ArchiveKind::Rar, original));
     }
 
     Err(format!(
