@@ -463,7 +463,7 @@ async fn probe_numbered_set(
             role_mark(tail_role),
             all.len()
         );
-        if let Some(permutation) = volume_number_permutation(&numbers) {
+        if let Some((permutation, implied)) = volume_number_permutation(&numbers) {
             let min = numbers.iter().flatten().min().copied().unwrap_or(0);
             let max = numbers.iter().flatten().max().copied().unwrap_or(0);
             let mut slots: Vec<Option<NzbFile>> = all.into_iter().map(Some).collect();
@@ -478,7 +478,10 @@ async fn probe_numbered_set(
             return Ok((
                 ArchiveKind::Rar,
                 ordered,
-                format!("{trace_prefix} sorted {min}..{max} first={first_name}"),
+                format!(
+                    "{trace_prefix} sorted {min}..{max} first={first_name}{}",
+                    if implied { " (1 implied)" } else { "" }
+                ),
             ));
         }
         return Ok((
@@ -493,23 +496,71 @@ async fn probe_numbered_set(
     ))
 }
 
-/// Cilt numaralarından arşiv sırası permütasyonu üretir. Numarasız cilt
-/// varsa ya da numaralar tekrarlıysa `None` — çağıran ad-tabanlı sıraya
-/// düşer. Başlangıç değeri (0/1) önemsizdir; yalnızca göreli sıra kullanılır.
-fn volume_number_permutation(numbers: &[Option<u64>]) -> Option<Vec<usize>> {
-    if numbers.len() < 2 || numbers.iter().any(Option::is_none) {
+/// Cilt numaralarından arşiv sırası permütasyonu üretir.
+///
+/// RAR5'te ilk cildin numara alanı atlanabilir (ima edilen 0). Tam olarak
+/// bir cilt numarasızsa, bilinen numaralar kesintisiz tek aralığa
+/// tamamlanacak şekilde o cilde numara ima edilir: tek iç boşluk varsa
+/// boşluk, yoksa `min >= 1` ise başa (`min-1`, tipik olarak cilt 0), `min ==
+/// 0` ise sona (`max+1`). Numarasız cilt birden çoksa, bilinen numaralar
+/// tekrarlıysa ya da aralık birden çok eksik içeriyorsa `None` — çağıran
+/// ad-tabanlı sıraya düşer. Başlangıç değeri (0/1) önemsizdir; yalnızca
+/// göreli sıra kullanılır.
+///
+/// Dönüş: (permütasyon, numara_ima_edildi).
+fn volume_number_permutation(numbers: &[Option<u64>]) -> Option<(Vec<usize>, bool)> {
+    let count = numbers.len();
+    if count < 2 {
         return None;
     }
-    let mut order: Vec<usize> = (0..numbers.len()).collect();
-    order.sort_by_key(|&index| numbers[index].expect("checked for None above"));
-    let mut seen = std::collections::HashSet::with_capacity(order.len());
-    if !order
-        .iter()
-        .all(|&index| seen.insert(numbers[index].expect("checked for None above")))
-    {
+    let mut indexed: Vec<(u64, usize)> = Vec::with_capacity(count);
+    let mut unknown: Vec<usize> = Vec::new();
+    for (index, number) in numbers.iter().enumerate() {
+        match number {
+            Some(number) => indexed.push((*number, index)),
+            None => unknown.push(index),
+        }
+    }
+    let mut known: Vec<u64> = indexed.iter().map(|(number, _)| *number).collect();
+    known.sort_unstable();
+    if known.windows(2).any(|pair| pair[0] == pair[1]) {
         return None;
     }
-    Some(order)
+    let mut implied = false;
+    match unknown.as_slice() {
+        [] => {}
+        [index] => {
+            implied = true;
+            indexed.push((implied_number(&known)?, *index));
+        }
+        _ => return None,
+    }
+    indexed.sort_by_key(|(number, _)| *number);
+    Some((
+        indexed.into_iter().map(|(_, index)| index).collect(),
+        implied,
+    ))
+}
+
+/// Tek numarasız cildin ima edilen numarası: bilinen numaralarda tek iç
+/// boşluk varsa boşluk; numaralar kesintisizse ve en az 1'den başlıyorsa
+/// başlangıcın biri (ima edilen ilk cilt), 0'dan başlıyorsa sonun biri
+/// (ima edilen son cilt). Birden çok boşlukta ya da geniş boşlukta `None`.
+fn implied_number(known: &[u64]) -> Option<u64> {
+    let mut gap = None;
+    for pair in known.windows(2) {
+        match pair[1] - pair[0] {
+            1 => {}
+            2 if gap.is_none() => gap = Some(pair[0] + 1),
+            _ => return None,
+        }
+    }
+    if let Some(gap) = gap {
+        return Some(gap);
+    }
+    let min = known.first().copied()?;
+    let max = known.last().copied()?;
+    if min >= 1 { Some(min - 1) } else { Some(max + 1) }
 }
 
 /// Orta ciltlerin ilk segmentlerini eşzamanlı çeker; dönüş `files` ile aynı
@@ -1041,21 +1092,60 @@ mod tests {
     fn cilt_numarasi_permutasyonu_arsiv_sirasina_dizer() {
         // Poster numaraları karışık: NZB sırası cilt [2, 0, 1].
         let numbers = vec![Some(2), Some(0), Some(1)];
-        assert_eq!(volume_number_permutation(&numbers), Some(vec![1, 2, 0]));
+        assert_eq!(
+            volume_number_permutation(&numbers),
+            Some((vec![1, 2, 0], false))
+        );
 
         // Zaten sıralı küme kimlik permütasyonu verir.
         let identity = vec![Some(10), Some(11), Some(12)];
-        assert_eq!(volume_number_permutation(&identity), Some(vec![0, 1, 2]));
+        assert_eq!(
+            volume_number_permutation(&identity),
+            Some((vec![0, 1, 2], false))
+        );
 
         // 1'den başlayan numaralandırma da geçerli (göreli sıra yeterli).
         let one_based = vec![Some(3), Some(1), Some(2)];
-        assert_eq!(volume_number_permutation(&one_based), Some(vec![1, 2, 0]));
+        assert_eq!(
+            volume_number_permutation(&one_based),
+            Some((vec![1, 2, 0], false))
+        );
     }
 
     #[test]
-    fn cilt_numarasi_eksik_veya_tekrarliysa_permutasyon_yok() {
-        assert_eq!(volume_number_permutation(&[Some(0), None, Some(2)]), None);
+    fn cilt_numarasi_tek_eksikte_ima_ile_doldurulur() {
+        // İç boşluk: eksik cilt 1 numaraya ima edilir → [0,1,2].
+        assert_eq!(
+            volume_number_permutation(&[Some(0), None, Some(2)]),
+            Some((vec![0, 1, 2], true))
+        );
+        // İma edilen ilk cilt (WinRAR cilt 0'a numara alanı yazmaz):
+        // numarasız cilt başa düşer.
+        assert_eq!(
+            volume_number_permutation(&[None, Some(1), Some(2), Some(3)]),
+            Some((vec![0, 1, 2, 3], true))
+        );
+        // İma edilen son cilt: numarasız cilt sona düşer.
+        assert_eq!(
+            volume_number_permutation(&[Some(0), Some(1), None]),
+            Some((vec![0, 1, 2], true))
+        );
+        // Karışık sırada iç boşluk: 1 ve 3 biliniyor, boşluk 2.
+        assert_eq!(
+            volume_number_permutation(&[Some(1), Some(3), None]),
+            Some((vec![0, 2, 1], true))
+        );
+    }
+
+    #[test]
+    fn cilt_numarasi_cozulemezse_permutasyon_yok() {
+        // Birden çok numarasız cilt çözülemez.
+        assert_eq!(volume_number_permutation(&[None, None, Some(0)]), None);
+        // Tekrarlı numaralar reddedilir (tek eksikle bile).
         assert_eq!(volume_number_permutation(&[Some(1), Some(1)]), None);
+        assert_eq!(volume_number_permutation(&[Some(1), Some(1), None]), None);
+        // Birden çok eksik içeren aralık çözülemez.
+        assert_eq!(volume_number_permutation(&[Some(0), Some(5), None]), None);
         assert_eq!(volume_number_permutation(&[Some(0)]), None);
         assert_eq!(volume_number_permutation(&[]), None);
     }

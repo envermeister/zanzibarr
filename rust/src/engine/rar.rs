@@ -845,19 +845,34 @@ fn sniff_rar5_volume_role(head: &[u8]) -> Option<bool> {
 }
 
 /// RAR5 ana (MAIN) başlığındaki cilt numarasını okur — çok ciltli bir setin
-/// tek **yetkin** sıralama kaynağı. WinRAR numarayı her cilde yazar ve `-hp`
-/// başlık şifrelemesi ana başlığı açık bıraktığından okumayı etkilemez; ad
-/// tabanlı her sezgi (arşiv sırası, alfabetik `.rNN`+`.rar`) poster'ın
-/// numaralandırmasıyla bozulabilir ama bu alan bozulamaz. Numara alanı yoksa
-/// (tek cilt, RAR4 ya da numarasız yazan eski araçlar) `None` döner.
+/// tek **yetkin** sıralama kaynağı. WinRAR numarayı ciltlere yazar (ilk
+/// ciltte alan atlanabilir, ima edilen 0'dır). Ad tabanlı her sezgi
+/// poster'ın numaralandırmasıyla bozulabilir ama bu alan bozulamaz.
+/// `-hp` başlık şifrelemede MAIN de şifrelidir (ENCRYPTION önce gelir);
+/// bu durumda ve numara alanı yoksa (tek cilt, RAR4, eski araçlar) `None`
+/// döner.
 pub(crate) fn sniff_rar_volume_number(head: &[u8]) -> Option<u64> {
     if !head.starts_with(RAR5_SIGNATURE) {
         return None;
     }
-    let (head_type, head_flags, body, _next) = peek_rar5_block(head, RAR5_SIGNATURE.len())?;
-    if head_type != HEAD_TYPE_MAIN {
-        return None;
+    // MAIN genellikle ilk bloktur ama önde servis blokları (CMT, QO, …)
+    // durabilir; MAIN'e dek atla. ENCRYPTION/FILE/ENDARC görülürse MAIN
+    // artık okunamaz (şifreli ya da eksik düzen).
+    let mut offset = RAR5_SIGNATURE.len();
+    for _ in 0..8 {
+        let (head_type, head_flags, body, next) = peek_rar5_block(head, offset)?;
+        match head_type {
+            HEAD_TYPE_MAIN => return parse_rar5_main_volume_number(head_flags, body),
+            HEAD_TYPE_SERVICE => offset = next,
+            _ => return None,
+        }
     }
+    None
+}
+
+/// MAIN başlık gövdesinden cilt numarasını çözer: ArchFlags(vint) içinde
+/// `RAR5_MAIN_FLAG_VOLUME_NUMBER` varsa numara vint'i onu izler.
+fn parse_rar5_main_volume_number(head_flags: u64, body: &[u8]) -> Option<u64> {
     let mut cursor = io::Cursor::new(body);
     read_vint_slice(&mut cursor).ok()?; // HEAD_TYPE
     read_vint_slice(&mut cursor).ok()?; // HEAD_FLAGS
@@ -2074,6 +2089,15 @@ mod tests {
         assert_eq!(sniff_rar_volume_number(&rar4), None);
         assert_eq!(sniff_rar_volume_number(b""), None);
         assert_eq!(sniff_rar_volume_number(b"Rar!\x1A\x07\x01\x00\xFF"), None);
+    }
+
+    #[test]
+    fn cilt_numarasi_servis_blogu_atlanarak_okunur() {
+        // MAIN'den önce servis bloğu (CMT, QO, …) duran cilt.
+        let mut bytes = RAR5_SIGNATURE.to_vec();
+        bytes.extend(block(HEAD_TYPE_SERVICE, 0, &[], &[], &vint(0)));
+        bytes.extend(main_block_with_volume_number(12));
+        assert_eq!(sniff_rar_volume_number(&bytes), Some(12));
     }
 
     #[test]
