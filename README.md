@@ -147,6 +147,10 @@ The **Linux** build links against the system libmpv — install the runtime firs
 - [x] Compressed RAR stream-seek (vendored libunrar; decode-ahead onto a temp spool with range-serving)
 - [x] Linux build (system libmpv, Ubuntu 24.04 verified)
 - [x] iOS build (unsigned `.ipa` via CI; sideload with AltStore/Sideloadly — TestFlight needs a paid developer account setup)
+- [x] Chromecast & AirPlay casting (token-gated LAN streaming straight from the engine)
+- [x] Obfuscated NZB sets (content-sniffed RAR volume ordering for hash-named posts)
+- [x] Subtitle font picker (bundled Noto Sans/Serif/Mono, remembered per title)
+- [x] Android TV D-pad navigation overhaul (settings & search fully remote-driven)
 ## Support the project
 
 zanzibarr is free and open source, built in spare time. If it saved you a download queue, you can buy the next coffee that funds the engine on [Buy Me a Coffee](https://buymeacoffee.com/envermeister) or [Ko-fi](https://ko-fi.com/envermeister). One-off or monthly — both keep the commits coming.
