@@ -5,7 +5,9 @@ import '../l10n/app_localizations.dart';
 import '../player/player_screen.dart';
 import '../settings/indexer_settings.dart';
 import '../settings/settings_screen.dart';
+import '../settings/ui_preferences.dart';
 import '../src/rust/api/search.dart';
+import '../tv_focus.dart';
 
 /// FRB `newznabSearch` imzası; testlerde sahte enjekte edilebilir.
 typedef NewznabSearchFn =
@@ -37,6 +39,7 @@ class SearchScreen extends StatefulWidget {
     this.searchFn,
     this.downloadFn,
     this.onDownloaded,
+    this.uiPreferences,
   });
 
   /// Testlerde sahte depo enjekte edebilmek için; null ise gerçek depo kullanılır.
@@ -51,6 +54,10 @@ class SearchScreen extends StatefulWidget {
   /// İndirme bitince çağrılır; null ise [PlayerScreen]'e push edilir.
   /// Testlerde oynatıcının native çağrılarını atlamak için kullanılır.
   final ValueChanged<String>? onDownloaded;
+
+  /// Ayarlar ekranına taşınır; oradaki Uygulama bölümü (dil/tema) ve TV
+  /// autofocus hedefi için gerekli.
+  final UiPreferencesController? uiPreferences;
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -67,6 +74,10 @@ class _SearchScreenState extends State<SearchScreen> {
 
   final _queryController = TextEditingController();
 
+  /// TV kumandasında aşağı ok alandan çıkıp sonuç kartlarına inebilsin diye
+  /// D-pad gezintili odak düğümü (issue #4).
+  late final _queryFocusNode = dpadTraversalFocusNode(_queryController);
+
   IndexerSettings _settings = const IndexerSettings();
   bool _loadingSettings = true;
 
@@ -77,6 +88,10 @@ class _SearchScreenState extends State<SearchScreen> {
 
   /// Şu an NZB'si indirilen öğenin listedeki sırası; spinner burada gösterilir.
   int? _busyIndex;
+
+  /// Sonuçlar gelince odak ilk karta taşınır; TV kumandası kullanıcısı
+  /// IME'den çıkınca doğrudan listeyi dolaşmaya başlar (issue #4).
+  final _firstResultFocusNode = FocusNode();
 
   static Future<SearchPageDto> _defaultSearch(
     IndexerConfigDto config,
@@ -113,6 +128,8 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void dispose() {
     _queryController.dispose();
+    _queryFocusNode.dispose();
+    _firstResultFocusNode.dispose();
     super.dispose();
   }
 
@@ -152,6 +169,13 @@ class _SearchScreenState extends State<SearchScreen> {
         _total = page.total?.toInt();
         _searching = false;
       });
+      if (page.items.isNotEmpty) {
+        // Klavyeden "ara" eylemi alan odağını düşürür; D-pad zinciri
+        // kopmasın diye odak ilk sonuç kartına taşınır.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _firstResultFocusNode.requestFocus();
+        });
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -192,7 +216,9 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _openSettings() async {
     await Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+      MaterialPageRoute<void>(
+        builder: (_) => SettingsScreen(uiPreferences: widget.uiPreferences),
+      ),
     );
     // Ayarlardan dönüldüğünde indexer yeni girilmiş olabilir.
     await _loadSettings();
@@ -222,6 +248,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 Expanded(
                   child: TextField(
                     controller: _queryController,
+                    focusNode: _queryFocusNode,
                     // TV kumandasında D-pad gezintisi metin alanından başlar.
                     autofocus: true,
                     textInputAction: TextInputAction.search,
@@ -321,6 +348,7 @@ class _SearchScreenState extends State<SearchScreen> {
         item: items[index],
         busy: _busyIndex == index,
         enabled: _busyIndex == null,
+        focusNode: index == 0 ? _firstResultFocusNode : null,
         onTap: () => _downloadAndPlay(index),
       ),
     );
@@ -328,18 +356,29 @@ class _SearchScreenState extends State<SearchScreen> {
 }
 
 /// Tek arama sonucu kartı: tür simgesi, başlık, rozetler ve sağda boyut/yaş.
-class _SearchResultCard extends StatelessWidget {
+class _SearchResultCard extends StatefulWidget {
   const _SearchResultCard({
     required this.item,
     required this.busy,
     required this.enabled,
     required this.onTap,
+    this.focusNode,
   });
 
   final SearchItemDto item;
   final bool busy;
   final bool enabled;
   final VoidCallback onTap;
+
+  /// İlk sonuç kartında kullanılır: arama bitince odak buraya taşınır.
+  final FocusNode? focusNode;
+
+  @override
+  State<_SearchResultCard> createState() => _SearchResultCardState();
+}
+
+class _SearchResultCardState extends State<_SearchResultCard> {
+  bool _focused = false;
 
   static IconData _mediaIcon(String mediaKind) => switch (mediaKind) {
     'movie' => Icons.movie_outlined,
@@ -374,22 +413,29 @@ class _SearchResultCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final item = widget.item;
     final foreground = Theme.of(context).colorScheme.onSurface;
+    final accent = Theme.of(context).colorScheme.primary;
     final isTurkish = Localizations.localeOf(context).languageCode == 'tr';
     final sizeText = item.sizeBytes == null ? null : _formatSize(item.sizeBytes!);
     final ageText = item.publishedEpochSecs == null
         ? null
         : _formatAge(item.publishedEpochSecs!.toInt(), isTurkish);
     return Material(
-      color: foreground.withValues(alpha: 0.035),
+      color: foreground.withValues(alpha: _focused ? 0.08 : 0.035),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: foreground.withValues(alpha: 0.075)),
+        side: BorderSide(
+          color: _focused ? accent : foreground.withValues(alpha: 0.075),
+          width: _focused ? 1.8 : 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: enabled ? onTap : null,
+        onTap: widget.enabled ? widget.onTap : null,
+        focusNode: widget.focusNode,
         hoverColor: foreground.withValues(alpha: 0.045),
+        onFocusChange: (focused) => setState(() => _focused = focused),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           child: Row(
@@ -401,7 +447,7 @@ class _SearchResultCard extends StatelessWidget {
                   color: foreground.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: busy
+                child: widget.busy
                     ? Padding(
                         padding: const EdgeInsets.all(11),
                         child: CircularProgressIndicator(

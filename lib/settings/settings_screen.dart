@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
 import '../src/rust/api/search.dart';
+import '../tv_focus.dart';
 import 'indexer_settings.dart';
 import 'provider_settings.dart';
 import 'ui_preferences.dart';
@@ -59,6 +60,38 @@ class _SettingsScreenState extends State<SettingsScreen>
   final _indexerFormKey = GlobalKey<FormState>();
   final _indexerUrlController = TextEditingController();
   final _indexerApiKeyController = TextEditingController();
+
+  // TV kumandasında yukarı/aşağı oklar alandan çıkabilsin diye D-pad
+  // gezintili odak düğümleri (issue #4). Parola/API anahtarı alanlarının
+  // göz simgeleri `skipTraversal` ile yön gezintisinden çıkarılmıştır —
+  // aksi halde aşağı ok bir üst alandan inerken alanı atlayıp simgeye
+  // düşüyordu (simge dikeyde alanın metin bölgesinden daha yüksekte).
+  // Simgelere yalnızca alanın metin sonundan sağ okla geçilir.
+  late final _hostFocusNode = dpadTraversalFocusNode(_hostController);
+  late final _portFocusNode = dpadTraversalFocusNode(_portController);
+  late final _maxConnectionsFocusNode = dpadTraversalFocusNode(
+    _maxConnectionsController,
+  );
+  late final _usernameFocusNode = dpadTraversalFocusNode(_usernameController);
+  late final FocusNode _passwordFocusNode = dpadTraversalFocusNode(
+    _passwordController,
+    focusOnRightEdge: () => _passwordEyeFocusNode,
+  );
+  late final FocusNode _passwordEyeFocusNode = dpadFieldActionFocusNode(
+    controller: _passwordController,
+    fieldNode: _passwordFocusNode,
+  );
+  late final _indexerUrlFocusNode = dpadTraversalFocusNode(
+    _indexerUrlController,
+  );
+  late final FocusNode _indexerApiKeyFocusNode = dpadTraversalFocusNode(
+    _indexerApiKeyController,
+    focusOnRightEdge: () => _indexerApiKeyEyeFocusNode,
+  );
+  late final FocusNode _indexerApiKeyEyeFocusNode = dpadFieldActionFocusNode(
+    controller: _indexerApiKeyController,
+    fieldNode: _indexerApiKeyFocusNode,
+  );
 
   bool _loading = true;
   bool _saving = false;
@@ -297,6 +330,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Widget _portField() => TextFormField(
     controller: _portController,
+    focusNode: _portFocusNode,
     decoration: InputDecoration(
       labelText: AppLocalizations.of(context).portLabel,
       hintText: '563',
@@ -313,6 +347,7 @@ class _SettingsScreenState extends State<SettingsScreen>
 
   Widget _connectionField() => TextFormField(
     controller: _maxConnectionsController,
+    focusNode: _maxConnectionsFocusNode,
     decoration: InputDecoration(
       labelText: AppLocalizations.of(context).connectionLimitLabel,
       hintText: AppLocalizations.of(context).connectionLimitHint,
@@ -341,6 +376,15 @@ class _SettingsScreenState extends State<SettingsScreen>
     _indexerApiKeyController
       ..clear()
       ..dispose();
+    _hostFocusNode.dispose();
+    _portFocusNode.dispose();
+    _maxConnectionsFocusNode.dispose();
+    _usernameFocusNode.dispose();
+    _passwordFocusNode.dispose();
+    _passwordEyeFocusNode.dispose();
+    _indexerUrlFocusNode.dispose();
+    _indexerApiKeyFocusNode.dispose();
+    _indexerApiKeyEyeFocusNode.dispose();
     super.dispose();
   }
 
@@ -402,6 +446,10 @@ class _SettingsScreenState extends State<SettingsScreen>
                           children: [
                             DropdownButtonFormField<Locale>(
                               initialValue: prefs.locale,
+                              // TV kumandasında D-pad gezintisi bu ilk
+                              // kontrolden başlar (metin alanı olmadığı için
+                              // girişte ekran klavyesi açılmaz).
+                              autofocus: true,
                               decoration: InputDecoration(
                                 labelText: l10n.languageLabel,
                                 prefixIcon: const Icon(
@@ -491,6 +539,11 @@ class _SettingsScreenState extends State<SettingsScreen>
                         children: [
                           TextFormField(
                             controller: _hostController,
+                            focusNode: _hostFocusNode,
+                            // Uygulama bölümü yoksa (arama ekranından eski
+                            // yol) ilk kontrol bu alan; TV'de D-pad gezintisi
+                            // buradan başlar.
+                            autofocus: widget.uiPreferences == null,
                             decoration: InputDecoration(
                               labelText: l10n.serverAddressLabel,
                               hintText: 'news.example.com',
@@ -530,6 +583,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                         children: [
                           TextFormField(
                             controller: _usernameController,
+                            focusNode: _usernameFocusNode,
                             decoration: InputDecoration(
                               labelText: l10n.usernameLabel,
                               prefixIcon: const Icon(
@@ -544,22 +598,37 @@ class _SettingsScreenState extends State<SettingsScreen>
                                 _required(value, l10n.usernameLabel),
                           ),
                           const SizedBox(height: 12),
-                          TextFormField(
-                            controller: _passwordController,
-                            obscureText: _obscurePassword,
-                            enableSuggestions: false,
-                            autocorrect: false,
-                            autofillHints: const [AutofillHints.password],
-                            onFieldSubmitted: (_) => _save(),
-                            validator: (value) =>
-                                _required(value, l10n.passwordLabel),
-                            decoration: InputDecoration(
-                              labelText: l10n.passwordLabel,
-                              prefixIcon: const Icon(
-                                Icons.lock_outline_rounded,
-                                size: 19,
+                          // Göz düğmesi alanın İÇİNDE değil yanında durur ve
+                          // skipTraversal ile yön gezintisi adaylığından
+                          // çıkarılmıştır: aşağı ok bu satıra inerken her
+                          // zaman alanı seçer; simgeye yalnızca alanın metin
+                          // sonundan sağ okla geçilir (issue #4).
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  controller: _passwordController,
+                                  focusNode: _passwordFocusNode,
+                                  obscureText: _obscurePassword,
+                                  enableSuggestions: false,
+                                  autocorrect: false,
+                                  autofillHints: const [AutofillHints.password],
+                                  onFieldSubmitted: (_) => _save(),
+                                  validator: (value) =>
+                                      _required(value, l10n.passwordLabel),
+                                  decoration: InputDecoration(
+                                    labelText: l10n.passwordLabel,
+                                    prefixIcon: const Icon(
+                                      Icons.lock_outline_rounded,
+                                      size: 19,
+                                    ),
+                                  ),
+                                ),
                               ),
-                              suffixIcon: IconButton(
+                              const SizedBox(width: 8),
+                              IconButton(
+                                focusNode: _passwordEyeFocusNode,
                                 tooltip: _obscurePassword
                                     ? l10n.passwordShowTooltip
                                     : l10n.passwordHideTooltip,
@@ -573,7 +642,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   () => _obscurePassword = !_obscurePassword,
                                 ),
                               ),
-                            ),
+                            ],
                           ),
                         ],
                       ),
@@ -626,6 +695,7 @@ class _SettingsScreenState extends State<SettingsScreen>
                               children: [
                                 TextFormField(
                                   controller: _indexerUrlController,
+                                  focusNode: _indexerUrlFocusNode,
                                   decoration: InputDecoration(
                                     labelText: l10n.indexerUrlLabel,
                                     hintText: 'https://indexer.example',
@@ -640,20 +710,34 @@ class _SettingsScreenState extends State<SettingsScreen>
                                   validator: _validateIndexerUrl,
                                 ),
                                 const SizedBox(height: 12),
-                                TextFormField(
-                                  controller: _indexerApiKeyController,
-                                  obscureText: _obscureApiKey,
-                                  enableSuggestions: false,
-                                  autocorrect: false,
-                                  onFieldSubmitted: (_) => _saveIndexer(),
-                                  validator: _validateIndexerApiKey,
-                                  decoration: InputDecoration(
-                                    labelText: l10n.indexerApiKeyLabel,
-                                    prefixIcon: const Icon(
-                                      Icons.key_rounded,
-                                      size: 19,
+                                // Parola alanıyla aynı düzen: göz düğmesi
+                                // yanda ve skipTraversal'lı; sağ okla alandan
+                                // geçilir (issue #4).
+                                Row(
+                                  crossAxisAlignment: CrossAxisAlignment.center,
+                                  children: [
+                                    Expanded(
+                                      child: TextFormField(
+                                        controller: _indexerApiKeyController,
+                                        focusNode: _indexerApiKeyFocusNode,
+                                        obscureText: _obscureApiKey,
+                                        enableSuggestions: false,
+                                        autocorrect: false,
+                                        onFieldSubmitted: (_) =>
+                                            _saveIndexer(),
+                                        validator: _validateIndexerApiKey,
+                                        decoration: InputDecoration(
+                                          labelText: l10n.indexerApiKeyLabel,
+                                          prefixIcon: const Icon(
+                                            Icons.key_rounded,
+                                            size: 19,
+                                          ),
+                                        ),
+                                      ),
                                     ),
-                                    suffixIcon: IconButton(
+                                    const SizedBox(width: 8),
+                                    IconButton(
+                                      focusNode: _indexerApiKeyEyeFocusNode,
                                       tooltip: _obscureApiKey
                                           ? l10n.passwordShowTooltip
                                           : l10n.passwordHideTooltip,
@@ -668,50 +752,55 @@ class _SettingsScreenState extends State<SettingsScreen>
                                             _obscureApiKey = !_obscureApiKey,
                                       ),
                                     ),
-                                  ),
+                                  ],
                                 ),
                               ],
                             ),
                             const SizedBox(height: 22),
-                            Wrap(
-                              alignment: WrapAlignment.end,
-                              spacing: 10,
-                              runSpacing: 8,
-                              children: [
-                                OutlinedButton.icon(
-                                  onPressed:
-                                      _testingIndexer ? null : _testIndexer,
-                                  icon: _testingIndexer
-                                      ? const SizedBox.square(
-                                          dimension: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 1.8,
+                            // Düğmeler dikey dizilir: yan yana olsalardı aşağı
+                            // ok yalnızca birine inebilirdi; kumandayla ikisi
+                            // de dikey zincirde olmalı (issue #4).
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                children: [
+                                  OutlinedButton.icon(
+                                    onPressed:
+                                        _testingIndexer ? null : _testIndexer,
+                                    icon: _testingIndexer
+                                        ? const SizedBox.square(
+                                            dimension: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 1.8,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.cable_rounded,
+                                            size: 18,
                                           ),
-                                        )
-                                      : const Icon(
-                                          Icons.cable_rounded,
-                                          size: 18,
-                                        ),
-                                  label: Text(l10n.indexerTestButton),
-                                ),
-                                FilledButton.icon(
-                                  onPressed:
-                                      _savingIndexer ? null : _saveIndexer,
-                                  icon: _savingIndexer
-                                      ? const SizedBox.square(
-                                          dimension: 16,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 1.8,
-                                          ),
-                                        )
-                                      : const Icon(Icons.check_rounded, size: 18),
-                                  label: Text(
-                                    _savingIndexer
-                                        ? l10n.savingLabel
-                                        : l10n.indexerSaveLabel,
+                                    label: Text(l10n.indexerTestButton),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 8),
+                                  FilledButton.icon(
+                                    onPressed:
+                                        _savingIndexer ? null : _saveIndexer,
+                                    icon: _savingIndexer
+                                        ? const SizedBox.square(
+                                            dimension: 16,
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 1.8,
+                                            ),
+                                          )
+                                        : const Icon(Icons.check_rounded, size: 18),
+                                    label: Text(
+                                      _savingIndexer
+                                          ? l10n.savingLabel
+                                          : l10n.indexerSaveLabel,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),

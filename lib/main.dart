@@ -166,6 +166,11 @@ class ZanzibarrApp extends StatelessWidget {
       ),
       snackBarTheme: _snackBarTheme(const Color(0xF228282C)),
       tooltipTheme: _tooltipTheme(const Color(0xF22A2A2D), Colors.white),
+      focusColor: _accent.withValues(alpha: 0.24),
+      outlinedButtonTheme: _outlinedButtonTheme(),
+      textButtonTheme: _textButtonTheme(),
+      iconButtonTheme: _iconButtonTheme(),
+      segmentedButtonTheme: _segmentedButtonTheme(),
     );
   }
 
@@ -199,6 +204,11 @@ class ZanzibarrApp extends StatelessWidget {
       ),
       snackBarTheme: _snackBarTheme(const Color(0xF2323236)),
       tooltipTheme: _tooltipTheme(const Color(0xF2323236), Colors.white),
+      focusColor: _accent.withValues(alpha: 0.18),
+      outlinedButtonTheme: _outlinedButtonTheme(),
+      textButtonTheme: _textButtonTheme(),
+      iconButtonTheme: _iconButtonTheme(),
+      segmentedButtonTheme: _segmentedButtonTheme(),
     );
   }
 
@@ -223,18 +233,50 @@ class ZanzibarrApp extends StatelessWidget {
     ),
   );
 
+  /// TV (D-pad) odak göstergesi: odaklanan kontrol accent çerçeve ve hafif
+  /// dolguyla belirginleşir. `null` dönen durumlar alt katman stiline düşer;
+  /// fare/dokunma davranışı değişmez.
+  static ButtonStyle _tvFocusStyle(ButtonStyle base) => base.copyWith(
+    overlayColor: WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.focused)
+          ? _accent.withValues(alpha: 0.22)
+          : null,
+    ),
+    side: WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.focused)
+          ? const BorderSide(color: _accent, width: 1.8)
+          : null,
+    ),
+  );
+
   FilledButtonThemeData _filledButtonTheme({
     required Color background,
     required Color foreground,
   }) => FilledButtonThemeData(
-    style: FilledButton.styleFrom(
-      backgroundColor: background,
-      foregroundColor: foreground,
-      minimumSize: const Size(0, 44),
-      padding: const EdgeInsets.symmetric(horizontal: 18),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+    style: _tvFocusStyle(
+      FilledButton.styleFrom(
+        backgroundColor: background,
+        foregroundColor: foreground,
+        minimumSize: const Size(0, 44),
+        padding: const EdgeInsets.symmetric(horizontal: 18),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+      ),
     ),
   );
+
+  OutlinedButtonThemeData _outlinedButtonTheme() => OutlinedButtonThemeData(
+    style: _tvFocusStyle(const ButtonStyle()),
+  );
+
+  TextButtonThemeData _textButtonTheme() =>
+      TextButtonThemeData(style: _tvFocusStyle(const ButtonStyle()));
+
+  IconButtonThemeData _iconButtonTheme() => IconButtonThemeData(
+    style: _tvFocusStyle(const ButtonStyle()),
+  );
+
+  SegmentedButtonThemeData _segmentedButtonTheme() =>
+      SegmentedButtonThemeData(style: _tvFocusStyle(const ButtonStyle()));
 
   SnackBarThemeData _snackBarTheme(Color background) => SnackBarThemeData(
     behavior: SnackBarBehavior.floating,
@@ -468,7 +510,9 @@ class _HomeScreenState extends State<HomeScreen> {
       }
       if (!context.mounted) return;
       if (settings.isComplete) {
-        await Navigator.of(context).push(_fadeRoute(const SearchScreen()));
+        await Navigator.of(context).push(
+          _fadeRoute(SearchScreen(uiPreferences: widget.uiPreferences)),
+        );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -622,7 +666,7 @@ class _AppLogoMark extends StatelessWidget {
   );
 }
 
-class _OpenMediaCard extends StatelessWidget {
+class _OpenMediaCard extends StatefulWidget {
   const _OpenMediaCard({
     required this.onPressed,
     required this.busy,
@@ -643,20 +687,34 @@ class _OpenMediaCard extends StatelessWidget {
   final bool autofocus;
 
   @override
+  State<_OpenMediaCard> createState() => _OpenMediaCardState();
+}
+
+class _OpenMediaCardState extends State<_OpenMediaCard> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final foreground = isDark ? Colors.white : Colors.black;
+    final accent = Theme.of(context).colorScheme.primary;
     return Material(
-      color: foreground.withValues(alpha: isDark ? 0.055 : 0.045),
+      color: foreground.withValues(
+        alpha: _focused ? (isDark ? 0.1 : 0.08) : (isDark ? 0.055 : 0.045),
+      ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: foreground.withValues(alpha: 0.1)),
+        side: BorderSide(
+          color: _focused ? accent : foreground.withValues(alpha: 0.1),
+          width: _focused ? 1.8 : 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: busy ? null : onPressed,
+        onTap: widget.busy ? null : widget.onPressed,
         hoverColor: foreground.withValues(alpha: 0.045),
-        autofocus: autofocus,
+        autofocus: widget.autofocus,
+        onFocusChange: (focused) => setState(() => _focused = focused),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
           child: Row(
@@ -668,7 +726,7 @@ class _OpenMediaCard extends StatelessWidget {
                   color: foreground.withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(11),
                 ),
-                child: busy
+                child: widget.busy
                     ? Padding(
                         padding: const EdgeInsets.all(13),
                         child: CircularProgressIndicator(
@@ -677,7 +735,7 @@ class _OpenMediaCard extends StatelessWidget {
                         ),
                       )
                     : Icon(
-                        icon,
+                        widget.icon,
                         size: 21,
                         color: foreground.withValues(alpha: 0.7),
                       ),
@@ -688,7 +746,7 @@ class _OpenMediaCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      widget.title,
                       style: TextStyle(
                         color: foreground,
                         fontSize: 14,
@@ -697,7 +755,7 @@ class _OpenMediaCard extends StatelessWidget {
                     ),
                     const SizedBox(height: 3),
                     Text(
-                      subtitle,
+                      widget.subtitle,
                       style: TextStyle(
                         color: foreground.withValues(alpha: 0.38),
                         fontSize: 11,
@@ -706,7 +764,7 @@ class _OpenMediaCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (!busy)
+              if (!widget.busy)
                 Icon(
                   Icons.chevron_right_rounded,
                   size: 20,
@@ -801,7 +859,7 @@ class _ContinueWatchingSection extends StatelessWidget {
   }
 }
 
-class _HistoryCard extends StatelessWidget {
+class _HistoryCard extends StatefulWidget {
   const _HistoryCard({
     required this.entry,
     required this.onOpen,
@@ -813,24 +871,39 @@ class _HistoryCard extends StatelessWidget {
   final VoidCallback onRemove;
 
   @override
+  State<_HistoryCard> createState() => _HistoryCardState();
+}
+
+class _HistoryCardState extends State<_HistoryCard> {
+  bool _focused = false;
+
+  @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final foreground = isDark ? Colors.white : Colors.black;
+    final accent = Theme.of(context).colorScheme.primary;
+    final entry = widget.entry;
     final remaining = Duration(
       milliseconds: ((entry.durationSeconds - entry.positionSeconds) * 1000)
           .round(),
     );
     return Material(
-      color: foreground.withValues(alpha: isDark ? 0.045 : 0.035),
+      color: foreground.withValues(
+        alpha: _focused ? (isDark ? 0.09 : 0.07) : (isDark ? 0.045 : 0.035),
+      ),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: foreground.withValues(alpha: 0.07)),
+        side: BorderSide(
+          color: _focused ? accent : foreground.withValues(alpha: 0.07),
+          width: _focused ? 1.8 : 1,
+        ),
       ),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
-        onTap: onOpen,
+        onTap: widget.onOpen,
         hoverColor: foreground.withValues(alpha: 0.04),
+        onFocusChange: (focused) => setState(() => _focused = focused),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Column(
@@ -874,7 +947,7 @@ class _HistoryCard extends StatelessWidget {
                         Icons.close_rounded,
                         color: foreground.withValues(alpha: 0.4),
                       ),
-                      onPressed: onRemove,
+                      onPressed: widget.onRemove,
                     ),
                   ),
                 ],
