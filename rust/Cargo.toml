@@ -32,5 +32,15 @@ unrar = { path = "../vendor/unrar-rs" }
 [lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(frb_expand)'] }
 
+# macOS 26+ (dyld) / rustc strip hatası geçici çözümü: release profilinde
+# proc-macro dylib'leri strip edilince LINKEDIT string pool hizası bozuluyor
+# ve dyld "mis-aligned LINKEDIT string pool" ile dlopen'i reddediyor
+# (rust-lang/rust#157750). Host tarafı build-script/proc-macro derlemesini
+# debuginfo'lu bırakmak strip'i atlatır; üretilen sürüm ikililerinin
+# optimizasyonunu etkilemez.
+[profile.release.build-override]
+debug = 2
+codegen-units = 256
+
 [dev-dependencies]
 tokio = { version = "1.52.4", features = ["macros", "rt-multi-thread"] }
