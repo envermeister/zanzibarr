@@ -25,8 +25,10 @@ void main() {
     double position = 120,
     double duration = 6000,
     int updatedAt = 1000,
+    String? entryKey,
   }) => PlaybackHistoryEntry(
     nzbPath: path,
+    entryKey: entryKey,
     title: path.split('/').last,
     positionSeconds: position,
     durationSeconds: duration,
@@ -115,5 +117,64 @@ void main() {
 
     expect((await store.entryFor('/media/film.nzb'))?.positionSeconds, 120);
     expect(await store.entryFor('/media/yok.nzb'), isNull);
+  });
+
+  test('aynı NZB’nin bölümleri ayrı kayıt tutar, konumlar karışmaz', () async {
+    final storage = _MemoryPreferenceStorage();
+    final store = PlaybackHistoryStore(storage: storage);
+
+    await store.save(
+      entry('/media/paket.nzb', position: 100, entryKey: 'rar:e01', updatedAt: 1),
+    );
+    await store.save(
+      entry('/media/paket.nzb', position: 250, entryKey: 'rar:e02', updatedAt: 2),
+    );
+
+    expect(await store.load(), hasLength(2));
+    expect(
+      (await store.entryFor('/media/paket.nzb', entryKey: 'rar:e01'))
+          ?.positionSeconds,
+      100,
+    );
+    expect(
+      (await store.entryFor('/media/paket.nzb', entryKey: 'rar:e02'))
+          ?.positionSeconds,
+      250,
+    );
+    // Anahtarsız arama bölüm kayıtlarını bulmaz.
+    expect(await store.entryFor('/media/paket.nzb'), isNull);
+  });
+
+  test('bölüm kaydı eski anahtarsız paket kaydını süpürür', () async {
+    final storage = _MemoryPreferenceStorage();
+    final store = PlaybackHistoryStore(storage: storage);
+
+    // Eski sürümden kalan tüm-paket kaydı, bölüm bazlı ilk kayıtta silinir;
+    // yoksa ana ekranda hedefi bulunamayan hayalet bir kart kalırdı.
+    await store.save(entry('/media/paket.nzb', position: 300, updatedAt: 1));
+    await store.save(
+      entry('/media/paket.nzb', position: 40, entryKey: 'rar:e01', updatedAt: 2),
+    );
+
+    final entries = await store.load();
+    expect(entries, hasLength(1));
+    expect(entries.single.entryKey, 'rar:e01');
+  });
+
+  test('remove entryKey ile yalnız o bölümü siler', () async {
+    final storage = _MemoryPreferenceStorage();
+    final store = PlaybackHistoryStore(storage: storage);
+
+    await store.save(
+      entry('/media/paket.nzb', position: 100, entryKey: 'rar:e01', updatedAt: 1),
+    );
+    await store.save(
+      entry('/media/paket.nzb', position: 250, entryKey: 'rar:e02', updatedAt: 2),
+    );
+    await store.remove('/media/paket.nzb', entryKey: 'rar:e01');
+
+    final entries = await store.load();
+    expect(entries, hasLength(1));
+    expect(entries.single.entryKey, 'rar:e02');
   });
 }

@@ -722,4 +722,22 @@ class AppLocalizationsTr extends AppLocalizations {
 
   @override
   String get subtitleFont => 'Altyazı yazı tipi';
+
+  @override
+  String get entryPickerTitle => 'Ne oynatılsın?';
+
+  @override
+  String get entryPickerSubtitle =>
+      'Bu NZB birden çok video içeriyor — oynatmak için birini seç.';
+
+  @override
+  String get entryKindDirect => 'Video';
+
+  @override
+  String get entryKindArchive => 'Arşiv';
+
+  @override
+  String entryParts(int count) {
+    return '$count parça';
+  }
 }

@@ -17,6 +17,7 @@ import '../settings/provider_settings.dart';
 import '../src/rust/api/repair.dart';
 import '../src/rust/api/streaming.dart';
 import 'advanced_playback_controller.dart';
+import 'entry_picker.dart';
 import 'gyuni_player_controls.dart';
 import 'media_preferences.dart';
 import 'picture_in_picture_window.dart';
@@ -42,11 +43,17 @@ class PlayerScreen extends StatefulWidget {
     this.pictureInPictureWindow,
     this.historyStore,
     this.castService,
+    this.initialEntryKey,
     this.startupTimeout = const Duration(seconds: 45),
     this.streamPreparationTimeout = const Duration(seconds: 90),
   });
 
   final String nzbPath;
+
+  /// İzleme geçmişinden (belirli bir bölümden) devam ediliyorsa o bölümün
+  /// seçici anahtarı; verilirse çok parçalı NZB'lerde seçici diyalog
+  /// atlanır ve doğrudan bu aday oynatılır.
+  final String? initialEntryKey;
 
   /// Testlerde sahte depo enjekte etmek için; null ise gerçek depo kullanılır.
   final ProviderSettingsStore? store;
@@ -230,6 +237,12 @@ class _PlayerScreenState extends State<PlayerScreen>
   // hazır olduğunda (bir kez) kayıtlı konuma dönülür.
   Timer? _historySaveTimer;
   bool _historyResumeDone = false;
+
+  // Çok parçalı NZB'de oynatılan adayın seçici anahtarı: kullanıcı diyalogda
+  // seçti ya da geçmişten `initialEntryKey` ile geldi. Tek adaylı NZB'lerde
+  // null kalır. Geçmiş kayıtları (nzbPath, entryKey) çiftiyle tutulur ki
+  // sezon paketinin bölümleri birbirinin konumunu ezmesin (issue #5).
+  String? _resolvedEntryKey;
   // Android çok-sesli sessiz açılış düzeltmesi tek seferlik uygulanır.
   bool _audioReasserted = false;
   // Video sığdırma kipi: false=contain (oran korunur), true=cover (doldur).
@@ -338,6 +351,31 @@ class _PlayerScreenState extends State<PlayerScreen>
         return;
       }
 
+      // Çok parçalı (sezon paketi gibi) NZB'lerde oynatılacak dosyayı
+      // kullanıcı seçer (issue #5). Geçmişten belirli bir bölümle
+      // gelindiyse (initialEntryKey) diyalog atlanır.
+      var entryKey = widget.initialEntryKey;
+      if (entryKey == null) {
+        try {
+          final entries = await listPlayableEntries(nzbPath: widget.nzbPath);
+          if (!mounted) return;
+          if (entries.length > 1) {
+            entryKey = await showPlayableEntryPicker(context, entries);
+            if (entryKey == null) {
+              // Kullanıcı vazgeçti: oynatıcıyı hiç başlatmadan geri dön.
+              if (mounted && Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+              return;
+            }
+          }
+        } catch (_) {
+          // Listeleme başarısızsa (bozuk NZB) anahtarsız yola düşülür:
+          // beginStream'in kendi ayrıntılı hatası mevcut hata yüzeyine gelir.
+        }
+      }
+      _resolvedEntryKey = entryKey;
+
       if (!mounted) return;
       setState(() {
         _startupActive = true;
@@ -357,6 +395,7 @@ class _PlayerScreenState extends State<PlayerScreen>
           maxConnections: settings.maxConnections,
         ),
         nzbPath: widget.nzbPath,
+        entryKey: entryKey,
       );
       _pendingSessionId = sessionId;
 
@@ -606,12 +645,18 @@ class _PlayerScreenState extends State<PlayerScreen>
     if (_historyResumeDone) return;
     _historyResumeDone = true;
     try {
-      final entry = await _historyStore.entryFor(widget.nzbPath);
+      final entry = await _historyStore.entryFor(
+        widget.nzbPath,
+        entryKey: _resolvedEntryKey,
+      );
       if (entry == null || _disposing) return;
       // Son %3'e ulaşılmış içerik izlenmiş sayılır; kayıt düşülüp baştan
       // başlanır.
       if (entry.isCompleted) {
-        await _historyStore.remove(widget.nzbPath);
+        await _historyStore.remove(
+          widget.nzbPath,
+          entryKey: _resolvedEntryKey,
+        );
         return;
       }
       final target = entry.position;
@@ -631,6 +676,7 @@ class _PlayerScreenState extends State<PlayerScreen>
       await _historyStore.save(
         PlaybackHistoryEntry(
           nzbPath: widget.nzbPath,
+          entryKey: _resolvedEntryKey,
           title: _info?.filename.isNotEmpty ?? false
               ? _info!.filename
               : widget.nzbPath.split(RegExp(r'[/\\]')).last,

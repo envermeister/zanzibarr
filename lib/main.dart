@@ -459,7 +459,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _removeHistoryEntry(PlaybackHistoryEntry entry) async {
     try {
-      await _historyStore.remove(entry.nzbPath);
+      await _historyStore.remove(entry.nzbPath, entryKey: entry.entryKey);
     } catch (_) {
       // Silme başarısızsa liste eski hâliyle kalır.
       return;
@@ -467,10 +467,13 @@ class _HomeScreenState extends State<HomeScreen> {
     await _loadHistory();
   }
 
-  Future<void> _openPath(String path) async {
-    await Navigator.of(
-      context,
-    ).push(_fadeRoute(PlayerScreen(nzbPath: path), opaque: true));
+  Future<void> _openPath(String path, {String? entryKey}) async {
+    await Navigator.of(context).push(
+      _fadeRoute(
+        PlayerScreen(nzbPath: path, initialEntryKey: entryKey),
+        opaque: true,
+      ),
+    );
     // Oynatıcıdan dönüşte izleme ilerlemesi tazelenir.
     await _loadHistory();
   }
@@ -615,7 +618,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         const SizedBox(height: 28),
                         _ContinueWatchingSection(
                           entries: _history,
-                          onOpen: (entry) => _openPath(entry.nzbPath),
+                          onOpen: (entry) =>
+                              _openPath(entry.nzbPath, entryKey: entry.entryKey),
                           onRemove: _removeHistoryEntry,
                         ),
                       ],

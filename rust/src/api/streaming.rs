@@ -90,6 +90,22 @@ pub struct StreamInfo {
     pub compressed: bool,
 }
 
+/// NZB içindeki oynatılabilir bir aday: doğrudan video ya da bir arşiv seti.
+/// Sezon paketi gibi çok parçalı NZB'lerde kullanıcıya seçim sunulur; seçilen
+/// adayın `key` değeri `begin_stream`'e geri verilir.
+pub struct PlayableEntryDto {
+    /// `begin_stream`'e geri verilen donuk seçici (ör. `rar:show.s01`).
+    pub key: String,
+    /// Kullanıcıya gösterilen ad: dosya adı veya arşiv taban adı.
+    pub name: String,
+    /// Aday türü: `direct`, `7z`, `rar` veya `probe` (obfuske sayısal set).
+    pub kind: String,
+    /// Toplam kodlu (yEnc) boyut; kabaca indirilen bayt kadardır.
+    pub encoded_bytes: u64,
+    /// Parça sayısı: doğrudan videoda 1, setlerde cilt sayısı.
+    pub part_count: u32,
+}
+
 #[cfg(test)]
 fn take_active_stream(session_id: Option<u64>) -> Option<ActiveStream> {
     let mut active = ACTIVE_STREAM.lock().expect("aktif stream kilidi");
@@ -664,13 +680,12 @@ fn read_nzb_bytes<R: Read>(
     Ok(bytes)
 }
 
-fn load_stream_selection_blocking(
-    nzb_path: String,
-    cancellation: watch::Receiver<bool>,
-) -> Result<StreamSelection, String> {
-    ensure_stream_not_cancelled(&cancellation)?;
+/// NZB yolunu temel güvenlik denetimleriyle açar (var, düz dosya, boyut
+/// sınırı). Oturumlu (iptal destekli) ve oturumsuz (listeleme) okuma
+/// yolları bunu paylaşır.
+fn open_nzb_file(nzb_path: &str) -> Result<std::fs::File, String> {
     let metadata =
-        std::fs::metadata(&nzb_path).map_err(|error| format!("could not read NZB: {error}"))?;
+        std::fs::metadata(nzb_path).map_err(|error| format!("could not read NZB: {error}"))?;
     if !metadata.is_file() {
         return Err("the selected NZB path is not a regular file".into());
     }
@@ -679,25 +694,49 @@ fn load_stream_selection_blocking(
             "NZB file exceeds the safe size limit ({MAX_NZB_FILE_BYTES} bytes)"
         ));
     }
+    std::fs::File::open(nzb_path).map_err(|error| format!("could not read NZB: {error}"))
+}
 
-    let mut file =
-        std::fs::File::open(&nzb_path).map_err(|error| format!("could not read NZB: {error}"))?;
+/// Oturumsuz NZB okuma + ayrıştırma: seçici listeleme anlık bittiği için
+/// iptal kanalı taşımaz; güvenlik denetimleri oturumlu yolla aynıdır.
+fn read_nzb(nzb_path: &str) -> Result<nzb::Nzb, String> {
+    let mut file = open_nzb_file(nzb_path)?;
+    let mut bytes = Vec::new();
+    file.read_to_end(&mut bytes)
+        .map_err(|error| format!("could not read NZB: {error}"))?;
+    let xml = String::from_utf8(bytes).map_err(|_| "NZB is not valid UTF-8 text".to_string())?;
+    nzb::parse_nzb(&xml).map_err(|error| error.to_string())
+}
+
+fn load_stream_selection_blocking(
+    nzb_path: String,
+    entry_key: Option<String>,
+    cancellation: watch::Receiver<bool>,
+) -> Result<StreamSelection, String> {
+    ensure_stream_not_cancelled(&cancellation)?;
+    let mut file = open_nzb_file(&nzb_path)?;
     let bytes = read_nzb_bytes(&mut file, &cancellation, MAX_NZB_FILE_BYTES)?;
     let xml = String::from_utf8(bytes).map_err(|_| "NZB is not valid UTF-8 text".to_string())?;
     ensure_stream_not_cancelled(&cancellation)?;
     let parsed = nzb::parse_nzb(&xml).map_err(|error| error.to_string())?;
     ensure_stream_not_cancelled(&cancellation)?;
-    select_stream(&parsed)
+    // Kullanıcı seçici diyalogda bir aday verdiyse kesin seçim; yoksa
+    // otomatik (en büyük) seçim — bugünkü davranış korunur.
+    match entry_key {
+        Some(key) => select_stream_by_key(&parsed, &key),
+        None => select_stream(&parsed),
+    }
 }
 
 async fn load_stream_selection(
     nzb_path: String,
+    entry_key: Option<String>,
     cancellation: watch::Receiver<bool>,
 ) -> Result<StreamSelection, String> {
     ensure_stream_not_cancelled(&cancellation)?;
     let task_cancellation = cancellation.clone();
     let mut task = tokio::task::spawn_blocking(move || {
-        load_stream_selection_blocking(nzb_path, task_cancellation)
+        load_stream_selection_blocking(nzb_path, entry_key, task_cancellation)
     });
 
     tokio::select! {
@@ -722,6 +761,7 @@ async fn run_stream_session(
     session_id: u64,
     config: ProviderConfigDto,
     nzb_path: String,
+    entry_key: Option<String>,
     cancellation: watch::Receiver<bool>,
     ready: oneshot::Sender<Result<StreamInfo, String>>,
     previous: Option<ActiveStream>,
@@ -740,7 +780,8 @@ async fn run_stream_session(
     // Dosya okuma/parse oturum kurulduktan sonra yapılır. Eski bir begin
     // çağrısı yavaş kalsa bile daha yeni oturum onu iptal eder ve bitmesini
     // bekler; sonuçların sırası tersine dönemez.
-    let selection = match load_stream_selection(nzb_path.clone(), cancellation.clone()).await {
+    let selection =
+        match load_stream_selection(nzb_path.clone(), entry_key, cancellation.clone()).await {
         Ok(selection) if !cancellation_requested(&cancellation) => selection,
         Ok(_) => {
             let _ = ready.send(Err("stream startup cancelled".into()));
@@ -888,6 +929,171 @@ fn local_lan_ipv4() -> Option<std::net::Ipv4Addr> {
     }
 }
 
+const ENTRY_KEY_DIRECT: &str = "direct:";
+const ENTRY_KEY_7Z: &str = "7z:";
+const ENTRY_KEY_RAR: &str = "rar:";
+const ENTRY_KEY_PROBE: &str = "probe:";
+
+/// Set anahtarları taban adın küçük harf haliyle üretilir: gruplama da aynı
+/// normalizasyonu kullandığı için seçimde bire bir bulunurlar.
+fn set_key(prefix: &str, base: &str) -> String {
+    format!("{}{}", prefix, base.to_ascii_lowercase())
+}
+
+/// NZB'deki tüm oynatılabilir adayları listeler (ağ erişimi gerekmez; yalnız
+/// ayrıştırılmış NZB'ye bakar). Sıralama boyuta göre azalan, eşitlikte ada
+/// göredir — liste deterministiktir ve `key` değerleri
+/// [`select_stream_by_key`] ile bire bir eşleşir.
+fn playable_entries(parsed: &nzb::Nzb) -> Vec<PlayableEntryDto> {
+    let mut entries = Vec::new();
+
+    // 1) Doğrudan videolar. Segment zinciri bozuk olanlar oynatılamaz;
+    // listede göstermek yerine elenir (anahtarlı seçim aynı doğrulamayı
+    // tekrar yapar).
+    for file in parsed.files.iter().filter(|file| file.is_playable_media()) {
+        if file.validate_segments().is_err() {
+            continue;
+        }
+        let Some(name) = file.filename() else {
+            continue;
+        };
+        entries.push(PlayableEntryDto {
+            key: format!("{ENTRY_KEY_DIRECT}{name}"),
+            name: name.to_string(),
+            kind: "direct".into(),
+            encoded_bytes: file.encoded_bytes(),
+            part_count: 1,
+        });
+    }
+
+    // Arşiv kollarından birinin zinciri bozuksa tüm liste ölmez: o tür
+    // atlanır; hata, kullanıcı gerçekten o seti seçtiğinde üretilir.
+    // Obfuske kopya elemesi için bilinen taban adları toplanır.
+    let mut archive_bases: Vec<String> = Vec::new();
+    if let Ok(sets) = parsed.split_7z_sets() {
+        for set in sets {
+            let encoded_bytes = set.volumes.iter().fold(0u64, |total, volume| {
+                total.saturating_add(volume.file.encoded_bytes())
+            });
+            archive_bases.push(set.archive_name.to_ascii_lowercase());
+            entries.push(PlayableEntryDto {
+                key: set_key(ENTRY_KEY_7Z, &set.archive_name),
+                name: set.archive_name,
+                kind: "7z".into(),
+                encoded_bytes,
+                part_count: set.volumes.len().min(u32::MAX as usize) as u32,
+            });
+        }
+    }
+    if let Ok(sets) = parsed.split_rar_sets() {
+        for set in sets {
+            let encoded_bytes = set.volumes.iter().fold(0u64, |total, volume| {
+                total.saturating_add(volume.file.encoded_bytes())
+            });
+            archive_bases.push(set.archive_name.to_ascii_lowercase());
+            entries.push(PlayableEntryDto {
+                key: set_key(ENTRY_KEY_RAR, &set.archive_name),
+                name: set.archive_name,
+                kind: "rar".into(),
+                encoded_bytes,
+                part_count: set.volumes.len().min(u32::MAX as usize) as u32,
+            });
+        }
+    }
+
+    // 2) Obfuske sayısal setler. `film.7z.NNN` gibi adı türü belli eden
+    // setler sayısal gruplamaya da düşer; zaten arşiv kolunda listelenen
+    // taban adları çifte gösterimi engellemek için atlanır.
+    for set in parsed.numbered_volume_sets() {
+        let base_lower = set.base_name.to_ascii_lowercase();
+        if archive_bases.contains(&base_lower) {
+            continue;
+        }
+        let encoded_bytes = set.volumes.iter().fold(0u64, |total, volume| {
+            total.saturating_add(volume.file.encoded_bytes())
+        });
+        entries.push(PlayableEntryDto {
+            key: set_key(ENTRY_KEY_PROBE, &set.base_name),
+            name: set.base_name,
+            kind: "probe".into(),
+            encoded_bytes,
+            part_count: set.volumes.len().min(u32::MAX as usize) as u32,
+        });
+    }
+
+    entries.sort_by(|a, b| {
+        b.encoded_bytes
+            .cmp(&a.encoded_bytes)
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    entries
+}
+
+/// Seçici diyalogdan gelen `key` ile kesin bir aday seçer. Anahtar
+/// [`playable_entries`]'in ürettiği donuk kimliktir; NZB bu arada
+/// değiştiyse (aday artık yoksa) açık hata döner.
+fn select_stream_by_key(parsed: &nzb::Nzb, key: &str) -> Result<StreamSelection, String> {
+    let missing = || format!("selected entry is no longer in the NZB: {key}");
+
+    if let Some(name) = key.strip_prefix(ENTRY_KEY_DIRECT) {
+        let file = parsed
+            .files
+            .iter()
+            .find(|file| file.is_playable_media() && file.filename() == Some(name))
+            .ok_or_else(missing)?;
+        file.validate_segments()
+            .map_err(|error| error.to_string())?;
+        return Ok(StreamSelection::Direct(file.clone()));
+    }
+    if let Some(base) = key.strip_prefix(ENTRY_KEY_7Z) {
+        let sets = parsed.split_7z_sets().map_err(|error| error.to_string())?;
+        let set = sets
+            .into_iter()
+            .find(|set| set.archive_name.eq_ignore_ascii_case(base))
+            .ok_or_else(missing)?;
+        return Ok(StreamSelection::SevenZip {
+            volumes: set
+                .volumes
+                .into_iter()
+                .map(|volume| volume.file.clone())
+                .collect(),
+            password: parsed.meta_value("password").map(str::to_owned),
+        });
+    }
+    if let Some(base) = key.strip_prefix(ENTRY_KEY_RAR) {
+        let sets = parsed.split_rar_sets().map_err(|error| error.to_string())?;
+        let set = sets
+            .into_iter()
+            .find(|set| set.archive_name.eq_ignore_ascii_case(base))
+            .ok_or_else(missing)?;
+        return Ok(StreamSelection::Rar {
+            volumes: set
+                .volumes
+                .into_iter()
+                .map(|volume| volume.file.clone())
+                .collect(),
+            password: parsed.meta_value("password").map(str::to_owned),
+        });
+    }
+    if let Some(base) = key.strip_prefix(ENTRY_KEY_PROBE) {
+        let set = parsed
+            .numbered_volume_sets()
+            .into_iter()
+            .find(|set| set.base_name.eq_ignore_ascii_case(base))
+            .ok_or_else(missing)?;
+        return Ok(StreamSelection::Probe {
+            base_name: set.base_name,
+            volumes: set
+                .volumes
+                .into_iter()
+                .map(|volume| volume.file.clone())
+                .collect(),
+            password: parsed.meta_value("password").map(str::to_owned),
+        });
+    }
+    Err(format!("unknown entry selector: {key}"))
+}
+
 fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
     match parsed.select_playable_media() {
         Ok(file) => Ok(StreamSelection::Direct(file.clone())),
@@ -955,11 +1161,26 @@ fn select_stream(parsed: &nzb::Nzb) -> Result<StreamSelection, String> {
     }
 }
 
+/// NZB'deki oynatılabilir adayları ağa çıkmadan listeler (yalnız dosya
+/// okuma ve ayrıştırma). Sezon paketi gibi çok parçalı NZB'lerde Flutter bu
+/// listeyle seçici diyalog gösterir; tek adaylı NZB'lerde diyalogsuz doğrudan
+/// başlanır.
+pub async fn list_playable_entries(nzb_path: String) -> Result<Vec<PlayableEntryDto>, String> {
+    RUNTIME
+        .spawn_blocking(move || read_nzb(&nzb_path).map(|parsed| playable_entries(&parsed)))
+        .await
+        .map_err(|error| format!("NZB listing task failed to complete: {error}"))?
+}
+
 /// NZB'yi doğrular, iptal edilebilir bir hazırlama oturumu başlatır ve session
 /// kimliğini hemen döndürür. Ağ/bootstrap sonucu [`await_stream`] ile alınır;
 /// bu ayrım Flutter'ın uzun hazırlığı daha sonuç gelmeden durdurabilmesini
 /// sağlar.
-pub fn begin_stream(config: ProviderConfigDto, nzb_path: String) -> u64 {
+///
+/// `entry_key`: çok parçalı NZB'lerde seçici diyalogdan gelen aday kimliği
+/// ([`list_playable_entries`] çıktısı); `None` ise en büyük aday otomatik
+/// seçilir (bugünkü davranış).
+pub fn begin_stream(config: ProviderConfigDto, nzb_path: String, entry_key: Option<String>) -> u64 {
     let session_id = next_session_id();
     let (cancel, cancellation) = watch::channel(false);
     let (ready, ready_result) = oneshot::channel();
@@ -973,6 +1194,7 @@ pub fn begin_stream(config: ProviderConfigDto, nzb_path: String) -> u64 {
         session_id,
         config,
         nzb_path,
+        entry_key,
         cancellation,
         ready,
         previous,
@@ -1019,7 +1241,7 @@ pub fn await_stream(session_id: u64) -> Result<StreamInfo, String> {
 /// Tek çağrılı Rust/CLI kolaylık yolu. Flutter, hazırlık sırasında iptal
 /// edebilmek için doğrudan [`begin_stream`] + [`await_stream`] kullanır.
 pub fn start_stream(config: ProviderConfigDto, nzb_path: String) -> Result<StreamInfo, String> {
-    let session_id = begin_stream(config, nzb_path);
+    let session_id = begin_stream(config, nzb_path, None);
     await_stream(session_id)
 }
 
@@ -1367,5 +1589,136 @@ mod tests {
             panic!("unknown content must keep the explicit error");
         };
         assert!(error.contains("no direct video or supported split 7z/RAR STORE set"));
+    }
+
+    #[test]
+    fn secici_liste_dogrudan_videolari_boyut_sirasiyla_verir() {
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file("poster \"show.s01e01.mkv\" yEnc (1/5)", 5, 100),
+                file("poster \"show.s01e02.mkv\" yEnc (1/8)", 8, 100),
+                file("poster \"show.s01e03.mkv\" yEnc (1/3)", 3, 100),
+            ],
+        };
+
+        let entries = playable_entries(&parsed);
+        assert_eq!(entries.len(), 3);
+        assert_eq!(entries[0].name, "show.s01e02.mkv");
+        assert_eq!(entries[1].name, "show.s01e01.mkv");
+        assert_eq!(entries[2].name, "show.s01e03.mkv");
+        assert!(entries.iter().all(|entry| entry.kind == "direct"));
+        assert!(entries.iter().all(|entry| entry.part_count == 1));
+        assert_eq!(entries[0].key, "direct:show.s01e02.mkv");
+
+        // Anahtarlı seçim listedeki tam dosyayı verir; varsayılan seçim
+        // yine en büyüğü bulur.
+        let selection =
+            select_stream_by_key(&parsed, "direct:show.s01e03.mkv").expect("keyed selection");
+        let StreamSelection::Direct(file) = selection else {
+            panic!("expected Direct selection");
+        };
+        assert_eq!(file.filename(), Some("show.s01e03.mkv"));
+        let StreamSelection::Direct(file) = select_stream(&parsed).expect("auto selection") else {
+            panic!("expected Direct selection");
+        };
+        assert_eq!(file.filename(), Some("show.s01e02.mkv"));
+
+        let Err(error) = select_stream_by_key(&parsed, "direct:yok.mkv") else {
+            panic!("unknown key must error");
+        };
+        assert!(error.contains("no longer in the NZB"));
+        let Err(error) = select_stream_by_key(&parsed, "s3cr3t:show.s01e01.mkv") else {
+            panic!("unknown prefix must error");
+        };
+        assert!(error.contains("unknown entry selector"));
+    }
+
+    #[test]
+    fn secici_liste_7z_setini_probe_kopyasi_olmadan_bir_kez_sayar() {
+        // `show.7z.00N` hem 7z hem sayısal gruplamaya düşer; liste tek
+        // girdi vermeli (çifte gösterim kullanıcıyı yanıltır).
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file("poster \"show.7z.001\" yEnc (1/5)", 5, 100),
+                file("poster \"show.7z.002\" yEnc (1/5)", 5, 100),
+                file("poster \"show.7z.003\" yEnc (1/5)", 5, 100),
+            ],
+        };
+        let entries = playable_entries(&parsed);
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].kind, "7z");
+        assert_eq!(entries[0].name, "show.7z");
+        assert_eq!(entries[0].part_count, 3);
+        assert_eq!(entries[0].encoded_bytes, 1500);
+
+        let selection = select_stream_by_key(&parsed, &entries[0].key).expect("keyed 7z selection");
+        let StreamSelection::SevenZip { volumes, .. } = selection else {
+            panic!("expected SevenZip selection");
+        };
+        assert_eq!(volumes.len(), 3);
+    }
+
+    #[test]
+    fn secici_liste_rar_ve_obfuske_setleri_birlikte_siralar() {
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file("poster \"film.part01.rar\" yEnc (1/5)", 5, 100),
+                file("poster \"film.part02.rar\" yEnc (1/5)", 5, 100),
+                file("poster \"33dce3.10\" yEnc (1/5)", 5, 40),
+                file("poster \"33dce3.11\" yEnc (1/5)", 5, 40),
+            ],
+        };
+        let entries = playable_entries(&parsed);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].kind, "rar");
+        assert_eq!(entries[0].name, "film");
+        assert_eq!(entries[0].part_count, 2);
+        assert_eq!(entries[1].kind, "probe");
+        assert_eq!(entries[1].name, "33dce3");
+
+        let selection = select_stream_by_key(&parsed, "rar:FILM").expect("case-insensitive key");
+        let StreamSelection::Rar { volumes, .. } = selection else {
+            panic!("expected Rar selection");
+        };
+        assert_eq!(volumes.len(), 2);
+        let selection = select_stream_by_key(&parsed, "probe:33dce3").expect("probe key");
+        let StreamSelection::Probe { volumes, .. } = selection else {
+            panic!("expected Probe selection");
+        };
+        assert_eq!(volumes.len(), 2);
+    }
+
+    #[test]
+    fn anahtarli_secim_birden_cok_rar_seti_arasindan_dogru_bolumu_verir() {
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file("poster \"show.s01e01.part01.rar\" yEnc (1/5)", 5, 100),
+                file("poster \"show.s01e01.part02.rar\" yEnc (1/5)", 5, 100),
+                file("poster \"show.s01e02.part01.rar\" yEnc (1/2)", 2, 50),
+                file("poster \"show.s01e02.part02.rar\" yEnc (1/2)", 2, 50),
+            ],
+        };
+        let entries = playable_entries(&parsed);
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0].name, "show.s01e01");
+
+        let selection =
+            select_stream_by_key(&parsed, "rar:show.s01e02").expect("keyed rar selection");
+        let StreamSelection::Rar { volumes, .. } = selection else {
+            panic!("expected Rar selection");
+        };
+        assert_eq!(volumes[0].filename(), Some("show.s01e02.part01.rar"));
+
+        // Anahtarsız yol geriye dönük olarak en büyük seti seçer.
+        let StreamSelection::Rar { volumes, .. } =
+            select_stream(&parsed).expect("auto rar selection")
+        else {
+            panic!("expected Rar selection");
+        };
+        assert_eq!(volumes[0].filename(), Some("show.s01e01.part01.rar"));
     }
 }

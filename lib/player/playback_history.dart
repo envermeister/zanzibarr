@@ -4,8 +4,10 @@ import 'media_preferences.dart';
 
 /// Bir medyanın izleme geçmişi kaydı: son konum ve toplam süre.
 ///
-/// Kayıtlar [PlaybackHistoryStore] içinde JSON listesi olarak saklanır;
-/// `nzbPath` kaydın kimliğidir (yol şifreli depoda tutulur).
+/// Kayıtlar [PlaybackHistoryStore] içinde JSON listesi olarak saklanır.
+/// Kaydın kimliği `(nzbPath, entryKey)` çiftidir: çok parçalı (sezon
+/// paketi gibi) NZB'lerde her bölüm kendi kaydını taşır; tek adaylı
+/// NZB'lerde `entryKey` null'dır (eski kayıtlarla uyumlu).
 class PlaybackHistoryEntry {
   const PlaybackHistoryEntry({
     required this.nzbPath,
@@ -13,10 +15,16 @@ class PlaybackHistoryEntry {
     required this.positionSeconds,
     required this.durationSeconds,
     required this.updatedAtMs,
+    this.entryKey,
   });
 
   /// Geçmiş kaydının kimliği: NZB'nin dosya yolu (yerel depoda kalır).
   final String nzbPath;
+
+  /// Çok parçalı NZB'de oynatılan bölümün seçici anahtarı (ör.
+  /// `rar:show.s01e02`); tek adaylı NZB'lerde null. Aynı NZB'nin
+  /// bölümleri birbirinin konumunu ezmesin diye kimliğin parçasıdır.
+  final String? entryKey;
 
   /// Kartlarda gösterilen ad (video dosya adı).
   final String title;
@@ -39,6 +47,7 @@ class PlaybackHistoryEntry {
 
   Map<String, Object> toJson() => <String, Object>{
     'nzbPath': nzbPath,
+    'entryKey': ?entryKey,
     'title': title,
     'positionSeconds': positionSeconds,
     'durationSeconds': durationSeconds,
@@ -57,8 +66,10 @@ class PlaybackHistoryEntry {
     if (position is! num || duration is! num || updatedAt is! num) {
       return null;
     }
+    final entryKey = value['entryKey'];
     return PlaybackHistoryEntry(
       nzbPath: path,
+      entryKey: entryKey is String && entryKey.isNotEmpty ? entryKey : null,
       title: title,
       positionSeconds: position.toDouble(),
       durationSeconds: duration.toDouble(),
@@ -70,6 +81,7 @@ class PlaybackHistoryEntry {
   bool operator ==(Object other) =>
       other is PlaybackHistoryEntry &&
       nzbPath == other.nzbPath &&
+      entryKey == other.entryKey &&
       title == other.title &&
       positionSeconds == other.positionSeconds &&
       durationSeconds == other.durationSeconds &&
@@ -78,6 +90,7 @@ class PlaybackHistoryEntry {
   @override
   int get hashCode => Object.hash(
     nzbPath,
+    entryKey,
     title,
     positionSeconds,
     durationSeconds,
@@ -110,18 +123,30 @@ class PlaybackHistoryStore {
     }
   }
 
-  Future<PlaybackHistoryEntry?> entryFor(String nzbPath) async {
+  Future<PlaybackHistoryEntry?> entryFor(
+    String nzbPath, {
+    String? entryKey,
+  }) async {
     final entries = await load();
     for (final entry in entries) {
-      if (entry.nzbPath == nzbPath) return entry;
+      if (entry.nzbPath == nzbPath && entry.entryKey == entryKey) return entry;
     }
     return null;
   }
 
   /// Kaydı ekler veya günceller; tamamlanmış içerik listeden düşer.
+  ///
+  /// Bölüm anahtarlı ilk kayıt, aynı NZB'nin anahtarsız (eski sürümden
+  /// kalan, tüm paket için tek) kaydını da süpürür — yoksa ana ekranda
+  /// hedefi artık bulunamayan hayalet bir kart kalırdı.
   Future<void> save(PlaybackHistoryEntry entry) async {
     final entries = List.of(await load());
-    entries.removeWhere((e) => e.nzbPath == entry.nzbPath);
+    entries.removeWhere(
+      (e) =>
+          e.nzbPath == entry.nzbPath &&
+          (e.entryKey == entry.entryKey ||
+              (entry.entryKey != null && e.entryKey == null)),
+    );
     if (!entry.isCompleted) entries.insert(0, entry);
     if (entries.length > _maxEntries) {
       entries.removeRange(_maxEntries, entries.length);
@@ -135,9 +160,11 @@ class PlaybackHistoryStore {
     );
   }
 
-  Future<void> remove(String nzbPath) async {
+  Future<void> remove(String nzbPath, {String? entryKey}) async {
     final entries = List.of(await load());
-    entries.removeWhere((e) => e.nzbPath == nzbPath);
+    entries.removeWhere(
+      (e) => e.nzbPath == nzbPath && e.entryKey == entryKey,
+    );
     await _storage.write(
       storageKey,
       jsonEncode(<String, Object>{

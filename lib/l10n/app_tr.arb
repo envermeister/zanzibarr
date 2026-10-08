@@ -217,5 +217,15 @@
   "castPlayingOn": "{device} cihazında oynatılıyor",
   "castDisconnect": "Bağlantıyı kes",
   "castFailed": "Yansıtma başarısız: {error}",
-  "subtitleFont": "Altyazı yazı tipi"
+  "subtitleFont": "Altyazı yazı tipi",
+  "entryPickerTitle": "Ne oynatılsın?",
+  "entryPickerSubtitle": "Bu NZB birden çok video içeriyor — oynatmak için birini seç.",
+  "entryKindDirect": "Video",
+  "entryKindArchive": "Arşiv",
+  "entryParts": "{count} parça",
+  "@entryParts": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  }
 }

@@ -6,21 +6,33 @@
 import '../frb_generated.dart';
 import 'package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart';
 
-// These functions are ignored because they are not marked as `pub`: `build_rar_source`, `build_sevenzip_source`, `cancel_active_stream`, `cancellation_requested`, `ensure_stream_not_cancelled`, `fetch_first_segment`, `filename`, `generate_cast_token`, `install_overlay`, `is_compressed`, `load_stream_selection_blocking`, `load_stream_selection`, `local_lan_ipv4`, `next_session_id`, `prepare_stream_source`, `probe_numbered_set`, `read_nzb_bytes`, `run_stream_session`, `segment_count`, `select_stream`, `terminate_stream`, `url_encode_path`, `wait_for_cancellation`, `wait_for_stream_ready`
+// These functions are ignored because they are not marked as `pub`: `build_rar_source`, `build_sevenzip_source`, `cancel_active_stream`, `cancellation_requested`, `ensure_stream_not_cancelled`, `fetch_first_segment`, `fetch_middle_first_segments`, `filename`, `generate_cast_token`, `implied_number`, `install_overlay`, `is_compressed`, `load_stream_selection_blocking`, `load_stream_selection`, `local_lan_ipv4`, `next_session_id`, `open_nzb_file`, `playable_entries`, `prepare_stream_source`, `probe_numbered_set`, `read_nzb_bytes`, `read_nzb`, `run_stream_session`, `segment_count`, `select_stream_by_key`, `select_stream`, `set_key`, `terminate_stream`, `url_encode_path`, `volume_number_permutation`, `wait_for_cancellation`, `wait_for_stream_ready`
 // These types are ignored because they are neither used by any `pub` functions nor (for structs and enums) marked `#[frb(unignore)]`: `ActiveStream`, `StreamSelection`, `StreamSource`
 // These function are ignored because they are on traits that is not defined in current crate (put an empty `#[frb]` on it to unignore): `from`
 // These functions are ignored (category: IgnoreBecauseExplicitAttribute): `content_type`, `total_len`, `write_range`
+
+/// NZB'deki oynatılabilir adayları ağa çıkmadan listeler (yalnız dosya okuma
+/// + ayrıştırma). Sezon paketi gibi çok parçalı NZB'lerde Flutter bu listeyle
+/// seçici diyalog gösterir; tek adaylı NZB'lerde diyalogsuz doğrudan başlanır.
+Future<List<PlayableEntryDto>> listPlayableEntries({required String nzbPath}) =>
+    RustLib.instance.api.crateApiStreamingListPlayableEntries(nzbPath: nzbPath);
 
 /// NZB'yi doğrular, iptal edilebilir bir hazırlama oturumu başlatır ve session
 /// kimliğini hemen döndürür. Ağ/bootstrap sonucu [`await_stream`] ile alınır;
 /// bu ayrım Flutter'ın uzun hazırlığı daha sonuç gelmeden durdurabilmesini
 /// sağlar.
+///
+/// `entry_key`: çok parçalı NZB'lerde seçici diyalogdan gelen aday kimliği
+/// ([`list_playable_entries`] çıktısı); `None` ise en büyük aday otomatik
+/// seçilir (bugünkü davranış).
 Future<BigInt> beginStream({
   required ProviderConfigDto config,
   required String nzbPath,
+  String? entryKey,
 }) => RustLib.instance.api.crateApiStreamingBeginStream(
   config: config,
   nzbPath: nzbPath,
+  entryKey: entryKey,
 );
 
 /// [`begin_stream`] ile başlatılan oturumun localhost server bilgilerini
@@ -43,6 +55,53 @@ Future<StreamInfo> startStream({
 /// görevlerini durdurur. Kimlik artık aktif değilse yeni bir oturuma dokunmaz.
 Future<bool> stopStream({required BigInt sessionId}) =>
     RustLib.instance.api.crateApiStreamingStopStream(sessionId: sessionId);
+
+/// NZB içindeki oynatılabilir bir aday: doğrudan video ya da bir arşiv seti.
+/// Sezon paketi gibi çok parçalı NZB'lerde kullanıcıya seçim sunulur; seçilen
+/// adayın `key` değeri `begin_stream`'e geri verilir.
+class PlayableEntryDto {
+  /// `begin_stream`'e geri verilen donuk seçici (ör. `rar:show.s01`).
+  final String key;
+
+  /// Kullanıcıya gösterilen ad: dosya adı veya arşiv taban adı.
+  final String name;
+
+  /// Aday türü: `direct`, `7z`, `rar` veya `probe` (obfuske sayısal set).
+  final String kind;
+
+  /// Toplam kodlu (yEnc) boyut; kabaca indirilen bayt kadardır.
+  final BigInt encodedBytes;
+
+  /// Parça sayısı: doğrudan videoda 1, setlerde cilt sayısı.
+  final int partCount;
+
+  const PlayableEntryDto({
+    required this.key,
+    required this.name,
+    required this.kind,
+    required this.encodedBytes,
+    required this.partCount,
+  });
+
+  @override
+  int get hashCode =>
+      key.hashCode ^
+      name.hashCode ^
+      kind.hashCode ^
+      encodedBytes.hashCode ^
+      partCount.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is PlayableEntryDto &&
+          runtimeType == other.runtimeType &&
+          key == other.key &&
+          name == other.name &&
+          kind == other.kind &&
+          encodedBytes == other.encodedBytes &&
+          partCount == other.partCount;
+}
 
 /// Dart'tan gelen sağlayıcı yapılandırması.
 class ProviderConfigDto {

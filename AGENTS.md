@@ -74,10 +74,10 @@ Key directories:
 Verification gate (run all four, in order):
 
 ```bash
-cd rust && cargo test                      # ~223 tests (run to confirm current count)
+cd rust && cargo test                      # ~250 tests (run to confirm current count)
 cd rust && cargo clippy --all-targets -- -D warnings
 flutter analyze lib test
-flutter test                               # ~152 tests
+flutter test                               # ~166 tests
 ```
 
 Release pipeline (v1.4+):
@@ -91,7 +91,7 @@ Release pipeline (v1.4+):
 
 Debug hooks (developer-only, env vars): `ZANZIBARR_DEBUG_NZB=/path/to.nzb` (open NZB directly at startup), `ZANZIBARR_DEBUG_PROBE=1` (dump video params + audio tracks to stdout).
 
-## 6. Current state (updated 2026-10-01)
+## 6. Current state (updated 2026-10-08)
 
 **v1.7 shipped** (tag `v1.7`, release notes `docs/releases/v1.7.md`): the Android TV D-pad overhaul (below) — one-commit release on top of v1.6. All 8 assets published (CI built Windows/Android/Linux/iOS; macOS local with the lipo shim). Site synced ("What's new" v1.7 + the `version` var had been stuck at `v1.3` since the v1.6 sync missed it — fixed).
 
@@ -120,6 +120,8 @@ Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 152 
 
 **Android TV D-pad navigation overhaul** (2026-10-01, GitHub issue #4, NVIDIA Shield video report): on remote-only devices the settings screen was untraversable — single-line fields swallow up/down (EditableText), the password/API-key eye buttons hijacked vertical moves (an IconButton centered in its row sits *higher* than the field's editable rect, so the geometric directional algorithm preferred it and skipped the field entirely), and nothing autofocused. Fixes: `lib/tv_focus.dart` — `dpadTraversalFocusNode` (up/down always traverse; left/right exit only at caret edge; optional `focusOnRightEdge` hook) + `dpadFieldActionFocusNode` (`skipTraversal: true` removes the eye from traversal candidacy so down-arrow always lands on the field; reachable only via right-arrow at text end, left-arrow returns). Indexer test/save buttons stacked vertically (side-by-side pairs are unreachable by vertical walk). Focus visibility theme (`focusColor` + `_tvFocusStyle`) and autofocus/focus rings on settings dropdowns, home cards, and search (first result card grabs focus after results load). `test/tv_navigation_test.dart` proves the full D-pad chain end-to-end with real key events. Gate: **246 Rust** + **159 Flutter**, analyze clean. Shipped as **v1.7** (2026-10-01); **still pending: reporter's on-device confirmation** (asked on issue #4; no TV device/emulator locally).
 
+**Multi-file NZB picker** (2026-10-08, GitHub issue #5): NZBs carrying more than one playable video (season packs, multi-episode posts) previously auto-picked the largest candidate with no user say. The engine now exposes a session-free candidate listing — `playable_entries(&Nzb)` returns `PlayableEntryDto { key, name, kind, encoded_bytes, part_count }` for every direct video (segment-validated), 7z set, RAR set and obfuscated numeric set (probe copies eliminated via `archive_bases`), sorted by size desc then name; `select_stream_by_key` resolves `direct:<filename>` (case-sensitive) / `7z:`/`rar:`/`probe:<lowercase-base>` (case-insensitive) keys and errors on unknown keys; `begin_stream` gains `entry_key: Option<String>`, plumbed through `load_stream_selection*` / `run_stream_session` (CLI passes `None`). Flutter: `lib/player/entry_picker.dart` — a D-pad-friendly AlertDialog (first row autofocused, kind icon, size·type·parts subtitle) shown from `PlayerScreen._start` when >1 candidate and no `initialEntryKey`; cancel pops back out without starting the player; a listing failure silently falls back to the legacy auto-pick path so the existing error surface is preserved. Continue-watching is now per-episode: `PlaybackHistoryEntry.entryKey` (nullable, JSON-tolerant) makes the identity `(nzbPath, entryKey)`, and saving an episode record sweeps the legacy keyless record for the same NZB (ghost-card migration). i18n: `entryPicker*`/`entryKind*`/`entryParts` keys in all 14 locales (en+tr translated, rest English fallback). Gate: **250 Rust** + **166 Flutter**, clippy/analyze clean. **Awaiting reporter's on-device confirmation** (issue #5) — no multi-video test NZB verified on hardware locally.
+
 ## 7. Known issues / watch list
 
 - *Pillarbox report* on `The.Runner.2026.1080p...` (16:9 content, bars on sides) — fit/fill button added in `3713b31`; if bars persist on a 16:9 TV, that's a render bug → get on-device logcat.
@@ -128,12 +130,13 @@ Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 152 
 - *Xcode 27 lipo regression (macOS 26.6, Xcode 27.0):* `lipo <file> -verify_arch <a1> <a2>` fails system-wide ("requires exactly one input file"); single-arch verify works, multi `-extract` works. Local macOS builds need a PATH shim that loops per-arch. Shim recipe (write to `/tmp/zanzibarr-lipo-shim/lipo`, `chmod +x`): resolve real lipo via `xcrun --find lipo`; if args contain `-verify_arch`, run `"$REAL" "$1" -verify_arch <each arch>` and AND the exit codes, else `exec "$REAL" "$@"`. Remove when Apple/Flutter fix it (then `flutter build macos --release` works unshimmed again).
 - *Issue #3 / #4 (Android TV), remote-only navigation:* fixed and shipped in **v1.7** (2026-10-01; §6 D-pad overhaul). #4 closed with the v1.7 release note — reopen if the reporter still hits remote issues on-device. No TV device/emulator on the dev machine.
 - *Mpv.framework spctl complaint (cosmetic, by design):* `codesign --verify --deep --strict` / `spctl -a -vv` report "code has no resources but signature indicates they must be present" for the adhoc-signed `Mpv.framework` subcomponent — identical on shipped v1.5 and v1.6 packages; the main app carries a valid Developer ID signature (team `8665FDLXA6`) and runs fine via right-click → Open (owner-verified). Don't chase this unless notarization becomes a goal.
+- *Issue #5 (multi-file NZB picker):* implemented 2026-10-08 (§6) — awaiting the reporter's on-device confirmation; no multi-video NZB has been verified on hardware locally.
 
 ## 8. Roadmap (priority order, status)
 
 | # | Item | Status |
 |---|------|--------|
-| 1 | Multi-file NZB picker — choose episode/file inside a season pack (engine currently auto-picks the largest) | proposed |
+| 1 | Multi-file NZB picker — choose episode/file inside a season pack | implemented on `main` (2026-10-08) — awaiting reporter's on-device confirmation (issue #5) |
 | 2 | Play queue / auto-play next episode (natural follow-up to #1) | proposed |
 | 3 | NZB completion pre-check — sample STAT on segments before playback, health badge in search results | proposed |
 | 4 | Easynews web search API (separate code path) | open |
@@ -148,7 +151,7 @@ Gate after the change: 223 Rust tests, clippy clean, flutter analyze clean, 152 
 | 13 | HDR10+ detection | research: mpv exposes no ST 2094-40 signal at runtime (see `HdrCapabilities`); release-name badge possible, true detection likely needs container-level parsing |
 | 14 | Remote-friendly (D-pad) settings + search navigation on Android TV | shipped in v1.7 — awaiting reporter's on-device confirmation (issue #4) |
 
-Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z STORE/LZMA + AES-256, PAR2 Reed-Solomon repair, custom libmpv (TrueHD/DTS-HD/AV1), DV Profile 5 on macOS+Android+Windows+Linux, Android TV leanback + remote, 14 languages, dark/light themes, OTA updates, compressed RAR seek, subtitle color, Smart Canvas, continue-watching, Chromecast/AirPlay casting, subtitle font picker, obfuscated (`hash.NN`) NZB sets via content sniffing.
+Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z STORE/LZMA + AES-256, PAR2 Reed-Solomon repair, custom libmpv (TrueHD/DTS-HD/AV1), DV Profile 5 on macOS+Android+Windows+Linux, Android TV leanback + remote, 14 languages, dark/light themes, OTA updates, compressed RAR seek, subtitle color, Smart Canvas, continue-watching, Chromecast/AirPlay casting, subtitle font picker, obfuscated (`hash.NN`) NZB sets via content sniffing, multi-file NZB episode picker.
 
 ## 9. History (append dated entries at the bottom — newest last)
 
@@ -170,6 +173,7 @@ Done since v1.0: Newznab indexer search (v1.1-era), RAR4/RAR5 STORE, split 7z ST
 - **2026-09-25 — v1.6 shipped.** Owner confirmed the PTer NZB plays on his Pixel 8a (obfuscated-set saga closed). Cut: `docs/releases/v1.6.md`, `pubspec.yaml` → `1.6.0+7`, tag `v1.6` → `release.yml` built Windows/Android/Linux/iOS; macOS built locally with the lipo shim (Xcode 27) and uploaded manually. Site synced: cast feature card, "What's new", roadmap (open items added: multi-file picker, play queue, completion pre-check, TMDB/OpenSubtitles, TestFlight/Play Store). macOS package note: `spctl`/`codesign --deep --strict` still flag the adhoc `Mpv.framework` resource envelope — cosmetic, identical to v1.5, app runs via right-click → Open (§7). Reddit update post covering v1.3→v1.6 drafted in the v1.3 post's style at `dist/reddit-v1.6-update.md`, and the main r/UsenetNoRules announcement refreshed to v1.6 at `dist/reddit-main-post-v1.6.md` (Reddit markdown; a plain-text mirror sits next to it as `.txt`) (both gitignored, not repo artifacts) — owner posts them manually.
 - **2026-10-01 — Android TV D-pad overhaul (issue #4, NVIDIA Shield).** Settings/search/home D-pad navigation rebuilt: `lib/tv_focus.dart` (`dpadTraversalFocusNode` — up/down always traverse single-line fields, left/right exit only at caret edge, `focusOnRightEdge` explicit neighbor hook; `dpadFieldActionFocusNode` — `skipTraversal: true` so the password/API-key eye buttons stop hijacking vertical moves: their 48px rect sits higher than the field's editable area, so geometric traversal skipped the fields). Indexer test/save buttons stacked (vertical-walk reachable), theme-wide focus visibility (`focusColor` + `_tvFocusStyle`), autofocus chains on settings dropdown / search field / first result card / home cards. `test/tv_navigation_test.dart` (7 tests) drives real key events through the full chain. Root-cause method: read Flutter's `focus_traversal.dart` (`DirectionalFocusTraversalPolicyMixin`) instead of guessing — `OrderedTraversalPolicy` does NOT affect directional moves (only Tab order), don't reach for it here. Gate: 246 Rust + 159 Flutter, analyze clean. CI Android APK built for the reporter; on-device verification pending (§7).
 - **2026-10-01 — v1.7 shipped.** Owner green-lit release before the reporter's confirmation. Cut: `docs/releases/v1.7.md`, `pubspec.yaml` → `1.7.0+8`, tag `v1.7` → `release.yml` built all four platforms; macOS built locally (lipo shim recreated — regression still present on Xcode 27.0; shim verified three-way: multi-arch pass / missing-arch fail / passthrough) and uploaded with `--clobber`. 8 assets on the release. Site synced: "What's new" v1.7, roadmap D-pad item — and the `version` var was found stuck at `v1.3` (v1.6 site sync missed it), fixed. README roadmap backfilled with v1.6/v1.7 done items (it had stopped at iOS build). Issue #4 answered with the fix summary + CI test APK link; awaiting reporter's on-device word to close.
+- **2026-10-08 — Multi-file NZB picker (issue #5).** Season-pack NZBs no longer auto-pick the largest file: the engine lists every playable candidate (`playable_entries` — segment-validated direct videos, RAR/7z sets, obfuscated numeric sets with probe-copy elimination; key-addressed via `select_stream_by_key`, `begin_stream(entry_key)` plumbed through the session loaders), and the player shows a D-pad-friendly picker dialog (`lib/player/entry_picker.dart` — autofocus first row, kind/size/parts badges; cancel exits cleanly; listing failure falls back to legacy auto-pick). Continue-watching identity became `(nzbPath, entryKey)` with legacy-keyless sweep on first episode save. 4 Rust + 7 Flutter tests. Gate: **250 Rust + 166 Flutter**, clippy/analyze clean. FRB regenerated. Awaiting reporter's on-device confirmation.
 
 ### Key technical decisions (the *why* — don't relitigate without cause)
 

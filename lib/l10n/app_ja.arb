@@ -184,5 +184,15 @@
   "castPlayingOn": "Playing on {device}",
   "castDisconnect": "Disconnect",
   "castFailed": "Casting failed: {error}",
-  "subtitleFont": "Subtitle font"
+  "subtitleFont": "Subtitle font",
+  "entryPickerTitle": "Choose what to play",
+  "entryPickerSubtitle": "This NZB contains multiple videos — pick one to start streaming.",
+  "entryKindDirect": "Video",
+  "entryKindArchive": "Archive",
+  "entryParts": "{count} parts",
+  "@entryParts": {
+    "placeholders": {
+      "count": { "type": "int" }
+    }
+  }
 }

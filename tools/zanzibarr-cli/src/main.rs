@@ -687,7 +687,7 @@ fn switch_check(first_nzb: String, second_nzb: String) -> Result<(), String> {
 
     println!("1) İlk akış hazırlanıyor: {first_nzb}");
     let started = std::time::Instant::now();
-    let first_session = begin_stream(dto(&config), first_nzb);
+    let first_session = begin_stream(dto(&config), first_nzb, None);
     let first = await_stream(first_session)?;
     println!(
         "   hazır ({:.1?}): {} ({} bayt)",
@@ -737,7 +737,7 @@ fn switch_check(first_nzb: String, second_nzb: String) -> Result<(), String> {
 
     println!("3) İkinci akış hemen başlatılıyor: {second_nzb}");
     let second_started = std::time::Instant::now();
-    let second_session = begin_stream(dto(&config), second_nzb);
+    let second_session = begin_stream(dto(&config), second_nzb, None);
     let second = await_stream(second_session)?;
     println!(
         "   hazır ({:.1?}): {} ({} bayt); oturum değişimi toplam {:.1?}",

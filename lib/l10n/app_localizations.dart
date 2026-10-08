@@ -1369,6 +1369,36 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Subtitle font'**
   String get subtitleFont;
+
+  /// No description provided for @entryPickerTitle.
+  ///
+  /// In en, this message translates to:
+  /// **'Choose what to play'**
+  String get entryPickerTitle;
+
+  /// No description provided for @entryPickerSubtitle.
+  ///
+  /// In en, this message translates to:
+  /// **'This NZB contains multiple videos — pick one to start streaming.'**
+  String get entryPickerSubtitle;
+
+  /// No description provided for @entryKindDirect.
+  ///
+  /// In en, this message translates to:
+  /// **'Video'**
+  String get entryKindDirect;
+
+  /// No description provided for @entryKindArchive.
+  ///
+  /// In en, this message translates to:
+  /// **'Archive'**
+  String get entryKindArchive;
+
+  /// No description provided for @entryParts.
+  ///
+  /// In en, this message translates to:
+  /// **'{count} parts'**
+  String entryParts(int count);
 }
 
 class _AppLocalizationsDelegate

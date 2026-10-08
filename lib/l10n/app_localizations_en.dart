@@ -724,4 +724,22 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get subtitleFont => 'Subtitle font';
+
+  @override
+  String get entryPickerTitle => 'Choose what to play';
+
+  @override
+  String get entryPickerSubtitle =>
+      'This NZB contains multiple videos — pick one to start streaming.';
+
+  @override
+  String get entryKindDirect => 'Video';
+
+  @override
+  String get entryKindArchive => 'Archive';
+
+  @override
+  String entryParts(int count) {
+    return '$count parts';
+  }
 }
