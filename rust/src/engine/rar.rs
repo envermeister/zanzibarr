@@ -907,6 +907,7 @@ fn parse_volume_rar4<R: Read + Seek>(
         if parser.remaining() < 7 {
             break;
         }
+        let block_start = parser.position - volume_start;
         let mut head = [0u8; 7];
         parser.read_exact(&mut head)?;
         let expected_crc = u16::from_le_bytes([head[0], head[1]]);
@@ -949,7 +950,23 @@ fn parse_volume_rar4<R: Read + Seek>(
                 parser.skip(add_size)?;
             }
             RAR4_HEAD_TYPE_FILE => {
-                let mut entry = parse_rar4_file_body(&body, head_flags)?;
+                let mut entry = parse_rar4_file_body(&body, head_flags).map_err(|error| {
+                    // Tanı izi: CRC'si tutan bir FILE bloğu gövdesi beklenenden
+                    // kısaysa, gerçek başlık baytlarını hataya göm — sahadan
+                    // gelen hata metni kök neden kanalıdır (PTer serisiyle aynı
+                    // yöntem). Gizli veri içermez, yalnızca arşiv yapısıdır.
+                    if let RarError::Header(message) = &error {
+                        let hex: String =
+                            body.iter().take(32).map(|byte| format!("{byte:02x}")).collect();
+                        let trace = format!(
+                            "{message} [rar4 vol_off={block_start:#x} flags={head_flags:#06x} hsz={head_size} add={add_size} body={hex}]"
+                        );
+                        eprintln!("zanzibarr rar4 parse trace: {trace}");
+                        RarError::Header(trace)
+                    } else {
+                        error
+                    }
+                })?;
                 if entry.data_size != add_size {
                     return Err(RarError::InvalidLayout(format!(
                         "RAR4 FILE header pack size {} does not match ADD_SIZE {add_size}",
@@ -1321,7 +1338,16 @@ fn collect_playable_parts<R: Read + Seek>(
             .checked_add(volume_len)
             .ok_or_else(|| RarError::InvalidLayout("volume offset overflow".into()))?;
         reader.seek(SeekFrom::Start(volume_start))?;
-        for entry in parse_volume(reader, volume_start, volume_end, password, &mut kdf_cache)? {
+        let volume_entries =
+            parse_volume(reader, volume_start, volume_end, password, &mut kdf_cache).map_err(
+                |error| match error {
+                    RarError::Header(message) => {
+                        RarError::Header(format!("vol#{volume_index} {message}"))
+                    }
+                    other => other,
+                },
+            )?;
+        for entry in volume_entries {
             if entry.is_dir {
                 continue;
             }
