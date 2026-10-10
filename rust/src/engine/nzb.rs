@@ -372,6 +372,15 @@ impl NzbFile {
         (!name.is_empty() && name.contains('.')).then_some(name)
     }
 
+    /// Kullanıcıya görünen ad: bazı poster'lar subject'e `"dizin/dosya.mkv"`
+    /// biçiminde yol yazar ve uzun dizin öneki listede bölüm numarasını
+    /// yutar. Bu yüzden gösterimde yalnız son bileşen (basename) kullanılır.
+    /// Seçim anahtarları ve onarım katmanı eşleşmesi tam ada dayanmaya devam
+    /// eder; bu metot yalnız görüntü içindir.
+    pub fn display_name(&self) -> Option<&str> {
+        self.filename().map(basename)
+    }
+
     pub fn encoded_bytes(&self) -> u64 {
         // Bu değer yalnız seçim/ilerleme tahmini içindir; çözülmüş ofsetlerde
         // kullanılmaz. Bozuk bir NZB'nin u64 toplamını taşırıp panic üretmesine
@@ -463,6 +472,18 @@ pub(crate) const PLAYABLE_VIDEO_EXTENSIONS: &[&str] = &[
     "mpeg", "mpg", "mpv", "mts", "mxf", "nsv", "nut", "obu", "ogm", "ogv", "qt", "rm", "rmvb",
     "roq", "tp", "trp", "ts", "vc1", "vob", "vro", "webm", "wmv", "wtv", "y4m",
 ];
+
+/// Yol önekli bir adın son bileşenini verir (`a/b.mkv` → `b.mkv`). Hem `/`
+/// hem `\` ayıracı tanınır; ayıraç yoksa ya da son bileşen boşsa adın tamamı
+/// döner. Yalnızca gösterim amaçlıdır; anahtar/eşleştirme tam adla çalışır.
+pub(crate) fn basename(name: &str) -> &str {
+    let start = name
+        .rfind(['/', '\\'])
+        .map(|index| index + 1)
+        .unwrap_or(0);
+    let tail = &name[start..];
+    if tail.is_empty() { name } else { tail }
+}
 
 /// Karşılaştırma ASCII büyük/küçük harf duyarsızdır. Son uzantıdan sonra ek
 /// taşıyan (`video.mp4.exe`) veya arşiv/kurtarma dosyaları kabul edilmez.
@@ -850,6 +871,38 @@ mod tests {
             </segments></file></nzb>"#;
         let nzb = parse_nzb(xml).unwrap();
         assert_eq!(nzb.files[0].filename(), Some("film.part01.rar"));
+    }
+
+    #[test]
+    fn dizin_onekli_subjectte_gorunen_ad_son_bilesendir() {
+        // Gerçek sezon paketi biçimi (issue #5): tırnak içi "dizin/dosya"
+        // yazar; seçicide uzun dizin öneki bölüm numarasını yutuyordu.
+        let xml = r#"<nzb><file subject='grp [1/27] - "[Chimera] Show (BDRip 1920x1080 x264 FLAC)/[Chimera] Show 01 [BDRip 1920x1080 x264 FLAC] [C56EA5D3].mkv" yEnc (1/1570)'><segments>
+            <segment bytes="1" number="1">a@x</segment>
+            </segments></file></nzb>"#;
+        let nzb = parse_nzb(xml).unwrap();
+        let file = &nzb.files[0];
+        // Tam ad (anahtar/onarım eşleşmesi) dizin önekiyle korunur.
+        assert_eq!(
+            file.filename(),
+            Some(
+                "[Chimera] Show (BDRip 1920x1080 x264 FLAC)/[Chimera] Show 01 [BDRip 1920x1080 x264 FLAC] [C56EA5D3].mkv"
+            )
+        );
+        // Görünen ad yalnız son bileşendir.
+        assert_eq!(
+            file.display_name(),
+            Some("[Chimera] Show 01 [BDRip 1920x1080 x264 FLAC] [C56EA5D3].mkv")
+        );
+    }
+
+    #[test]
+    fn basename_ayrac_ve_kenar_durumlari() {
+        assert_eq!(basename("a/b.mkv"), "b.mkv");
+        assert_eq!(basename(r"a\b.mkv"), "b.mkv");
+        assert_eq!(basename("b.mkv"), "b.mkv");
+        // Sondaki ayraçtan sonra ad kalmazsa tamamı döner (boş ad olmaz).
+        assert_eq!(basename("dizin/"), "dizin/");
     }
 
     #[test]

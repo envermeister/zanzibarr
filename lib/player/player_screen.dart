@@ -199,6 +199,10 @@ class _PlayerScreenState extends State<PlayerScreen>
   Timer? _previewDismissTimer;
   Timer? _fastScanTimer;
   Timer? _preferencePersistTimer;
+  /// Oynatma sırasında gelen mpv hata olaylarını erteleyen zamanlayıcı:
+  /// zararsız olaylar (ör. donanım codec'i açılamayıp yazılıma düşülmesi)
+  /// oynatma sürerken kullanıcıya bant göstermemeli.
+  Timer? _pendingErrorTimer;
   Duration? _queuedPreviewTarget;
   bool _previewCaptureRunning = false;
   int _scrubGeneration = 0;
@@ -717,13 +721,25 @@ class _PlayerScreenState extends State<PlayerScreen>
       return;
     }
     if (!mounted) return;
-    setState(() => _status = description);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(description),
-        duration: const Duration(seconds: 8),
-      ),
-    );
+    // Oynatma oturduktan sonra gelen mpv hata olayları çoğu zaman zararsızdır:
+    // örn. ses codec'i donanımda açılamayıp yazılıma düşünce hem hata olayı
+    // üretilir hem oynatma kesintisiz sürer (issue #5 hayalet codec bandı).
+    // Bu yüzden bant birkaç saniye ertelenir; pozisyon ilerlediyse hata
+    // atlatılmış sayılır ve hiç gösterilmez.
+    final positionAtError = _player.state.position;
+    _pendingErrorTimer?.cancel();
+    _pendingErrorTimer = Timer(const Duration(seconds: 3), () {
+      _pendingErrorTimer = null;
+      if (!mounted || !_playbackReady) return;
+      if (_player.state.position > positionAtError) return;
+      setState(() => _status = description);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(description),
+          duration: const Duration(seconds: 8),
+        ),
+      );
+    });
   }
 
   void _onBuffering(bool buffering) {
@@ -1190,6 +1206,7 @@ class _PlayerScreenState extends State<PlayerScreen>
     _keyboardFocusNode.dispose();
     _controlsTimer?.cancel();
     _seekFlashTimer?.cancel();
+    _pendingErrorTimer?.cancel();
     _periodicInfoTimer?.cancel();
     _periodicInfoHideTimer?.cancel();
     _previewDebounce?.cancel();

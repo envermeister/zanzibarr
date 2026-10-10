@@ -918,7 +918,9 @@ class _HistoryCardState extends State<_HistoryCard> {
                   Expanded(
                     child: Text(
                       entry.title,
-                      maxLines: 1,
+                      // Sezon paketi bölüm adları uzundur; tek satır + kesme
+                      // bölüm numarasını yuttuğu için iki satıra izin verilir.
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: foreground.withValues(alpha: 0.9),

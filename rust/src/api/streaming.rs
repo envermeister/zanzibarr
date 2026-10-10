@@ -821,7 +821,9 @@ async fn run_stream_session(
     }
 
     let size = source.total_len();
-    let filename = source.filename().to_string();
+    // Oynatıcı başlığı ve geçmiş kartı dizin öneki olmadan görünür; sunucu
+    // yolu kozmetik olduğu için basename URL'de de güvenle kullanılır.
+    let filename = nzb::basename(source.filename()).to_string();
     let segment_count = source.segment_count().min(u32::MAX as usize) as u32;
     let compressed = source.is_compressed();
     let listener = match server::bind_local(0).await {
@@ -941,8 +943,9 @@ fn set_key(prefix: &str, base: &str) -> String {
 }
 
 /// NZB'deki tüm oynatılabilir adayları listeler (ağ erişimi gerekmez; yalnız
-/// ayrıştırılmış NZB'ye bakar). Sıralama boyuta göre azalan, eşitlikte ada
-/// göredir — liste deterministiktir ve `key` değerleri
+/// ayrıştırılmış NZB'ye bakar). Görünen adlar dizin önekinden arındırılır
+/// (anahtarlar tam ada dayanır); sıralama ada göre doğal/artan yapılır ki
+/// sezon paketlerinde bölümler sırayla dizilsin. `key` değerleri
 /// [`select_stream_by_key`] ile bire bir eşleşir.
 fn playable_entries(parsed: &nzb::Nzb) -> Vec<PlayableEntryDto> {
     let mut entries = Vec::new();
@@ -958,8 +961,10 @@ fn playable_entries(parsed: &nzb::Nzb) -> Vec<PlayableEntryDto> {
             continue;
         };
         entries.push(PlayableEntryDto {
+            // Anahtar tam ada dayanır (geçmiş kayıtları ve onarım katmanı
+            // bunu kullanır); görünen ad ise dizin önekinden arındırılır.
             key: format!("{ENTRY_KEY_DIRECT}{name}"),
-            name: name.to_string(),
+            name: nzb::basename(name).to_string(),
             kind: "direct".into(),
             encoded_bytes: file.encoded_bytes(),
             part_count: 1,
@@ -978,7 +983,7 @@ fn playable_entries(parsed: &nzb::Nzb) -> Vec<PlayableEntryDto> {
             archive_bases.push(set.archive_name.to_ascii_lowercase());
             entries.push(PlayableEntryDto {
                 key: set_key(ENTRY_KEY_7Z, &set.archive_name),
-                name: set.archive_name,
+                name: nzb::basename(&set.archive_name).to_string(),
                 kind: "7z".into(),
                 encoded_bytes,
                 part_count: set.volumes.len().min(u32::MAX as usize) as u32,
@@ -993,7 +998,7 @@ fn playable_entries(parsed: &nzb::Nzb) -> Vec<PlayableEntryDto> {
             archive_bases.push(set.archive_name.to_ascii_lowercase());
             entries.push(PlayableEntryDto {
                 key: set_key(ENTRY_KEY_RAR, &set.archive_name),
-                name: set.archive_name,
+                name: nzb::basename(&set.archive_name).to_string(),
                 kind: "rar".into(),
                 encoded_bytes,
                 part_count: set.volumes.len().min(u32::MAX as usize) as u32,
@@ -1014,19 +1019,71 @@ fn playable_entries(parsed: &nzb::Nzb) -> Vec<PlayableEntryDto> {
         });
         entries.push(PlayableEntryDto {
             key: set_key(ENTRY_KEY_PROBE, &set.base_name),
-            name: set.base_name,
+            name: nzb::basename(&set.base_name).to_string(),
             kind: "probe".into(),
             encoded_bytes,
             part_count: set.volumes.len().min(u32::MAX as usize) as u32,
         });
     }
 
-    entries.sort_by(|a, b| {
-        b.encoded_bytes
-            .cmp(&a.encoded_bytes)
-            .then_with(|| a.name.cmp(&b.name))
-    });
+    // Sezon paketlerinde bölümler ada göre doğal sırada listelenir:
+    // "E9" < "E10" gibi sayı dizileri sayısal kıyaslanır (boyuta göre
+    // sıralama aynı boyutlu bölümleri karıştırıyordu, issue #5).
+    entries.sort_by(|a, b| natural_name_cmp(&a.name, &b.name));
     entries
+}
+
+/// Bölüm numaralı adları insan beklentisine göre sıralar: ASCII rakam
+/// dizileri sayısal değerleriyle ("E9" < "E10"), harfler küçük harfe
+/// indirgenmiş bayt düzeniyle karşılaştırılır. Ancak ve ancak adlar bire bir
+/// aynıysa eşit sayılır; aksi halde son çare olarak kesin bayt sırası
+/// uygulanır ve sıralama deterministik kalır.
+fn natural_name_cmp(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let bytes_a = a.as_bytes();
+    let bytes_b = b.as_bytes();
+    let mut i = 0;
+    let mut j = 0;
+    while i < bytes_a.len() && j < bytes_b.len() {
+        if bytes_a[i].is_ascii_digit() && bytes_b[j].is_ascii_digit() {
+            // Rakam dizilerini sayı olarak kıyasla: baştaki sıfırlar atılır,
+            // önce anlamlı hane sayısı sonra sözlük sırası bakılır.
+            let start_a = i;
+            let start_b = j;
+            while i < bytes_a.len() && bytes_a[i].is_ascii_digit() {
+                i += 1;
+            }
+            while j < bytes_b.len() && bytes_b[j].is_ascii_digit() {
+                j += 1;
+            }
+            let digits_a = &bytes_a[start_a..i];
+            let digits_b = &bytes_b[start_b..j];
+            let skip_a = digits_a.iter().take_while(|&&d| d == b'0').count();
+            let skip_b = digits_b.iter().take_while(|&&d| d == b'0').count();
+            let significant_a = &digits_a[skip_a..];
+            let significant_b = &digits_b[skip_b..];
+            let order = significant_a
+                .len()
+                .cmp(&significant_b.len())
+                .then_with(|| significant_a.cmp(significant_b));
+            if order != Ordering::Equal {
+                return order;
+            }
+            // Sayısal değer eşit ("01" / "1"): kalan parçalar karar versin;
+            // yine de eşitse sondaki kesin bayt kıyası ayrıştırır.
+        } else {
+            let lower_a = bytes_a[i].to_ascii_lowercase();
+            let lower_b = bytes_b[j].to_ascii_lowercase();
+            if lower_a != lower_b {
+                return lower_a.cmp(&lower_b);
+            }
+            i += 1;
+            j += 1;
+        }
+    }
+    (bytes_a.len() - i)
+        .cmp(&(bytes_b.len() - j))
+        .then_with(|| a.cmp(b))
 }
 
 /// Seçici diyalogdan gelen `key` ile kesin bir aday seçer. Anahtar
@@ -1592,7 +1649,7 @@ mod tests {
     }
 
     #[test]
-    fn secici_liste_dogrudan_videolari_boyut_sirasiyla_verir() {
+    fn secici_liste_dogrudan_videolari_dogal_ad_sirasiyla_verir() {
         let parsed = nzb::Nzb {
             meta: vec![],
             files: vec![
@@ -1604,12 +1661,13 @@ mod tests {
 
         let entries = playable_entries(&parsed);
         assert_eq!(entries.len(), 3);
-        assert_eq!(entries[0].name, "show.s01e02.mkv");
-        assert_eq!(entries[1].name, "show.s01e01.mkv");
+        // Boyut ne olursa olsun bölümler ada göre doğal sırada dizilir.
+        assert_eq!(entries[0].name, "show.s01e01.mkv");
+        assert_eq!(entries[1].name, "show.s01e02.mkv");
         assert_eq!(entries[2].name, "show.s01e03.mkv");
         assert!(entries.iter().all(|entry| entry.kind == "direct"));
         assert!(entries.iter().all(|entry| entry.part_count == 1));
-        assert_eq!(entries[0].key, "direct:show.s01e02.mkv");
+        assert_eq!(entries[0].key, "direct:show.s01e01.mkv");
 
         // Anahtarlı seçim listedeki tam dosyayı verir; varsayılan seçim
         // yine en büyüğü bulur.
@@ -1632,6 +1690,80 @@ mod tests {
             panic!("unknown prefix must error");
         };
         assert!(error.contains("unknown entry selector"));
+    }
+
+    #[test]
+    fn secici_liste_dizin_onekli_adlari_basename_gosterir_ve_dogal_siralar() {
+        // smad2005'in bildirdiği sezon paketi biçimi (issue #5): subject
+        // tırnak içinde "dizin/dosya" yazar. Aynı boyutlu bölümler boyuta
+        // göre sıralanınca karışıyor, uzun dizin öneki de bölüm numarasını
+        // yutuyordu.
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file(
+                    "g [1/3] - \"Pack.Dir/Show.E10.1080p.mkv\" yEnc (1/5)",
+                    5,
+                    100,
+                ),
+                file(
+                    "g [2/3] - \"Pack.Dir/Show.E9.1080p.mkv\" yEnc (1/5)",
+                    5,
+                    100,
+                ),
+            ],
+        };
+        let entries = playable_entries(&parsed);
+        assert_eq!(entries.len(), 2);
+        // Görünen ad basename; doğal sıralama E9'u E10'un önüne koyar.
+        assert_eq!(entries[0].name, "Show.E9.1080p.mkv");
+        assert_eq!(entries[1].name, "Show.E10.1080p.mkv");
+        // Anahtarlar tam ada dayanır (geçmiş kayıtları ve onarım katmanıyla
+        // geriye dönük uyum bozulmaz).
+        assert_eq!(entries[0].key, "direct:Pack.Dir/Show.E9.1080p.mkv");
+
+        let selection =
+            select_stream_by_key(&parsed, "direct:Pack.Dir/Show.E10.1080p.mkv")
+                .expect("keyed selection with full path");
+        let StreamSelection::Direct(file) = selection else {
+            panic!("expected Direct selection");
+        };
+        assert_eq!(file.filename(), Some("Pack.Dir/Show.E10.1080p.mkv"));
+    }
+
+    #[test]
+    fn secici_liste_ayni_basenamei_tasiyan_dizinleri_anahtarla_ayirir() {
+        let parsed = nzb::Nzb {
+            meta: vec![],
+            files: vec![
+                file("g \"a/Show.mkv\" yEnc (1/5)", 5, 100),
+                file("g \"b/Show.mkv\" yEnc (1/5)", 5, 100),
+            ],
+        };
+        let entries = playable_entries(&parsed);
+        assert_eq!(entries.len(), 2);
+        // Görünen adlar çakışsa bile anahtarlar tam adla ayrışır.
+        assert!(entries.iter().all(|entry| entry.name == "Show.mkv"));
+        let keys: Vec<&str> = entries.iter().map(|entry| entry.key.as_str()).collect();
+        assert_eq!(keys, vec!["direct:a/Show.mkv", "direct:b/Show.mkv"]);
+    }
+
+    #[test]
+    fn dogal_ad_kiyasi_sayi_dizilerini_degerleriyle_siralar() {
+        use std::cmp::Ordering;
+        assert_eq!(natural_name_cmp("e9.mkv", "e10.mkv"), Ordering::Less);
+        assert_eq!(natural_name_cmp("E01.mkv", "e2.mkv"), Ordering::Less);
+        // Bölümler NCED/NCOP gibi harfli eklerden önce gelir.
+        assert_eq!(
+            natural_name_cmp("show.01.mkv", "show.nced.mkv"),
+            Ordering::Less
+        );
+        assert_eq!(natural_name_cmp("abc", "abcd"), Ordering::Less);
+        assert_eq!(natural_name_cmp("same.mkv", "same.mkv"), Ordering::Equal);
+        // Büyük/küçük harf ve sıfır dolgusu farkları son çare kesin bayt
+        // sırasıyla ayrışır; hiçbir çift rastgele eşit sayılmaz.
+        assert_eq!(natural_name_cmp("A.mkv", "a.mkv"), Ordering::Less);
+        assert_eq!(natural_name_cmp("e01.mkv", "e1.mkv"), Ordering::Less);
     }
 
     #[test]
@@ -1673,11 +1805,12 @@ mod tests {
         };
         let entries = playable_entries(&parsed);
         assert_eq!(entries.len(), 2);
-        assert_eq!(entries[0].kind, "rar");
-        assert_eq!(entries[0].name, "film");
-        assert_eq!(entries[0].part_count, 2);
-        assert_eq!(entries[1].kind, "probe");
-        assert_eq!(entries[1].name, "33dce3");
+        // Doğal ad sırası: rakamla başlayan "33dce3" "film"den önce gelir.
+        assert_eq!(entries[0].kind, "probe");
+        assert_eq!(entries[0].name, "33dce3");
+        assert_eq!(entries[1].kind, "rar");
+        assert_eq!(entries[1].name, "film");
+        assert_eq!(entries[1].part_count, 2);
 
         let selection = select_stream_by_key(&parsed, "rar:FILM").expect("case-insensitive key");
         let StreamSelection::Rar { volumes, .. } = selection else {

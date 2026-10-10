@@ -89,7 +89,9 @@ class _PlayableEntryPickerDialog extends StatelessWidget {
                     leading: Icon(_iconFor(entry.kind), size: 20),
                     title: Text(
                       entry.name,
-                      maxLines: 1,
+                      // Uzun sürüm adlarında bölüm numarası sonda kalır; tek
+                      // satır + kesme onu yuttuğu için iki satıra izin verilir.
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontSize: 13.5),
                     ),
