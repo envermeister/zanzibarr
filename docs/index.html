@@ -328,12 +328,12 @@
 
   <section class="wrap">
     <p class="kicker">What's new</p>
-    <h2>{{ version }} — pick your episode inside season packs</h2>
+    <h2>{{ version }} — season-pack picker polish</h2>
     <ul class="road">
-      <li class="done">Multi-file NZB picker — season packs list every playable episode: direct videos, RAR/7z sets, even obfuscated hash-named sets, with size & segment badges</li>
-      <li class="done">Continue watching, per episode — every entry in a batch keeps its own resume position</li>
-      <li class="done">Android TV, fully remote-driven — settings, indexer setup and search work end-to-end with a D-pad, no mouse needed</li>
-      <li class="done">Chromecast & AirPlay casting — hand the stream to your TV, control it from the app, position stays in sync</li>
+      <li class="done">Episode numbers finally visible — posts that prefix files with a directory now show the real file name, with two-line titles in the picker, continue watching and the player</li>
+      <li class="done">Natural episode order — <b>E9</b> before <b>E10</b>, NCOP/NCED extras listed after the episodes</li>
+      <li class="done">Ghost codec error gone — a harmless hardware→software audio fallback no longer flashes an error banner mid-playback</li>
+      <li class="done">Multi-file NZB picker — season packs list every playable episode: direct videos, RAR/7z sets, even obfuscated hash-named sets</li>
     </ul>
     <p class="section-sub"><a :href="repoUrl + '/releases/latest'" target="_blank" rel="noopener">Full release notes on GitHub →</a></p>
   </section>
@@ -392,7 +392,7 @@ const icon = (path) => `<svg viewBox="0 0 24 24">${path}</svg>`;
 createApp({
   data() {
     return {
-      version: 'v1.8',
+      version: 'v1.9',
       repoUrl: 'https://github.com/envermeister/zanzibarr',
       features: [
         {
